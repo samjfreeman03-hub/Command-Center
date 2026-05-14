@@ -237,7 +237,7 @@ function LeadCard({
         className="block w-full text-left rounded-md border border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 hover:bg-zinc-50 dark:hover:bg-zinc-900 hover:border-zinc-300 dark:hover:border-zinc-800 p-3 transition-colors"
       >
         <div className="text-sm text-zinc-900 dark:text-zinc-100 truncate">{lead.name}</div>
-        {lead.company && <div className="text-xs text-zinc-500 truncate mt-0.5">{lead.company}</div>}
+        {lead.company && <div className="text-xs text-zinc-500 break-all mt-0.5">{lead.company}</div>}
         <div className="flex items-center justify-between mt-2">
           {lead.value_cents ? (
             <span className="text-xs text-emerald-700 dark:text-emerald-300">{money(lead.value_cents)}</span>
