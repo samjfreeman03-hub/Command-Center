@@ -78,7 +78,7 @@ export default function Dashboard() {
                   <li key={t.id} className="py-2.5 flex items-center gap-3">
                     <Circle size={14} className="text-zinc-400 dark:text-zinc-600 shrink-0" />
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm truncate text-zinc-900 dark:text-zinc-100">{t.title}</div>
+                      <div className="text-sm break-all text-zinc-900 dark:text-zinc-100">{t.title}</div>
                       <div className="text-xs text-zinc-500 mt-0.5 flex items-center gap-2">
                         {biz && <span className={biz.accent}>{biz.name}</span>}
                         {t.due_date && (
@@ -107,7 +107,7 @@ export default function Dashboard() {
                   <li key={t.id} className="py-2.5 flex items-center gap-3">
                     <Circle size={14} className="text-zinc-400 dark:text-zinc-600 shrink-0" />
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm truncate text-zinc-900 dark:text-zinc-100">{t.title}</div>
+                      <div className="text-sm break-all text-zinc-900 dark:text-zinc-100">{t.title}</div>
                       <div className="text-xs text-zinc-500 mt-0.5 flex items-center gap-2">
                         {biz && <span className={biz.accent}>{biz.name}</span>}
                         {t.due_date && <span>{format(parseISO(t.due_date), "MMM d")}</span>}
