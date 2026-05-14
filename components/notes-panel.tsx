@@ -78,8 +78,8 @@ export function NotesPanel({ businessId, initial }: { businessId: string; initia
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4 min-h-[60vh]">
-      <aside className="rounded-lg border border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 p-2 space-y-1 max-h-[70vh] overflow-y-auto">
+    <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4">
+      <aside className="rounded-lg border border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 p-2 space-y-1 max-h-[40vh] lg:max-h-[70vh] overflow-y-auto">
         <button
           onClick={startNew}
           className="w-full text-left text-sm px-3 py-2 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 inline-flex items-center gap-2"
@@ -124,7 +124,7 @@ export function NotesPanel({ businessId, initial }: { businessId: string; initia
               value={draftContent}
               onChange={(e) => setDraftContent(e.target.value)}
               placeholder="Start writing… paste in meeting notes, briefs, research."
-              className="flex-1 bg-transparent text-sm leading-relaxed outline-none resize-none placeholder:text-zinc-400 dark:placeholder:text-zinc-600 min-h-[400px] text-zinc-900 dark:text-zinc-100"
+              className="flex-1 bg-transparent text-sm leading-relaxed outline-none resize-none placeholder:text-zinc-400 dark:placeholder:text-zinc-600 min-h-[200px] sm:min-h-[400px] text-zinc-900 dark:text-zinc-100"
             />
             <div className="flex items-center justify-between pt-3 border-t border-zinc-200 dark:border-zinc-900 mt-3">
               <div className="text-xs text-zinc-500">

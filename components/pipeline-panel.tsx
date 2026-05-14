@@ -87,7 +87,8 @@ export function PipelinePanel({
 
       {showAdd && <NewLeadCard onCreate={add} onCancel={() => setShowAdd(false)} />}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+      <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
+      <div className="grid grid-cols-6 gap-3 min-w-[640px] lg:min-w-0">
         {LEAD_STAGES.map((stage) => {
           const stageLeads = leads.filter((l) => l.stage === stage);
           return (
@@ -114,6 +115,7 @@ export function PipelinePanel({
             </div>
           );
         })}
+      </div>
       </div>
     </div>
   );

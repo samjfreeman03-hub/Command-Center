@@ -72,7 +72,7 @@ export function ChatPanel({
   }
 
   return (
-    <div className="rounded-lg border border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 flex flex-col h-[70vh]">
+    <div className="rounded-lg border border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 flex flex-col h-[calc(100svh-180px)] sm:h-[70vh]">
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-900">
         <div className="text-sm">
           <span className="text-zinc-500">Chat with</span>{" "}

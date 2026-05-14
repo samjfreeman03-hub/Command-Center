@@ -3,15 +3,22 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BUSINESSES } from "@/lib/businesses";
-import { LayoutDashboard, LogOut } from "lucide-react";
+import { LayoutDashboard, LogOut, X } from "lucide-react";
 
-export function Sidebar({ onLogout }: { onLogout?: () => void }) {
+export function Sidebar({ onLogout, onClose }: { onLogout?: () => void; onClose?: () => void }) {
   const pathname = usePathname();
   return (
-    <aside className="w-60 shrink-0 border-r border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 px-3 py-5 flex flex-col gap-1">
-      <div className="px-3 mb-4">
-        <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">Command</div>
-        <div className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">Center</div>
+    <aside className="w-60 h-full shrink-0 border-r border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 px-3 py-5 flex flex-col gap-1 overflow-y-auto">
+      <div className="px-3 mb-4 flex items-center justify-between">
+        <div>
+          <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">Command</div>
+          <div className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">Center</div>
+        </div>
+        {onClose && (
+          <button onClick={onClose} className="p-1 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100">
+            <X size={16} />
+          </button>
+        )}
       </div>
 
       <NavItem href="/" active={pathname === "/"} icon={<LayoutDashboard size={16} />}>

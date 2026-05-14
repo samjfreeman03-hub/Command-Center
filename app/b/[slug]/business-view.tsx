@@ -48,7 +48,7 @@ export function BusinessView({
   }
 
   return (
-    <div className="p-8 max-w-6xl">
+    <div className="p-4 sm:p-8 max-w-6xl">
       <header className="mb-6">
         <div className="flex items-center gap-2 mb-1">
           <span className={`w-2.5 h-2.5 rounded-full ${business.dot}`} />
@@ -56,22 +56,22 @@ export function BusinessView({
             {business.fullName}
           </div>
         </div>
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">{business.name}</h1>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">{business.name}</h1>
             <p className="text-sm text-zinc-500 mt-1">{business.tagline}</p>
           </div>
           <button
             onClick={copyShareLink}
-            className="mt-1 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600 transition-colors"
+            className="shrink-0 mt-1 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600 transition-colors"
           >
             {copied ? <Check size={12} className="text-emerald-600" /> : <Link2 size={12} />}
-            {copied ? "Copied!" : "Share page"}
+            <span className="hidden sm:inline">{copied ? "Copied!" : "Share page"}</span>
           </button>
         </div>
       </header>
 
-      <div className="flex items-center gap-1 border-b border-zinc-200 dark:border-zinc-900 mb-6">
+      <div className="flex items-center gap-1 border-b border-zinc-200 dark:border-zinc-900 mb-6 overflow-x-auto scrollbar-none">
         {TABS.map((t) => (
           <button
             key={t.id}

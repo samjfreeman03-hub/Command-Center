@@ -37,7 +37,7 @@ export function SharedView({
 
   return (
     <ShareTokenContext.Provider value={shareToken}>
-      <div className="p-8 max-w-6xl mx-auto">
+      <div className="p-4 sm:p-8 max-w-6xl mx-auto">
         <header className="mb-6">
           <div className="flex items-center gap-2 mb-1">
             <span className={`w-2.5 h-2.5 rounded-full ${business.dot}`} />
