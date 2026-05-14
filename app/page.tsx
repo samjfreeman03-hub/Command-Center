@@ -101,7 +101,7 @@ export default function Dashboard() {
             <Empty text="No open todos." />
           ) : (
             <ul className="divide-y divide-zinc-200 dark:divide-zinc-900">
-              {upcomingTodos.slice(0, 8).map((t) => {
+              {upcomingTodos.map((t) => {
                 const biz = getBusiness(t.business_id);
                 return (
                   <li key={t.id} className="py-2.5 flex items-center gap-3">
