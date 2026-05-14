@@ -79,6 +79,11 @@ function migrate(db: Database.Database) {
       created_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_chat_business ON chat_messages(business_id);
+
+    CREATE TABLE IF NOT EXISTS share_tokens (
+      business_id TEXT PRIMARY KEY,
+      token TEXT UNIQUE NOT NULL
+    );
   `);
 }
 
@@ -298,6 +303,50 @@ export const db = {
 
   clearChat(businessId: string) {
     getDb().prepare("DELETE FROM chat_messages WHERE business_id = ?").run(businessId);
+  },
+
+  // ---- Item → business_id lookups (for auth in [id] routes) ----
+  getTodoBizId(id: number): string | null {
+    const row = getDb().prepare("SELECT business_id FROM todos WHERE id = ?").get(id) as { business_id: string } | undefined;
+    return row?.business_id ?? null;
+  },
+
+  getLeadBizId(id: number): string | null {
+    const row = getDb().prepare("SELECT business_id FROM leads WHERE id = ?").get(id) as { business_id: string } | undefined;
+    return row?.business_id ?? null;
+  },
+
+  getNoteBizId(id: number): string | null {
+    const row = getDb().prepare("SELECT business_id FROM notes WHERE id = ?").get(id) as { business_id: string } | undefined;
+    return row?.business_id ?? null;
+  },
+
+  // ---- Share tokens ----
+  getOrCreateShareToken(businessId: string): string {
+    const existing = getDb()
+      .prepare("SELECT token FROM share_tokens WHERE business_id = ?")
+      .get(businessId) as { token: string } | undefined;
+    if (existing) return existing.token;
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const token: string = require("crypto").randomBytes(32).toString("hex");
+    getDb()
+      .prepare("INSERT INTO share_tokens (business_id, token) VALUES (?, ?)")
+      .run(businessId, token);
+    return token;
+  },
+
+  getBusinessByShareToken(token: string): string | null {
+    const row = getDb()
+      .prepare("SELECT business_id FROM share_tokens WHERE token = ?")
+      .get(token) as { business_id: string } | undefined;
+    return row?.business_id ?? null;
+  },
+
+  verifyShareToken(token: string, businessId: string): boolean {
+    const row = getDb()
+      .prepare("SELECT 1 FROM share_tokens WHERE token = ? AND business_id = ?")
+      .get(token, businessId);
+    return !!row;
   },
 
   // ---- Dashboard helpers ----

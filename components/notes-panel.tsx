@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Note } from "@/lib/types";
 import { Plus, Trash2 } from "lucide-react";
 import { format } from "date-fns";
+import { useShareHeaders } from "@/lib/share-context";
 
 export function NotesPanel({ businessId, initial }: { businessId: string; initial: Note[] }) {
   const [notes, setNotes] = useState(initial);
@@ -12,6 +13,7 @@ export function NotesPanel({ businessId, initial }: { businessId: string; initia
   const [draftContent, setDraftContent] = useState(initial[0]?.content ?? "");
   const [isNew, setIsNew] = useState(false);
   const [saving, setSaving] = useState(false);
+  const shareHeaders = useShareHeaders();
 
   function pick(n: Note) {
     setSelected(n);
@@ -34,7 +36,7 @@ export function NotesPanel({ businessId, initial }: { businessId: string; initia
       if (isNew || !selected) {
         const res = await fetch("/api/notes", {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", ...shareHeaders },
           body: JSON.stringify({
             business_id: businessId,
             title: draftTitle.trim() || "Untitled",
@@ -50,7 +52,7 @@ export function NotesPanel({ businessId, initial }: { businessId: string; initia
       } else {
         const res = await fetch(`/api/notes/${selected.id}`, {
           method: "PATCH",
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", ...shareHeaders },
           body: JSON.stringify({ title: draftTitle, content: draftContent }),
         });
         if (res.ok) {
@@ -72,7 +74,7 @@ export function NotesPanel({ businessId, initial }: { businessId: string; initia
       setDraftTitle("");
       setDraftContent("");
     }
-    await fetch(`/api/notes/${id}`, { method: "DELETE" });
+    await fetch(`/api/notes/${id}`, { method: "DELETE", headers: shareHeaders });
   }
 
   return (

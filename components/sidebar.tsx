@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BUSINESSES } from "@/lib/businesses";
-import { LayoutDashboard } from "lucide-react";
+import { LayoutDashboard, LogOut } from "lucide-react";
 
-export function Sidebar() {
+export function Sidebar({ onLogout }: { onLogout?: () => void }) {
   const pathname = usePathname();
   return (
     <aside className="w-60 shrink-0 border-r border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 px-3 py-5 flex flex-col gap-1">
@@ -32,8 +32,16 @@ export function Sidebar() {
         );
       })}
 
-      <div className="mt-auto px-3 py-3 text-[10px] text-zinc-400 dark:text-zinc-600">
-        v0.1 — local · sqlite
+      <div className="mt-auto flex items-center justify-between px-3 py-3">
+        <span className="text-[10px] text-zinc-400 dark:text-zinc-600">v0.1</span>
+        {onLogout && (
+          <button
+            onClick={onLogout}
+            className="text-[10px] text-zinc-400 dark:text-zinc-600 hover:text-zinc-900 dark:hover:text-zinc-200 inline-flex items-center gap-1"
+          >
+            <LogOut size={10} /> Log out
+          </button>
+        )}
       </div>
     </aside>
   );

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Business } from "@/lib/businesses";
 import type { ChatMessage } from "@/lib/types";
 import { Send, Trash2 } from "lucide-react";
+import { useShareHeaders } from "@/lib/share-context";
 
 export function ChatPanel({
   business,
@@ -17,6 +18,7 @@ export function ChatPanel({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const shareHeaders = useShareHeaders();
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -42,7 +44,7 @@ export function ChatPanel({
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...shareHeaders },
         body: JSON.stringify({ business_id: business.id, content }),
       });
       if (!res.ok) {
@@ -66,7 +68,7 @@ export function ChatPanel({
   async function clearAll() {
     if (!confirm("Clear all chat history for this business?")) return;
     setMessages([]);
-    await fetch(`/api/chat?business_id=${business.id}`, { method: "DELETE" });
+    await fetch(`/api/chat?business_id=${business.id}`, { method: "DELETE", headers: shareHeaders });
   }
 
   return (

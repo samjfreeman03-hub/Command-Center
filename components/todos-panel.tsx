@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import type { Todo } from "@/lib/types";
 import { Check, Plus, Trash2, Circle } from "lucide-react";
 import { format, parseISO, isPast, isToday } from "date-fns";
+import { useShareHeaders } from "@/lib/share-context";
 
 export function TodosPanel({ businessId, initial }: { businessId: string; initial: Todo[] }) {
   const [todos, setTodos] = useState(initial);
@@ -11,13 +12,14 @@ export function TodosPanel({ businessId, initial }: { businessId: string; initia
   const [dueDate, setDueDate] = useState("");
   const [priority, setPriority] = useState<"low" | "medium" | "high">("medium");
   const [, startTransition] = useTransition();
+  const shareHeaders = useShareHeaders();
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim()) return;
     const res = await fetch("/api/todos", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...shareHeaders },
       body: JSON.stringify({
         business_id: businessId,
         title: title.trim(),
@@ -39,7 +41,7 @@ export function TodosPanel({ businessId, initial }: { businessId: string; initia
       prev.map((t) => (t.id === id ? { ...t, status: t.status === "open" ? "done" : "open" } : t))
     );
     startTransition(async () => {
-      const res = await fetch(`/api/todos/${id}`, { method: "PATCH" });
+      const res = await fetch(`/api/todos/${id}`, { method: "PATCH", headers: shareHeaders });
       if (res.ok) {
         const updated: Todo = await res.json();
         setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
@@ -49,7 +51,7 @@ export function TodosPanel({ businessId, initial }: { businessId: string; initia
 
   async function remove(id: number) {
     setTodos((prev) => prev.filter((t) => t.id !== id));
-    await fetch(`/api/todos/${id}`, { method: "DELETE" });
+    await fetch(`/api/todos/${id}`, { method: "DELETE", headers: shareHeaders });
   }
 
   const open = todos.filter((t) => t.status === "open");

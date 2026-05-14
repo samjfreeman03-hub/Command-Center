@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Sidebar } from "@/components/sidebar";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { AdminShell } from "@/components/admin-shell";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -46,11 +45,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>
       <body className="min-h-full bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-        <ThemeToggle />
-        <div className="flex min-h-screen">
-          <Sidebar />
-          <main className="flex-1 min-w-0">{children}</main>
-        </div>
+        <AdminShell>{children}</AdminShell>
       </body>
     </html>
   );

@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Lead } from "@/lib/types";
 import { LEAD_STAGES } from "@/lib/types";
 import { Plus, Trash2 } from "lucide-react";
+import { useShareHeaders } from "@/lib/share-context";
 
 const STAGE_LABELS: Record<Lead["stage"], string> = {
   new: "New",
@@ -29,11 +30,12 @@ export function PipelinePanel({
   const [leads, setLeads] = useState(initial);
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const shareHeaders = useShareHeaders();
 
   async function add(form: NewLeadForm) {
     const res = await fetch("/api/leads", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...shareHeaders },
       body: JSON.stringify({ business_id: businessId, ...form }),
     });
     if (res.ok) {
@@ -47,7 +49,7 @@ export function PipelinePanel({
     setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
     const res = await fetch(`/api/leads/${id}`, {
       method: "PATCH",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...shareHeaders },
       body: JSON.stringify(patch),
     });
     if (res.ok) {
@@ -59,7 +61,7 @@ export function PipelinePanel({
   async function remove(id: number) {
     setLeads((prev) => prev.filter((l) => l.id !== id));
     setEditingId(null);
-    await fetch(`/api/leads/${id}`, { method: "DELETE" });
+    await fetch(`/api/leads/${id}`, { method: "DELETE", headers: shareHeaders });
   }
 
   const totalPipeline = leads

@@ -24,6 +24,8 @@ export default async function BusinessPage({
     Promise.resolve(db.listChat(slug)),
   ]);
 
+  const shareToken = db.getOrCreateShareToken(slug);
+
   return (
     <BusinessView
       business={business}
@@ -32,6 +34,7 @@ export default async function BusinessPage({
       initialLeads={leads}
       initialNotes={notes}
       initialChat={chat}
+      shareToken={shareToken}
     />
   );
 }

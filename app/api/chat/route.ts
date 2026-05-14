@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "@/lib/db";
 import { getBusiness } from "@/lib/businesses";
+import { canAccessBusiness } from "@/lib/server-auth";
 
 export async function POST(req: Request) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -22,6 +23,9 @@ export async function POST(req: Request) {
   const business = getBusiness(business_id);
   if (!business) {
     return NextResponse.json({ error: "Unknown business" }, { status: 404 });
+  }
+  if (!(await canAccessBusiness(business_id))) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   // Persist user message first
@@ -115,6 +119,9 @@ export async function DELETE(req: Request) {
   const businessId = url.searchParams.get("business_id");
   if (!businessId) {
     return NextResponse.json({ error: "business_id required" }, { status: 400 });
+  }
+  if (!(await canAccessBusiness(businessId))) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   db.clearChat(businessId);
   return NextResponse.json({ ok: true });
