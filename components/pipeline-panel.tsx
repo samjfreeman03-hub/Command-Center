@@ -87,19 +87,17 @@ export function PipelinePanel({
 
       {showAdd && <NewLeadCard onCreate={add} onCancel={() => setShowAdd(false)} />}
 
-      <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
-      <div className="grid grid-cols-6 gap-3 min-w-[640px] lg:min-w-0">
+      <div className="space-y-5">
         {LEAD_STAGES.map((stage) => {
           const stageLeads = leads.filter((l) => l.stage === stage);
+          if (stageLeads.length === 0) return null;
           return (
-            <div key={stage} className="rounded-lg border border-zinc-200 dark:border-zinc-900 bg-zinc-50/60 dark:bg-zinc-950/60 p-3 min-h-[200px]">
-              <div className="flex items-center justify-between mb-3">
-                <div className="text-xs uppercase tracking-wider text-zinc-600 dark:text-zinc-400">
-                  {STAGE_LABELS[stage]}
-                </div>
-                <div className="text-xs text-zinc-400 dark:text-zinc-600">{stageLeads.length}</div>
+            <div key={stage}>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="text-xs font-medium uppercase tracking-wider text-zinc-500">{STAGE_LABELS[stage]}</div>
+                <div className="text-xs text-zinc-400 dark:text-zinc-600 bg-zinc-100 dark:bg-zinc-900 px-1.5 py-0.5 rounded-full">{stageLeads.length}</div>
               </div>
-              <div className="space-y-2">
+              <div className="rounded-lg border border-zinc-200 dark:border-zinc-900 divide-y divide-zinc-100 dark:divide-zinc-900 overflow-hidden">
                 {stageLeads.map((l) => (
                   <LeadCard
                     key={l.id}
@@ -115,7 +113,9 @@ export function PipelinePanel({
             </div>
           );
         })}
-      </div>
+        {leads.length === 0 && (
+          <div className="text-sm text-zinc-500 py-10 text-center">No leads yet.</div>
+        )}
       </div>
     </div>
   );
@@ -234,19 +234,21 @@ function LeadCard({
       )}
       <button
         onClick={onStartEdit}
-        className="block w-full text-left rounded-md border border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 hover:bg-zinc-50 dark:hover:bg-zinc-900 hover:border-zinc-300 dark:hover:border-zinc-800 p-3 transition-colors"
+        className="block w-full text-left bg-white dark:bg-zinc-950 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 px-4 py-3 transition-colors"
       >
-        <div className="text-sm text-zinc-900 dark:text-zinc-100 truncate">{lead.name}</div>
-        {lead.company && <div className="text-xs text-zinc-500 break-all mt-0.5">{lead.company}</div>}
-        <div className="flex items-center justify-between mt-2">
-          {lead.value_cents ? (
-            <span className="text-xs text-emerald-700 dark:text-emerald-300">{money(lead.value_cents)}</span>
-          ) : (
-            <span />
-          )}
-          {lead.next_action && (
-            <span className="text-[10px] text-zinc-500 truncate ml-2">{lead.next_action}</span>
-          )}
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{lead.name}</div>
+            {lead.company && <div className="text-xs text-zinc-500 mt-0.5">{lead.company}</div>}
+          </div>
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            {lead.value_cents ? (
+              <span className="text-xs font-medium text-emerald-700 dark:text-emerald-300">{money(lead.value_cents)}</span>
+            ) : null}
+            {lead.next_action && (
+              <span className="text-xs text-zinc-400 dark:text-zinc-600 text-right max-w-[160px]">{lead.next_action}</span>
+            )}
+          </div>
         </div>
       </button>
     </>
