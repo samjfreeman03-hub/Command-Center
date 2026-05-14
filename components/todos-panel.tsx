@@ -142,7 +142,7 @@ function TodoRow({
       </button>
       <div className="flex-1 min-w-0">
         <div
-          className={`text-sm break-words ${
+          className={`text-sm break-all ${
             todo.status === "done"
               ? "line-through text-zinc-400 dark:text-zinc-600"
               : "text-zinc-900 dark:text-zinc-100"
