@@ -4,7 +4,9 @@ import fs from "node:fs";
 import { BUSINESSES } from "./businesses";
 import type { Todo, Lead, Note, ChatMessage } from "./types";
 
-const DB_DIR = path.join(process.cwd(), "data");
+const DB_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH
+  ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH)
+  : path.join(process.cwd(), "data");
 const DB_PATH = path.join(DB_DIR, "command-center.db");
 
 let _db: Database.Database | null = null;
