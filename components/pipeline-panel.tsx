@@ -217,29 +217,39 @@ function LeadCard({
   onUpdate: (patch: Partial<Lead>) => void;
   onDelete: () => void;
 }) {
-  if (isEditing) {
-    return (
-      <EditLeadCard lead={lead} onSave={(patch) => { onUpdate(patch); onCancelEdit(); }} onCancel={onCancelEdit} onDelete={onDelete} />
-    );
-  }
   return (
-    <button
-      onClick={onStartEdit}
-      className="block w-full text-left rounded-md border border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 hover:bg-zinc-50 dark:hover:bg-zinc-900 hover:border-zinc-300 dark:hover:border-zinc-800 p-3 transition-colors"
-    >
-      <div className="text-sm text-zinc-900 dark:text-zinc-100 truncate">{lead.name}</div>
-      {lead.company && <div className="text-xs text-zinc-500 truncate mt-0.5">{lead.company}</div>}
-      <div className="flex items-center justify-between mt-2">
-        {lead.value_cents ? (
-          <span className="text-xs text-emerald-700 dark:text-emerald-300">{money(lead.value_cents)}</span>
-        ) : (
-          <span />
-        )}
-        {lead.next_action && (
-          <span className="text-[10px] text-zinc-500 truncate ml-2">{lead.next_action}</span>
-        )}
-      </div>
-    </button>
+    <>
+      {isEditing && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={onCancelEdit} />
+          <div className="relative w-full sm:max-w-md max-h-[90vh] overflow-y-auto rounded-t-xl sm:rounded-xl bg-white dark:bg-zinc-950 shadow-xl">
+            <EditLeadCard
+              lead={lead}
+              onSave={(patch) => { onUpdate(patch); onCancelEdit(); }}
+              onCancel={onCancelEdit}
+              onDelete={onDelete}
+            />
+          </div>
+        </div>
+      )}
+      <button
+        onClick={onStartEdit}
+        className="block w-full text-left rounded-md border border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 hover:bg-zinc-50 dark:hover:bg-zinc-900 hover:border-zinc-300 dark:hover:border-zinc-800 p-3 transition-colors"
+      >
+        <div className="text-sm text-zinc-900 dark:text-zinc-100 truncate">{lead.name}</div>
+        {lead.company && <div className="text-xs text-zinc-500 truncate mt-0.5">{lead.company}</div>}
+        <div className="flex items-center justify-between mt-2">
+          {lead.value_cents ? (
+            <span className="text-xs text-emerald-700 dark:text-emerald-300">{money(lead.value_cents)}</span>
+          ) : (
+            <span />
+          )}
+          {lead.next_action && (
+            <span className="text-[10px] text-zinc-500 truncate ml-2">{lead.next_action}</span>
+          )}
+        </div>
+      </button>
+    </>
   );
 }
 
@@ -278,7 +288,7 @@ function EditLeadCard({
           notes: notes || null,
         });
       }}
-      className="rounded-md border border-zinc-300 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/60 p-3 space-y-2"
+      className="bg-white dark:bg-zinc-950 p-5 space-y-3"
     >
       <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="Name" />
       <input value={company} onChange={(e) => setCompany(e.target.value)} className={inputCls} placeholder="Company" />
