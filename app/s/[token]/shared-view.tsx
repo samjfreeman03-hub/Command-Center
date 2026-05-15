@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import type { Business } from "@/lib/businesses";
-import type { Todo, Lead, Note, ChatMessage } from "@/lib/types";
+import type { Todo, Lead, Note, ChatMessage, BusinessResource } from "@/lib/types";
 import { TodosPanel } from "@/components/todos-panel";
 import { PipelinePanel } from "@/components/pipeline-panel";
+import { ResourcesPanel } from "@/components/resources-panel";
 import { NotesPanel } from "@/components/notes-panel";
 import { ChatPanel } from "@/components/chat-panel";
 import { ShareTokenContext } from "@/lib/share-context";
@@ -12,6 +13,7 @@ import { ShareTokenContext } from "@/lib/share-context";
 const TABS = [
   { id: "todos", label: "Todos" },
   { id: "pipeline", label: "Pipeline" },
+  { id: "resources", label: "Resources" },
   { id: "notes", label: "Notes" },
   { id: "chat", label: "Chat" },
 ] as const;
@@ -23,6 +25,7 @@ export function SharedView({
   shareToken,
   initialTodos,
   initialLeads,
+  initialResources,
   initialNotes,
   initialChat,
 }: {
@@ -30,6 +33,7 @@ export function SharedView({
   shareToken: string;
   initialTodos: Todo[];
   initialLeads: Lead[];
+  initialResources: BusinessResource[];
   initialNotes: Note[];
   initialChat: ChatMessage[];
 }) {
@@ -51,12 +55,12 @@ export function SharedView({
           <p className="text-sm text-zinc-500 mt-1">{business.tagline}</p>
         </header>
 
-        <div className="flex items-center gap-1 border-b border-zinc-200 dark:border-zinc-900 mb-6">
+        <div className="flex items-center gap-1 border-b border-zinc-200 dark:border-zinc-900 mb-6 overflow-x-auto scrollbar-none">
           {TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className={`px-4 py-2 text-sm border-b-2 -mb-px transition-colors ${
+              className={`px-4 py-2 text-sm border-b-2 -mb-px transition-colors whitespace-nowrap ${
                 tab === t.id
                   ? "border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-100"
                   : "border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300"
@@ -69,6 +73,7 @@ export function SharedView({
 
         {tab === "todos" && <TodosPanel businessId={business.id} initial={initialTodos} />}
         {tab === "pipeline" && <PipelinePanel businessId={business.id} initial={initialLeads} />}
+        {tab === "resources" && <ResourcesPanel businessId={business.id} initial={initialResources} />}
         {tab === "notes" && <NotesPanel businessId={business.id} initial={initialNotes} />}
         {tab === "chat" && <ChatPanel business={business} initialMessages={initialChat} />}
       </div>

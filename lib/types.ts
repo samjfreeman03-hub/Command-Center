@@ -51,6 +51,19 @@ export type ChatMessage = {
   created_at: number;
 };
 
+export type BusinessResource = {
+  id: number;
+  business_id: string;
+  type: "link" | "file";
+  label: string;
+  url: string | null;
+  filename: string | null;
+  stored_name: string | null;
+  file_size: number | null;
+  mime_type: string | null;
+  created_at: number;
+};
+
 export type LeadAttachment = {
   id: number;
   lead_id: number;

@@ -126,6 +126,7 @@ export async function POST(req: Request) {
   const notes = db.listNotes({ businessId: business_id });
   const leads = db.listLeads({ businessId: business_id });
   const todos = db.listTodos({ businessId: business_id, status: "open" });
+  const resources = db.listBusinessResources(business_id);
   const attachments = db.listLeadAttachmentsForBusiness(business_id);
   const history = db.listChat(business_id).slice(-20);
 
@@ -147,6 +148,29 @@ export async function POST(req: Request) {
   const todosBlock = todos.length
     ? todos.map((t) => `- [${t.priority}] ${t.title}${t.due_date ? ` (due ${t.due_date})` : ""}`).join("\n")
     : "(no open todos)";
+
+  // Business resources context
+  let resourcesBlock = "(no resources)";
+  if (resources.length > 0) {
+    const resolved = await Promise.all(
+      resources.map(async (r) => {
+        if (r.type === "link" && r.url) {
+          const fetched = await fetchLinkContent(r.url);
+          return `[${r.label}] (${r.url}):\n${fetched}`;
+        }
+        if (r.type === "file" && r.stored_name && r.filename) {
+          const text = await readFileContent(r.stored_name, r.filename, r.mime_type);
+          return `[${r.label}] File "${r.filename}":\n${text}`;
+        }
+        return null;
+      })
+    );
+    let combined = resolved.filter(Boolean).join("\n\n---\n\n");
+    if (combined.length > TOTAL_ATTACH_LIMIT) {
+      combined = combined.slice(0, TOTAL_ATTACH_LIMIT) + "\n\n(content truncated)";
+    }
+    resourcesBlock = combined || "(no readable resources)";
+  }
 
   let attachmentsBlock = "(no attachments)";
   if (attachments.length > 0) {
@@ -185,7 +209,10 @@ ${leadsBlock}
 == OPEN TODOS ==
 ${todosBlock}
 
-== LEAD ATTACHMENTS (links and documents attached to leads) ==
+== BUSINESS RESOURCES (permanent reference materials for this business) ==
+${resourcesBlock}
+
+== LEAD ATTACHMENTS (links and documents attached to specific leads) ==
 ${attachmentsBlock}
 
 Be concise, direct, and operator-minded. The user runs multiple businesses — respect their time. When drafting outputs (emails, briefs, recaps), produce them in clean final form, no preamble.`;

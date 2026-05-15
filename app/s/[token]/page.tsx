@@ -17,9 +17,10 @@ export default async function SharePage({
   const business = BUSINESSES.find((b) => b.id === businessId);
   if (!business) notFound();
 
-  const [todos, leads, notes, chat] = await Promise.all([
+  const [todos, leads, resources, notes, chat] = await Promise.all([
     Promise.resolve(db.listTodos({ businessId })),
     Promise.resolve(db.listLeads({ businessId })),
+    Promise.resolve(db.listBusinessResources(businessId)),
     Promise.resolve(db.listNotes({ businessId })),
     Promise.resolve(db.listChat(businessId)),
   ]);
@@ -30,6 +31,7 @@ export default async function SharePage({
       shareToken={token}
       initialTodos={todos}
       initialLeads={leads}
+      initialResources={resources}
       initialNotes={notes}
       initialChat={chat}
     />

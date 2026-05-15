@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
 import { BUSINESSES } from "./businesses";
-import type { Todo, Lead, Note, ChatMessage, LeadAttachment } from "./types";
+import type { Todo, Lead, Note, ChatMessage, LeadAttachment, BusinessResource } from "./types";
 
 const DB_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH
   ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH)
@@ -86,6 +86,20 @@ function migrate(db: Database.Database) {
       business_id TEXT PRIMARY KEY,
       token TEXT UNIQUE NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS business_resources (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      business_id TEXT NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+      type TEXT NOT NULL CHECK(type IN ('link', 'file')),
+      label TEXT NOT NULL,
+      url TEXT,
+      filename TEXT,
+      stored_name TEXT,
+      file_size INTEGER,
+      mime_type TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+    );
+    CREATE INDEX IF NOT EXISTS idx_resources_business ON business_resources(business_id);
 
     CREATE TABLE IF NOT EXISTS lead_attachments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -319,6 +333,42 @@ export const db = {
 
   clearChat(businessId: string) {
     getDb().prepare("DELETE FROM chat_messages WHERE business_id = ?").run(businessId);
+  },
+
+  // ---- Business resources ----
+  listBusinessResources(businessId: string): BusinessResource[] {
+    return getDb()
+      .prepare("SELECT * FROM business_resources WHERE business_id = ? ORDER BY created_at ASC")
+      .all(businessId) as BusinessResource[];
+  },
+
+  addBusinessLink(businessId: string, label: string, url: string): BusinessResource {
+    const result = getDb()
+      .prepare("INSERT INTO business_resources (business_id, type, label, url, created_at) VALUES (?, 'link', ?, ?, ?)")
+      .run(businessId, label, url, Date.now());
+    return getDb().prepare("SELECT * FROM business_resources WHERE id = ?").get(result.lastInsertRowid) as BusinessResource;
+  },
+
+  addBusinessFile(businessId: string, label: string, filename: string, storedName: string, fileSize: number, mimeType: string): BusinessResource {
+    const result = getDb()
+      .prepare("INSERT INTO business_resources (business_id, type, label, filename, stored_name, file_size, mime_type, created_at) VALUES (?, 'file', ?, ?, ?, ?, ?, ?)")
+      .run(businessId, label, filename, storedName, fileSize, mimeType, Date.now());
+    return getDb().prepare("SELECT * FROM business_resources WHERE id = ?").get(result.lastInsertRowid) as BusinessResource;
+  },
+
+  getResource(id: number): BusinessResource | undefined {
+    return getDb().prepare("SELECT * FROM business_resources WHERE id = ?").get(id) as BusinessResource | undefined;
+  },
+
+  getResourceBizId(id: number): string | null {
+    const row = getDb().prepare("SELECT business_id FROM business_resources WHERE id = ?").get(id) as { business_id: string } | undefined;
+    return row?.business_id ?? null;
+  },
+
+  deleteResource(id: number): { stored_name: string | null } {
+    const row = getDb().prepare("SELECT stored_name FROM business_resources WHERE id = ?").get(id) as { stored_name: string | null } | undefined;
+    getDb().prepare("DELETE FROM business_resources WHERE id = ?").run(id);
+    return { stored_name: row?.stored_name ?? null };
   },
 
   // ---- Lead attachments ----
