@@ -2,18 +2,20 @@ import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
 import { BUSINESSES } from "./businesses";
-import type { Todo, Lead, Note, ChatMessage } from "./types";
+import type { Todo, Lead, Note, ChatMessage, LeadAttachment } from "./types";
 
 const DB_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH
   ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH)
   : path.join(process.cwd(), "data");
 const DB_PATH = path.join(DB_DIR, "command-center.db");
+export const UPLOADS_DIR = path.join(DB_DIR, "uploads");
 
 let _db: Database.Database | null = null;
 
 function getDb(): Database.Database {
   if (_db) return _db;
   if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
+  if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
   const db = new Database(DB_PATH);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
@@ -84,6 +86,20 @@ function migrate(db: Database.Database) {
       business_id TEXT PRIMARY KEY,
       token TEXT UNIQUE NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS lead_attachments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      lead_id INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+      type TEXT NOT NULL CHECK(type IN ('link', 'file')),
+      label TEXT,
+      url TEXT,
+      filename TEXT,
+      stored_name TEXT,
+      file_size INTEGER,
+      mime_type TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+    );
+    CREATE INDEX IF NOT EXISTS idx_attachments_lead ON lead_attachments(lead_id);
   `);
 }
 
@@ -303,6 +319,50 @@ export const db = {
 
   clearChat(businessId: string) {
     getDb().prepare("DELETE FROM chat_messages WHERE business_id = ?").run(businessId);
+  },
+
+  // ---- Lead attachments ----
+  listLeadAttachments(leadId: number): LeadAttachment[] {
+    return getDb()
+      .prepare("SELECT * FROM lead_attachments WHERE lead_id = ? ORDER BY created_at ASC")
+      .all(leadId) as LeadAttachment[];
+  },
+
+  addLeadLink(leadId: number, url: string, label: string | null): LeadAttachment {
+    const result = getDb()
+      .prepare(
+        `INSERT INTO lead_attachments (lead_id, type, url, label, created_at)
+         VALUES (?, 'link', ?, ?, ?)`
+      )
+      .run(leadId, url, label, Date.now());
+    return getDb().prepare("SELECT * FROM lead_attachments WHERE id = ?").get(result.lastInsertRowid) as LeadAttachment;
+  },
+
+  addLeadFile(leadId: number, filename: string, storedName: string, fileSize: number, mimeType: string): LeadAttachment {
+    const result = getDb()
+      .prepare(
+        `INSERT INTO lead_attachments (lead_id, type, filename, stored_name, file_size, mime_type, created_at)
+         VALUES (?, 'file', ?, ?, ?, ?, ?)`
+      )
+      .run(leadId, filename, storedName, fileSize, mimeType, Date.now());
+    return getDb().prepare("SELECT * FROM lead_attachments WHERE id = ?").get(result.lastInsertRowid) as LeadAttachment;
+  },
+
+  getAttachment(id: number): LeadAttachment | undefined {
+    return getDb().prepare("SELECT * FROM lead_attachments WHERE id = ?").get(id) as LeadAttachment | undefined;
+  },
+
+  deleteAttachment(id: number): { stored_name: string | null } {
+    const row = getDb().prepare("SELECT stored_name FROM lead_attachments WHERE id = ?").get(id) as { stored_name: string | null } | undefined;
+    getDb().prepare("DELETE FROM lead_attachments WHERE id = ?").run(id);
+    return { stored_name: row?.stored_name ?? null };
+  },
+
+  getAttachmentBizId(id: number): string | null {
+    const row = getDb()
+      .prepare(`SELECT l.business_id FROM lead_attachments a JOIN leads l ON l.id = a.lead_id WHERE a.id = ?`)
+      .get(id) as { business_id: string } | undefined;
+    return row?.business_id ?? null;
   },
 
   // ---- Item → business_id lookups (for auth in [id] routes) ----

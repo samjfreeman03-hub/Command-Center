@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import type { Lead } from "@/lib/types";
+import { useState, useEffect, useRef } from "react";
+import type { Lead, LeadAttachment } from "@/lib/types";
 import { LEAD_STAGES } from "@/lib/types";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Link2, Paperclip, X, Upload, ExternalLink, Download } from "lucide-react";
 import { useShareHeaders } from "@/lib/share-context";
 
 const STAGE_LABELS: Record<Lead["stage"], string> = {
@@ -275,6 +275,63 @@ function EditLeadCard({
   const [nextDate, setNextDate] = useState(lead.next_action_date ?? "");
   const [notes, setNotes] = useState(lead.notes ?? "");
 
+  const [attachments, setAttachments] = useState<LeadAttachment[]>([]);
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkLabel, setLinkLabel] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const shareHeaders = useShareHeaders();
+
+  useEffect(() => {
+    fetch(`/api/leads/${lead.id}/attachments`, { headers: shareHeaders })
+      .then((r) => r.ok ? r.json() : [])
+      .then(setAttachments);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead.id]);
+
+  async function addLink() {
+    const url = linkUrl.trim();
+    if (!url) return;
+    const res = await fetch(`/api/leads/${lead.id}/attachments`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...shareHeaders },
+      body: JSON.stringify({ url, label: linkLabel.trim() || null }),
+    });
+    if (res.ok) {
+      const created = await res.json();
+      setAttachments((prev) => [...prev, created]);
+      setLinkUrl("");
+      setLinkLabel("");
+    }
+  }
+
+  async function uploadFile(file: File) {
+    setUploading(true);
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`/api/leads/${lead.id}/attachments`, {
+      method: "POST",
+      headers: shareHeaders,
+      body: form,
+    });
+    if (res.ok) {
+      const created = await res.json();
+      setAttachments((prev) => [...prev, created]);
+    }
+    setUploading(false);
+  }
+
+  async function removeAttachment(id: number) {
+    await fetch(`/api/attachments/${id}`, { method: "DELETE", headers: shareHeaders });
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
+  }
+
+  function formatBytes(bytes: number) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
   return (
     <form
       onSubmit={(e) => {
@@ -306,6 +363,105 @@ function EditLeadCard({
       <input value={nextAction} onChange={(e) => setNextAction(e.target.value)} className={inputCls} placeholder="Next action" />
       <input type="date" value={nextDate} onChange={(e) => setNextDate(e.target.value)} className={inputCls} />
       <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className={`${inputCls} min-h-16`} placeholder="Notes" />
+
+      {/* Attachments */}
+      <div className="pt-1">
+        <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2">Attachments</div>
+
+        {attachments.length > 0 && (
+          <div className="space-y-1.5 mb-3">
+            {attachments.map((a) => (
+              <div key={a.id} className="flex items-center gap-2 rounded-md bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-2.5 py-1.5">
+                {a.type === "link" ? (
+                  <Link2 size={12} className="text-zinc-400 shrink-0" />
+                ) : (
+                  <Paperclip size={12} className="text-zinc-400 shrink-0" />
+                )}
+                <span className="flex-1 text-xs text-zinc-700 dark:text-zinc-300 truncate">
+                  {a.label || a.filename || a.url}
+                </span>
+                {a.file_size && (
+                  <span className="text-[10px] text-zinc-400 shrink-0">{formatBytes(a.file_size)}</span>
+                )}
+                {a.type === "link" ? (
+                  <a
+                    href={a.url!}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 shrink-0"
+                  >
+                    <ExternalLink size={12} />
+                  </a>
+                ) : (
+                  <a
+                    href={`/api/attachments/${a.id}/file`}
+                    download={a.filename ?? undefined}
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 shrink-0"
+                  >
+                    <Download size={12} />
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={() => removeAttachment(a.id)}
+                  className="text-zinc-400 hover:text-red-500 dark:hover:text-red-400 shrink-0"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Add link */}
+        <div className="flex gap-1.5 mb-2">
+          <input
+            type="url"
+            value={linkUrl}
+            onChange={(e) => setLinkUrl(e.target.value)}
+            placeholder="Paste a link…"
+            className={`${inputCls} flex-1`}
+          />
+          <input
+            value={linkLabel}
+            onChange={(e) => setLinkLabel(e.target.value)}
+            placeholder="Label"
+            className={`${inputCls} w-24`}
+          />
+          <button
+            type="button"
+            onClick={addLink}
+            disabled={!linkUrl.trim()}
+            className="shrink-0 bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 text-xs px-2.5 py-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800 disabled:opacity-40 inline-flex items-center gap-1"
+          >
+            <Link2 size={11} /> Add
+          </button>
+        </div>
+
+        {/* Upload file */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) uploadFile(file);
+            e.target.value = "";
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          className="w-full border border-dashed border-zinc-300 dark:border-zinc-700 rounded-md py-2 text-xs text-zinc-500 hover:border-zinc-400 dark:hover:border-zinc-600 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors inline-flex items-center justify-center gap-1.5 disabled:opacity-50"
+        >
+          <Upload size={12} />
+          {uploading ? "Uploading…" : "Upload file"}
+        </button>
+      </div>
+
       <div className="flex justify-between items-center pt-1">
         <button type="button" onClick={onDelete} className="text-xs text-red-600 dark:text-red-400 hover:text-red-500 dark:hover:text-red-300 inline-flex items-center gap-1">
           <Trash2 size={12} /> Delete
