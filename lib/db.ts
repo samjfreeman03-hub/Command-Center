@@ -358,6 +358,18 @@ export const db = {
     return { stored_name: row?.stored_name ?? null };
   },
 
+  listLeadAttachmentsForBusiness(businessId: string): (LeadAttachment & { lead_name: string })[] {
+    return getDb()
+      .prepare(
+        `SELECT a.*, l.name AS lead_name
+         FROM lead_attachments a
+         JOIN leads l ON l.id = a.lead_id
+         WHERE l.business_id = ?
+         ORDER BY l.id, a.created_at ASC`
+      )
+      .all(businessId) as (LeadAttachment & { lead_name: string })[];
+  },
+
   getAttachmentBizId(id: number): string | null {
     const row = getDb()
       .prepare(`SELECT l.business_id FROM lead_attachments a JOIN leads l ON l.id = a.lead_id WHERE a.id = ?`)
