@@ -16,6 +16,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Command Center",
   description: "Your personal operating system",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Command Center",
+  },
 };
 
 // Runs before paint to avoid flash of wrong theme.
