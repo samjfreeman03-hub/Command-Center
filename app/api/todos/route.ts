@@ -16,6 +16,7 @@ export async function POST(req: Request) {
     notes: body.notes,
     priority: body.priority,
     due_date: body.due_date,
+    assigned_to: body.assigned_to ?? null,
   });
   return NextResponse.json(todo);
 }

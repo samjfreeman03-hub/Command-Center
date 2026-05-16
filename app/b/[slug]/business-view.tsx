@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import type { Business } from "@/lib/businesses";
-import type { Todo, Lead, Note, ChatMessage, BusinessResource } from "@/lib/types";
+import type { Todo, Lead, Note, ChatMessage, BusinessResource, TeamMember } from "@/lib/types";
 import { TodosPanel } from "@/components/todos-panel";
 import { PipelinePanel } from "@/components/pipeline-panel";
 import { ResourcesPanel } from "@/components/resources-panel";
 import { NotesPanel } from "@/components/notes-panel";
 import { ChatPanel } from "@/components/chat-panel";
+import { TeamPanel } from "@/components/team-panel";
 import { Link2, Check } from "lucide-react";
 
 const TABS = [
@@ -16,6 +17,7 @@ const TABS = [
   { id: "resources", label: "Resources" },
   { id: "notes", label: "Notes" },
   { id: "chat", label: "Chat" },
+  { id: "team", label: "Team" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -28,6 +30,7 @@ export function BusinessView({
   initialResources,
   initialNotes,
   initialChat,
+  initialMembers,
   shareToken,
 }: {
   business: Business;
@@ -37,12 +40,14 @@ export function BusinessView({
   initialResources: BusinessResource[];
   initialNotes: Note[];
   initialChat: ChatMessage[];
+  initialMembers: TeamMember[];
   shareToken: string;
 }) {
   const [tab, setTab] = useState<TabId>(
     (TABS.find((t) => t.id === initialTab)?.id ?? "todos") as TabId
   );
   const [copied, setCopied] = useState(false);
+  const [members, setMembers] = useState<TeamMember[]>(initialMembers);
 
   function copyShareLink() {
     const url = `${window.location.origin}/s/${shareToken}`;
@@ -91,11 +96,19 @@ export function BusinessView({
         ))}
       </div>
 
-      {tab === "todos" && <TodosPanel businessId={business.id} initial={initialTodos} />}
+      {tab === "todos" && <TodosPanel businessId={business.id} initial={initialTodos} members={members} />}
       {tab === "pipeline" && <PipelinePanel businessId={business.id} initial={initialLeads} />}
       {tab === "resources" && <ResourcesPanel businessId={business.id} initial={initialResources} />}
       {tab === "notes" && <NotesPanel businessId={business.id} initial={initialNotes} />}
       {tab === "chat" && <ChatPanel business={business} initialMessages={initialChat} />}
+      {tab === "team" && (
+        <TeamPanel
+          businessId={business.id}
+          initialMembers={members}
+          initialTodos={initialTodos}
+          onMembersChange={setMembers}
+        />
+      )}
     </div>
   );
 }

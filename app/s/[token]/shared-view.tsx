@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import type { Business } from "@/lib/businesses";
-import type { Todo, Lead, Note, ChatMessage, BusinessResource } from "@/lib/types";
+import type { Todo, Lead, Note, ChatMessage, BusinessResource, TeamMember } from "@/lib/types";
 import { TodosPanel } from "@/components/todos-panel";
 import { PipelinePanel } from "@/components/pipeline-panel";
 import { ResourcesPanel } from "@/components/resources-panel";
 import { NotesPanel } from "@/components/notes-panel";
 import { ChatPanel } from "@/components/chat-panel";
+import { TeamPanel } from "@/components/team-panel";
 import { ShareTokenContext } from "@/lib/share-context";
 
 const TABS = [
@@ -16,6 +17,7 @@ const TABS = [
   { id: "resources", label: "Resources" },
   { id: "notes", label: "Notes" },
   { id: "chat", label: "Chat" },
+  { id: "team", label: "Team" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -28,6 +30,7 @@ export function SharedView({
   initialResources,
   initialNotes,
   initialChat,
+  initialMembers,
 }: {
   business: Business;
   shareToken: string;
@@ -36,8 +39,10 @@ export function SharedView({
   initialResources: BusinessResource[];
   initialNotes: Note[];
   initialChat: ChatMessage[];
+  initialMembers: TeamMember[];
 }) {
   const [tab, setTab] = useState<TabId>("todos");
+  const [members, setMembers] = useState<TeamMember[]>(initialMembers);
 
   return (
     <ShareTokenContext.Provider value={shareToken}>
@@ -71,11 +76,19 @@ export function SharedView({
           ))}
         </div>
 
-        {tab === "todos" && <TodosPanel businessId={business.id} initial={initialTodos} />}
+        {tab === "todos" && <TodosPanel businessId={business.id} initial={initialTodos} members={members} />}
         {tab === "pipeline" && <PipelinePanel businessId={business.id} initial={initialLeads} />}
         {tab === "resources" && <ResourcesPanel businessId={business.id} initial={initialResources} />}
         {tab === "notes" && <NotesPanel businessId={business.id} initial={initialNotes} />}
         {tab === "chat" && <ChatPanel business={business} initialMessages={initialChat} />}
+        {tab === "team" && (
+          <TeamPanel
+            businessId={business.id}
+            initialMembers={members}
+            initialTodos={initialTodos}
+            onMembersChange={setMembers}
+          />
+        )}
       </div>
     </ShareTokenContext.Provider>
   );

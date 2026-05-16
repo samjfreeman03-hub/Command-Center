@@ -6,6 +6,7 @@ export type Todo = {
   status: "open" | "done";
   priority: "low" | "medium" | "high";
   due_date: string | null;
+  assigned_to: number | null;
   created_at: number;
   completed_at: number | null;
 };
@@ -48,6 +49,15 @@ export type ChatMessage = {
   business_id: string;
   role: "user" | "assistant";
   content: string;
+  created_at: number;
+};
+
+export type TeamMember = {
+  id: number;
+  business_id: string;
+  name: string;
+  title: string | null;
+  color_index: number;
   created_at: number;
 };
 

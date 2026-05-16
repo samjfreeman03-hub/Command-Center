@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
 import { BUSINESSES } from "./businesses";
-import type { Todo, Lead, Note, ChatMessage, LeadAttachment, BusinessResource } from "./types";
+import type { Todo, Lead, Note, ChatMessage, LeadAttachment, BusinessResource, TeamMember } from "./types";
 
 const DB_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH
   ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH)
@@ -20,6 +20,7 @@ function getDb(): Database.Database {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   migrate(db);
+  migrateAlter(db);
   seed(db);
   _db = db;
   return db;
@@ -87,6 +88,16 @@ function migrate(db: Database.Database) {
       token TEXT UNIQUE NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS team_members (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      business_id TEXT NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      title TEXT,
+      color_index INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_team_business ON team_members(business_id);
+
     CREATE TABLE IF NOT EXISTS business_resources (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       business_id TEXT NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
@@ -115,6 +126,10 @@ function migrate(db: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_attachments_lead ON lead_attachments(lead_id);
   `);
+}
+
+function migrateAlter(db: Database.Database) {
+  try { db.exec("ALTER TABLE todos ADD COLUMN assigned_to INTEGER"); } catch { /* already exists */ }
 }
 
 function seed(db: Database.Database) {
@@ -154,12 +169,13 @@ export const db = {
     notes?: string;
     priority?: "low" | "medium" | "high";
     due_date?: string;
+    assigned_to?: number | null;
   }): Todo {
     const now = Date.now();
     const result = getDb()
       .prepare(
-        `INSERT INTO todos (business_id, title, notes, priority, due_date, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO todos (business_id, title, notes, priority, due_date, assigned_to, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         input.business_id,
@@ -167,9 +183,15 @@ export const db = {
         input.notes ?? null,
         input.priority ?? "medium",
         input.due_date ?? null,
+        input.assigned_to ?? null,
         now
       );
     return getDb().prepare("SELECT * FROM todos WHERE id = ?").get(result.lastInsertRowid) as Todo;
+  },
+
+  assignTodo(id: number, memberId: number | null): Todo {
+    getDb().prepare("UPDATE todos SET assigned_to = ? WHERE id = ?").run(memberId, id);
+    return getDb().prepare("SELECT * FROM todos WHERE id = ?").get(id) as Todo;
   },
 
   toggleTodo(id: number): Todo {
@@ -333,6 +355,31 @@ export const db = {
 
   clearChat(businessId: string) {
     getDb().prepare("DELETE FROM chat_messages WHERE business_id = ?").run(businessId);
+  },
+
+  // ---- Team members ----
+  listTeamMembers(businessId: string): TeamMember[] {
+    return getDb()
+      .prepare("SELECT * FROM team_members WHERE business_id = ? ORDER BY created_at ASC")
+      .all(businessId) as TeamMember[];
+  },
+
+  createTeamMember(input: { business_id: string; name: string; title?: string }): TeamMember {
+    const count = (getDb().prepare("SELECT COUNT(*) as c FROM team_members WHERE business_id = ?").get(input.business_id) as { c: number }).c;
+    const result = getDb()
+      .prepare("INSERT INTO team_members (business_id, name, title, color_index, created_at) VALUES (?, ?, ?, ?, ?)")
+      .run(input.business_id, input.name.trim(), input.title?.trim() ?? null, count % 8, Date.now());
+    return getDb().prepare("SELECT * FROM team_members WHERE id = ?").get(result.lastInsertRowid) as TeamMember;
+  },
+
+  getTeamMemberBizId(id: number): string | null {
+    const row = getDb().prepare("SELECT business_id FROM team_members WHERE id = ?").get(id) as { business_id: string } | undefined;
+    return row?.business_id ?? null;
+  },
+
+  deleteTeamMember(id: number) {
+    getDb().prepare("UPDATE todos SET assigned_to = NULL WHERE assigned_to = ?").run(id);
+    getDb().prepare("DELETE FROM team_members WHERE id = ?").run(id);
   },
 
   // ---- Business resources ----
