@@ -238,8 +238,8 @@ function LeadCard({
       >
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{lead.name}</div>
-            {lead.company && <div className="text-xs text-zinc-500 mt-0.5">{lead.company}</div>}
+            <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{lead.company || lead.name}</div>
+            {lead.company && <div className="text-xs text-zinc-500 mt-0.5">{lead.name}</div>}
           </div>
           <div className="flex flex-col items-end gap-1 shrink-0">
             {lead.value_cents ? (
