@@ -21,11 +21,20 @@ export const BUSINESSES: Business[] = [
   {
     id: "flair",
     name: "FLAIR",
-    fullName: "FLAIR & CampusLink",
-    tagline: "Next-gen / college marketing, activations, UGC",
+    fullName: "FLAIR",
+    tagline: "Next-gen marketing, activations, and UGC",
     accent: "text-pink-700 dark:text-pink-300",
     accentBg: "bg-pink-500/15 ring-pink-400/30",
     dot: "bg-pink-500 dark:bg-pink-400",
+  },
+  {
+    id: "campuslink",
+    name: "CampusLink",
+    fullName: "CampusLink",
+    tagline: "College marketing, campus activations, and student networks",
+    accent: "text-orange-700 dark:text-orange-300",
+    accentBg: "bg-orange-500/15 ring-orange-400/30",
+    dot: "bg-orange-500 dark:bg-orange-400",
   },
   {
     id: "stealth",
