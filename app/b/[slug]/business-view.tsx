@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import type { Business } from "@/lib/businesses";
 import type { Todo, Lead, Note, ChatMessage, BusinessResource, TeamMember } from "@/lib/types";
 import { TodosPanel } from "@/components/todos-panel";
@@ -9,7 +9,7 @@ import { ResourcesPanel } from "@/components/resources-panel";
 import { NotesPanel } from "@/components/notes-panel";
 import { ChatPanel } from "@/components/chat-panel";
 import { TeamPanel } from "@/components/team-panel";
-import { Link2, Check } from "lucide-react";
+import { Link2, Check, Pencil } from "lucide-react";
 
 const TABS = [
   { id: "todos", label: "Todos" },
@@ -32,6 +32,7 @@ export function BusinessView({
   initialChat,
   initialMembers,
   shareToken,
+  initialTagline,
 }: {
   business: Business;
   initialTab: string;
@@ -42,12 +43,29 @@ export function BusinessView({
   initialChat: ChatMessage[];
   initialMembers: TeamMember[];
   shareToken: string;
+  initialTagline: string;
 }) {
   const [tab, setTab] = useState<TabId>(
     (TABS.find((t) => t.id === initialTab)?.id ?? "todos") as TabId
   );
   const [copied, setCopied] = useState(false);
   const [members, setMembers] = useState<TeamMember[]>(initialMembers);
+  const [tagline, setTagline] = useState(initialTagline);
+  const [editingTagline, setEditingTagline] = useState(false);
+  const [taglineDraft, setTaglineDraft] = useState(initialTagline);
+  const taglineRef = useRef<HTMLInputElement>(null);
+
+  async function saveTagline() {
+    const val = taglineDraft.trim();
+    if (!val || val === tagline) { setEditingTagline(false); return; }
+    setTagline(val);
+    setEditingTagline(false);
+    await fetch(`/api/businesses/${business.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tagline: val }),
+    });
+  }
 
   function copyShareLink() {
     const url = `${window.location.origin}/s/${shareToken}`;
@@ -68,7 +86,25 @@ export function BusinessView({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">{business.name}</h1>
-            <p className="text-sm text-zinc-500 mt-1">{business.tagline}</p>
+            {editingTagline ? (
+              <input
+                ref={taglineRef}
+                value={taglineDraft}
+                onChange={(e) => setTaglineDraft(e.target.value)}
+                onBlur={saveTagline}
+                onKeyDown={(e) => { if (e.key === "Enter") saveTagline(); if (e.key === "Escape") { setEditingTagline(false); setTaglineDraft(tagline); } }}
+                autoFocus
+                className="mt-1 text-sm text-zinc-500 bg-transparent border-b border-zinc-300 dark:border-zinc-700 outline-none w-full max-w-md"
+              />
+            ) : (
+              <button
+                onClick={() => { setTaglineDraft(tagline); setEditingTagline(true); }}
+                className="group mt-1 flex items-center gap-1.5 text-left"
+              >
+                <p className="text-sm text-zinc-500">{tagline}</p>
+                <Pencil size={11} className="text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+              </button>
+            )}
           </div>
           <button
             onClick={copyShareLink}

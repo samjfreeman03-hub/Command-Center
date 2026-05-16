@@ -130,6 +130,7 @@ function migrate(db: Database.Database) {
 
 function migrateAlter(db: Database.Database) {
   try { db.exec("ALTER TABLE todos ADD COLUMN assigned_to INTEGER"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE businesses ADD COLUMN tagline TEXT"); } catch { /* already exists */ }
 }
 
 function seed(db: Database.Database) {
@@ -355,6 +356,16 @@ export const db = {
 
   clearChat(businessId: string) {
     getDb().prepare("DELETE FROM chat_messages WHERE business_id = ?").run(businessId);
+  },
+
+  // ---- Business tagline ----
+  getBusinessTagline(id: string): string | null {
+    const row = getDb().prepare("SELECT tagline FROM businesses WHERE id = ?").get(id) as { tagline: string | null } | undefined;
+    return row?.tagline ?? null;
+  },
+
+  updateBusinessTagline(id: string, tagline: string) {
+    getDb().prepare("UPDATE businesses SET tagline = ? WHERE id = ?").run(tagline.trim(), id);
   },
 
   // ---- Team members ----

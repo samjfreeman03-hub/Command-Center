@@ -27,6 +27,7 @@ export default async function BusinessPage({
   ]);
 
   const shareToken = db.getOrCreateShareToken(slug);
+  const customTagline = db.getBusinessTagline(slug);
 
   return (
     <BusinessView
@@ -39,6 +40,7 @@ export default async function BusinessPage({
       initialChat={chat}
       initialMembers={members}
       shareToken={shareToken}
+      initialTagline={customTagline ?? business.tagline}
     />
   );
 }
