@@ -7,6 +7,7 @@ export type Todo = {
   priority: "low" | "medium" | "high";
   due_date: string | null;
   assigned_to: number | null;
+  assignee_ids: number[];
   created_at: number;
   completed_at: number | null;
 };

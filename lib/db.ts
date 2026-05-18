@@ -88,6 +88,12 @@ function migrate(db: Database.Database) {
       token TEXT UNIQUE NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS todo_assignees (
+      todo_id INTEGER NOT NULL REFERENCES todos(id) ON DELETE CASCADE,
+      member_id INTEGER NOT NULL REFERENCES team_members(id) ON DELETE CASCADE,
+      PRIMARY KEY (todo_id, member_id)
+    );
+
     CREATE TABLE IF NOT EXISTS team_members (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       business_id TEXT NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
@@ -141,27 +147,50 @@ function seed(db: Database.Database) {
   for (const b of BUSINESSES) insert.run(b.id, b.name, now);
 }
 
+function parseTodo(row: Record<string, unknown>): Todo {
+  const raw = row as Todo & { assignee_ids_str?: string };
+  return {
+    ...raw,
+    assignee_ids: raw.assignee_ids_str
+      ? raw.assignee_ids_str.split(",").map(Number)
+      : [],
+  };
+}
+
+function todoWithAssignees(id: number | bigint): Todo {
+  const row = getDb().prepare(`
+    SELECT t.*, GROUP_CONCAT(ta.member_id) AS assignee_ids_str
+    FROM todos t LEFT JOIN todo_assignees ta ON ta.todo_id = t.id
+    WHERE t.id = ? GROUP BY t.id
+  `).get(id) as Record<string, unknown>;
+  return parseTodo(row);
+}
+
 export const db = {
   // ---- Todos ----
   listTodos(opts?: { businessId?: string; status?: "open" | "done"; limit?: number }): Todo[] {
     const conds: string[] = [];
     const args: unknown[] = [];
     if (opts?.businessId) {
-      conds.push("business_id = ?");
+      conds.push("t.business_id = ?");
       args.push(opts.businessId);
     }
     if (opts?.status) {
-      conds.push("status = ?");
+      conds.push("t.status = ?");
       args.push(opts.status);
     }
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     const limit = opts?.limit ? `LIMIT ${opts.limit}` : "";
-    const sql = `SELECT * FROM todos ${where} ORDER BY
-      CASE status WHEN 'open' THEN 0 ELSE 1 END,
-      CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
-      COALESCE(due_date, '9999-12-31'),
-      created_at DESC ${limit}`;
-    return getDb().prepare(sql).all(...args) as Todo[];
+    const sql = `
+      SELECT t.*, GROUP_CONCAT(ta.member_id) AS assignee_ids_str
+      FROM todos t LEFT JOIN todo_assignees ta ON ta.todo_id = t.id
+      ${where} GROUP BY t.id
+      ORDER BY
+        CASE t.status WHEN 'open' THEN 0 ELSE 1 END,
+        CASE t.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
+        COALESCE(t.due_date, '9999-12-31'),
+        t.created_at DESC ${limit}`;
+    return (getDb().prepare(sql).all(...args) as Record<string, unknown>[]).map(parseTodo);
   },
 
   createTodo(input: {
@@ -171,12 +200,13 @@ export const db = {
     priority?: "low" | "medium" | "high";
     due_date?: string;
     assigned_to?: number | null;
+    assignee_ids?: number[];
   }): Todo {
     const now = Date.now();
     const result = getDb()
       .prepare(
-        `INSERT INTO todos (business_id, title, notes, priority, due_date, assigned_to, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO todos (business_id, title, notes, priority, due_date, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
       )
       .run(
         input.business_id,
@@ -184,15 +214,28 @@ export const db = {
         input.notes ?? null,
         input.priority ?? "medium",
         input.due_date ?? null,
-        input.assigned_to ?? null,
         now
       );
-    return getDb().prepare("SELECT * FROM todos WHERE id = ?").get(result.lastInsertRowid) as Todo;
+    const id = result.lastInsertRowid;
+    const ids = input.assignee_ids ?? (input.assigned_to ? [input.assigned_to] : []);
+    const ins = getDb().prepare("INSERT OR IGNORE INTO todo_assignees (todo_id, member_id) VALUES (?, ?)");
+    for (const mid of ids) ins.run(id, mid);
+    return todoWithAssignees(id);
+  },
+
+  setTodoAssignees(todoId: number, memberIds: number[]): Todo {
+    const db = getDb();
+    db.prepare("DELETE FROM todo_assignees WHERE todo_id = ?").run(todoId);
+    const ins = db.prepare("INSERT OR IGNORE INTO todo_assignees (todo_id, member_id) VALUES (?, ?)");
+    for (const mid of memberIds) ins.run(todoId, mid);
+    return todoWithAssignees(todoId);
   },
 
   assignTodo(id: number, memberId: number | null): Todo {
-    getDb().prepare("UPDATE todos SET assigned_to = ? WHERE id = ?").run(memberId, id);
-    return getDb().prepare("SELECT * FROM todos WHERE id = ?").get(id) as Todo;
+    const db = getDb();
+    db.prepare("DELETE FROM todo_assignees WHERE todo_id = ?").run(id);
+    if (memberId) db.prepare("INSERT OR IGNORE INTO todo_assignees (todo_id, member_id) VALUES (?, ?)").run(id, memberId);
+    return todoWithAssignees(id);
   },
 
   toggleTodo(id: number): Todo {
@@ -200,10 +243,8 @@ export const db = {
     if (!existing) throw new Error("Todo not found");
     const nextStatus = existing.status === "open" ? "done" : "open";
     const completedAt = nextStatus === "done" ? Date.now() : null;
-    getDb()
-      .prepare("UPDATE todos SET status = ?, completed_at = ? WHERE id = ?")
-      .run(nextStatus, completedAt, id);
-    return getDb().prepare("SELECT * FROM todos WHERE id = ?").get(id) as Todo;
+    getDb().prepare("UPDATE todos SET status = ?, completed_at = ? WHERE id = ?").run(nextStatus, completedAt, id);
+    return todoWithAssignees(id);
   },
 
   deleteTodo(id: number) {
@@ -389,7 +430,7 @@ export const db = {
   },
 
   deleteTeamMember(id: number) {
-    getDb().prepare("UPDATE todos SET assigned_to = NULL WHERE assigned_to = ?").run(id);
+    getDb().prepare("DELETE FROM todo_assignees WHERE member_id = ?").run(id);
     getDb().prepare("DELETE FROM team_members WHERE id = ?").run(id);
   },
 

@@ -16,7 +16,7 @@ export async function POST(req: Request) {
     notes: body.notes,
     priority: body.priority,
     due_date: body.due_date,
-    assigned_to: body.assigned_to ?? null,
+    assignee_ids: Array.isArray(body.assignee_ids) ? body.assignee_ids : [],
   });
   return NextResponse.json(todo);
 }

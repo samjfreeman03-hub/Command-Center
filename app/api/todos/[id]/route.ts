@@ -12,8 +12,8 @@ export async function PATCH(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const body = await req.json().catch(() => null);
-  if (body && "assigned_to" in body) {
-    const todo = db.assignTodo(Number(id), body.assigned_to ?? null);
+  if (body && "assignee_ids" in body) {
+    const todo = db.setTodoAssignees(Number(id), Array.isArray(body.assignee_ids) ? body.assignee_ids : []);
     return NextResponse.json(todo);
   }
   const todo = db.toggleTodo(Number(id));

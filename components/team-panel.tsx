@@ -75,7 +75,7 @@ export function TeamPanel({
   }
 
   const openTodos = todos.filter((t) => t.status === "open");
-  const unassigned = openTodos.filter((t) => !t.assigned_to);
+  const unassigned = openTodos.filter((t) => !t.assignee_ids?.length);
 
   return (
     <div className="space-y-6">
@@ -118,7 +118,7 @@ export function TeamPanel({
           </div>
 
           {members.map((m) => {
-            const mTodos = openTodos.filter((t) => t.assigned_to === m.id);
+            const mTodos = openTodos.filter((t) => t.assignee_ids?.includes(m.id));
             const color = MEMBER_COLORS[m.color_index % MEMBER_COLORS.length];
             return (
               <div key={m.id} className="rounded-lg border border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 overflow-hidden">
