@@ -2,18 +2,20 @@
 
 import { useState, useRef } from "react";
 import type { Business } from "@/lib/businesses";
-import type { Todo, Lead, Note, ChatMessage, BusinessResource, TeamMember } from "@/lib/types";
+import type { Todo, Lead, Note, ChatMessage, BusinessResource, TeamMember, BrandContact } from "@/lib/types";
 import { TodosPanel } from "@/components/todos-panel";
 import { PipelinePanel } from "@/components/pipeline-panel";
 import { ResourcesPanel } from "@/components/resources-panel";
 import { NotesPanel } from "@/components/notes-panel";
 import { ChatPanel } from "@/components/chat-panel";
 import { TeamPanel } from "@/components/team-panel";
+import { BrandsPanel } from "@/components/brands-panel";
 import { Link2, Check, Pencil } from "lucide-react";
 
 const TABS = [
   { id: "todos", label: "Todos" },
   { id: "pipeline", label: "Pipeline" },
+  { id: "brands", label: "Brand Partnerships" },
   { id: "resources", label: "Resources" },
   { id: "notes", label: "Notes" },
   { id: "chat", label: "Chat" },
@@ -31,6 +33,7 @@ export function BusinessView({
   initialNotes,
   initialChat,
   initialMembers,
+  initialBrands,
   shareToken,
   initialTagline,
 }: {
@@ -42,6 +45,7 @@ export function BusinessView({
   initialNotes: Note[];
   initialChat: ChatMessage[];
   initialMembers: TeamMember[];
+  initialBrands: BrandContact[];
   shareToken: string;
   initialTagline: string;
 }) {
@@ -134,6 +138,7 @@ export function BusinessView({
 
       {tab === "todos" && <TodosPanel businessId={business.id} initial={initialTodos} members={members} />}
       {tab === "pipeline" && <PipelinePanel businessId={business.id} initial={initialLeads} />}
+      {tab === "brands" && <BrandsPanel businessId={business.id} initial={initialBrands} />}
       {tab === "resources" && <ResourcesPanel businessId={business.id} initial={initialResources} />}
       {tab === "notes" && <NotesPanel businessId={business.id} initial={initialNotes} />}
       {tab === "chat" && <ChatPanel business={business} initialMessages={initialChat} />}

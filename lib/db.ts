@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
 import { BUSINESSES } from "./businesses";
-import type { Todo, Lead, Note, ChatMessage, LeadAttachment, BusinessResource, TeamMember } from "./types";
+import type { Todo, Lead, Note, ChatMessage, LeadAttachment, BusinessResource, TeamMember, BrandContact } from "./types";
 
 const DB_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH
   ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH)
@@ -131,6 +131,21 @@ function migrate(db: Database.Database) {
       created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
     );
     CREATE INDEX IF NOT EXISTS idx_attachments_lead ON lead_attachments(lead_id);
+
+    CREATE TABLE IF NOT EXISTS brand_contacts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      business_id TEXT NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+      brand_name TEXT NOT NULL,
+      contact_name TEXT,
+      contact_title TEXT,
+      email TEXT,
+      phone TEXT,
+      status TEXT NOT NULL DEFAULT 'prospect',
+      notes TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_brands_business ON brand_contacts(business_id);
   `);
 }
 
@@ -568,6 +583,70 @@ export const db = {
       .prepare("SELECT 1 FROM share_tokens WHERE token = ? AND business_id = ?")
       .get(token, businessId);
     return !!row;
+  },
+
+  // ---- Brand contacts ----
+  listBrandContacts(businessId: string): BrandContact[] {
+    return getDb()
+      .prepare(`SELECT * FROM brand_contacts WHERE business_id = ? ORDER BY
+        CASE status WHEN 'active_partner' THEN 0 WHEN 'in_network' THEN 1 WHEN 'prospect' THEN 2 ELSE 3 END,
+        brand_name ASC`)
+      .all(businessId) as BrandContact[];
+  },
+
+  createBrandContact(input: {
+    business_id: string;
+    brand_name: string;
+    contact_name?: string;
+    contact_title?: string;
+    email?: string;
+    phone?: string;
+    status?: BrandContact["status"];
+    notes?: string;
+  }): BrandContact {
+    const now = Date.now();
+    const result = getDb()
+      .prepare(`INSERT INTO brand_contacts (business_id, brand_name, contact_name, contact_title, email, phone, status, notes, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(
+        input.business_id,
+        input.brand_name.trim(),
+        input.contact_name?.trim() ?? null,
+        input.contact_title?.trim() ?? null,
+        input.email?.trim() ?? null,
+        input.phone?.trim() ?? null,
+        input.status ?? "prospect",
+        input.notes?.trim() ?? null,
+        now,
+        now
+      );
+    return getDb().prepare("SELECT * FROM brand_contacts WHERE id = ?").get(result.lastInsertRowid) as BrandContact;
+  },
+
+  updateBrandContact(id: number, patch: Partial<BrandContact>): BrandContact {
+    const allowed = ["brand_name", "contact_name", "contact_title", "email", "phone", "status", "notes"] as const;
+    const sets: string[] = [];
+    const args: unknown[] = [];
+    for (const key of allowed) {
+      if (key in patch) {
+        sets.push(`${key} = ?`);
+        args.push((patch as Record<string, unknown>)[key] ?? null);
+      }
+    }
+    if (sets.length === 0) return getDb().prepare("SELECT * FROM brand_contacts WHERE id = ?").get(id) as BrandContact;
+    sets.push("updated_at = ?");
+    args.push(Date.now(), id);
+    getDb().prepare(`UPDATE brand_contacts SET ${sets.join(", ")} WHERE id = ?`).run(...args);
+    return getDb().prepare("SELECT * FROM brand_contacts WHERE id = ?").get(id) as BrandContact;
+  },
+
+  deleteBrandContact(id: number) {
+    getDb().prepare("DELETE FROM brand_contacts WHERE id = ?").run(id);
+  },
+
+  getBrandBizId(id: number): string | null {
+    const row = getDb().prepare("SELECT business_id FROM brand_contacts WHERE id = ?").get(id) as { business_id: string } | undefined;
+    return row?.business_id ?? null;
   },
 
   // ---- Dashboard helpers ----
