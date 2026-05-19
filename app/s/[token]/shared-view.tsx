@@ -15,7 +15,7 @@ import { ShareTokenContext } from "@/lib/share-context";
 const TABS = [
   { id: "todos", label: "Todos" },
   { id: "pipeline", label: "Pipeline" },
-  { id: "brands", label: "Brand Partnerships" },
+  { id: "brands", label: "CRM" },
   { id: "resources", label: "Resources" },
   { id: "notes", label: "Notes" },
   { id: "chat", label: "Chat" },
