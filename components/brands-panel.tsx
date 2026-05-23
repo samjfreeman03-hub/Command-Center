@@ -130,7 +130,7 @@ export function BrandsPanel({
           onClick={() => setShowAdd((v) => !v)}
           className="inline-flex items-center gap-1.5 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-sm font-medium px-3 py-1.5 rounded-md hover:bg-zinc-700 dark:hover:bg-white transition-colors shrink-0"
         >
-          <Plus size={14} /> Add brand
+          <Plus size={14} /> Add contact
         </button>
       </div>
 
@@ -142,11 +142,11 @@ export function BrandsPanel({
         >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-zinc-500 mb-1">Brand name *</label>
+              <label className="block text-xs text-zinc-500 mb-1">Name *</label>
               <input
                 value={form.brand_name}
                 onChange={(e) => setField("brand_name", e.target.value)}
-                placeholder="Nike, Red Bull…"
+                placeholder="Company, brand, or individual…"
                 className="w-full bg-zinc-50 dark:bg-zinc-900 text-sm px-3 py-2 rounded-md text-zinc-900 dark:text-zinc-100 outline-none border border-zinc-200 dark:border-zinc-800 focus:border-zinc-400 dark:focus:border-zinc-600"
               />
             </div>
@@ -168,7 +168,7 @@ export function BrandsPanel({
               <input
                 value={form.contact_title}
                 onChange={(e) => setField("contact_title", e.target.value)}
-                placeholder="Brand Partnerships Manager"
+                placeholder="CEO, Marketing Director…"
                 className="w-full bg-zinc-50 dark:bg-zinc-900 text-sm px-3 py-2 rounded-md text-zinc-900 dark:text-zinc-100 outline-none border border-zinc-200 dark:border-zinc-800 focus:border-zinc-400 dark:focus:border-zinc-600"
               />
             </div>
@@ -198,7 +198,7 @@ export function BrandsPanel({
             <textarea
               value={form.notes}
               onChange={(e) => setField("notes", e.target.value)}
-              placeholder="Any context about this brand relationship…"
+              placeholder="Any context about this contact or relationship…"
               rows={2}
               className="w-full bg-zinc-50 dark:bg-zinc-900 text-sm px-3 py-2 rounded-md text-zinc-900 dark:text-zinc-100 outline-none border border-zinc-200 dark:border-zinc-800 focus:border-zinc-400 dark:focus:border-zinc-600 resize-none"
             />
@@ -225,7 +225,7 @@ export function BrandsPanel({
       {/* List */}
       {filtered.length === 0 ? (
         <div className="text-sm text-zinc-500 py-12 text-center">
-          {brands.length === 0 ? "No brands yet. Add your first contact above." : "No brands match this filter."}
+          {brands.length === 0 ? "No contacts yet. Add your first one above." : "No contacts match this filter."}
         </div>
       ) : (
         <div className="rounded-lg border border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 divide-y divide-zinc-100 dark:divide-zinc-900 overflow-hidden">
