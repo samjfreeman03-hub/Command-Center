@@ -67,14 +67,23 @@ export function PipelinePanel({
   const totalPipeline = leads
     .filter((l) => l.stage !== "won" && l.stage !== "lost")
     .reduce((s, l) => s + (l.value_cents ?? 0), 0);
+  const totalWon = leads
+    .filter((l) => l.stage === "won")
+    .reduce((s, l) => s + (l.value_cents ?? 0), 0);
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <div className="text-sm text-zinc-600 dark:text-zinc-400">
-          <span className="text-zinc-900 dark:text-zinc-100 font-medium">{leads.filter((l) => l.stage !== "won" && l.stage !== "lost").length}</span> active
-          <span className="mx-2 text-zinc-300 dark:text-zinc-700">·</span>
-          <span className="text-zinc-900 dark:text-zinc-100 font-medium">{money(totalPipeline)}</span> pipeline
+        <div className="flex items-center gap-3 text-sm text-zinc-600 dark:text-zinc-400">
+          <span>
+            <span className="text-zinc-900 dark:text-zinc-100 font-medium">{leads.filter((l) => l.stage !== "won" && l.stage !== "lost").length}</span> active
+            <span className="mx-2 text-zinc-300 dark:text-zinc-700">·</span>
+            <span className="text-zinc-900 dark:text-zinc-100 font-medium">{money(totalPipeline) || "$0"}</span> pipeline
+          </span>
+          <span className="text-zinc-300 dark:text-zinc-700">|</span>
+          <span>
+            <span className="text-emerald-600 dark:text-emerald-400 font-medium">{money(totalWon) || "$0"}</span> closed
+          </span>
         </div>
         <button
           onClick={() => setShowAdd((v) => !v)}
