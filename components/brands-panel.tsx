@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { BrandContact, BrandStatus } from "@/lib/types";
 import { BRAND_STATUSES } from "@/lib/types";
-import { Plus, Trash2, Pencil, X, Mail, Phone, ChevronDown } from "lucide-react";
+import { Plus, Trash2, Pencil, X, Mail, Phone, Globe, ChevronDown } from "lucide-react";
 import { useShareHeaders } from "@/lib/share-context";
 
 const EMPTY_FORM = {
@@ -12,6 +12,7 @@ const EMPTY_FORM = {
   contact_title: "",
   email: "",
   phone: "",
+  website: "",
   status: "prospect" as BrandStatus,
   notes: "",
 };
@@ -62,6 +63,7 @@ export function BrandsPanel({
       contact_title: b.contact_title ?? "",
       email: b.email ?? "",
       phone: b.phone ?? "",
+      website: b.website ?? "",
       status: b.status,
       notes: b.notes ?? "",
     });
@@ -78,6 +80,7 @@ export function BrandsPanel({
         contact_title: editDraft.contact_title.trim() || null,
         email: editDraft.email.trim() || null,
         phone: editDraft.phone.trim() || null,
+        website: editDraft.website.trim() || null,
         status: editDraft.status,
         notes: editDraft.notes.trim() || null,
       }),
@@ -192,6 +195,16 @@ export function BrandsPanel({
                 className="w-full bg-zinc-50 dark:bg-zinc-900 text-sm px-3 py-2 rounded-md text-zinc-900 dark:text-zinc-100 outline-none border border-zinc-200 dark:border-zinc-800 focus:border-zinc-400 dark:focus:border-zinc-600"
               />
             </div>
+            <div>
+              <label className="block text-xs text-zinc-500 mb-1">Website</label>
+              <input
+                type="url"
+                value={form.website}
+                onChange={(e) => setField("website", e.target.value)}
+                placeholder="https://example.com"
+                className="w-full bg-zinc-50 dark:bg-zinc-900 text-sm px-3 py-2 rounded-md text-zinc-900 dark:text-zinc-100 outline-none border border-zinc-200 dark:border-zinc-800 focus:border-zinc-400 dark:focus:border-zinc-600"
+              />
+            </div>
           </div>
           <div>
             <label className="block text-xs text-zinc-500 mb-1">Notes</label>
@@ -270,7 +283,7 @@ function BrandRow({
             {brand.contact_name}{brand.contact_name && brand.contact_title && " · "}{brand.contact_title}
           </div>
         )}
-        {(brand.email || brand.phone) && (
+        {(brand.email || brand.phone || brand.website) && (
           <div className="flex items-center gap-3 mt-1 flex-wrap">
             {brand.email && (
               <a
@@ -286,6 +299,16 @@ function BrandRow({
                 className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
               >
                 <Phone size={11} />{brand.phone}
+              </a>
+            )}
+            {brand.website && (
+              <a
+                href={brand.website}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
+              >
+                <Globe size={11} />{brand.website.replace(/^https?:\/\//, "")}
               </a>
             )}
           </div>
@@ -327,7 +350,7 @@ function EditRow({
     <div className="px-4 py-4 bg-zinc-50 dark:bg-zinc-900/50 space-y-3">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs text-zinc-500 mb-1">Brand name *</label>
+          <label className="block text-xs text-zinc-500 mb-1">Name *</label>
           <input
             value={draft.brand_name}
             onChange={(e) => setField("brand_name", e.target.value)}
@@ -369,6 +392,16 @@ function EditRow({
             type="tel"
             value={draft.phone}
             onChange={(e) => setField("phone", e.target.value)}
+            className="w-full bg-white dark:bg-zinc-950 text-sm px-3 py-2 rounded-md text-zinc-900 dark:text-zinc-100 outline-none border border-zinc-200 dark:border-zinc-800 focus:border-zinc-400 dark:focus:border-zinc-600"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-zinc-500 mb-1">Website</label>
+          <input
+            type="url"
+            value={draft.website}
+            onChange={(e) => setField("website", e.target.value)}
+            placeholder="https://example.com"
             className="w-full bg-white dark:bg-zinc-950 text-sm px-3 py-2 rounded-md text-zinc-900 dark:text-zinc-100 outline-none border border-zinc-200 dark:border-zinc-800 focus:border-zinc-400 dark:focus:border-zinc-600"
           />
         </div>

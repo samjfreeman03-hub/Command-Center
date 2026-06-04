@@ -152,6 +152,7 @@ function migrate(db: Database.Database) {
 function migrateAlter(db: Database.Database) {
   try { db.exec("ALTER TABLE todos ADD COLUMN assigned_to INTEGER"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE businesses ADD COLUMN tagline TEXT"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE brand_contacts ADD COLUMN website TEXT"); } catch { /* already exists */ }
 }
 
 function seed(db: Database.Database) {
@@ -601,13 +602,14 @@ export const db = {
     contact_title?: string;
     email?: string;
     phone?: string;
+    website?: string;
     status?: BrandContact["status"];
     notes?: string;
   }): BrandContact {
     const now = Date.now();
     const result = getDb()
-      .prepare(`INSERT INTO brand_contacts (business_id, brand_name, contact_name, contact_title, email, phone, status, notes, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .prepare(`INSERT INTO brand_contacts (business_id, brand_name, contact_name, contact_title, email, phone, website, status, notes, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(
         input.business_id,
         input.brand_name.trim(),
@@ -615,6 +617,7 @@ export const db = {
         input.contact_title?.trim() ?? null,
         input.email?.trim() ?? null,
         input.phone?.trim() ?? null,
+        input.website?.trim() ?? null,
         input.status ?? "prospect",
         input.notes?.trim() ?? null,
         now,

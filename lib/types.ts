@@ -83,6 +83,7 @@ export type BrandContact = {
   contact_title: string | null;
   email: string | null;
   phone: string | null;
+  website: string | null;
   status: "prospect" | "in_network" | "active_partner" | "past_partner";
   notes: string | null;
   created_at: number;

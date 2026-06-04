@@ -25,6 +25,7 @@ export async function POST(req: Request) {
     contact_title: body.contact_title,
     email: body.email,
     phone: body.phone,
+    website: body.website,
     status: body.status,
     notes: body.notes,
   });
