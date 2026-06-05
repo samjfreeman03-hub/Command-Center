@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Business } from "@/lib/businesses";
 import type { ChatMessage } from "@/lib/types";
-import { Send, Trash2, Paperclip, X, FileText } from "lucide-react";
+import { Send, Trash2, Paperclip, X, FileText, MessageSquare } from "lucide-react";
 import { useShareHeaders } from "@/lib/share-context";
 
 type PendingFile = { id: string; file: File; preview: string | null };
@@ -22,6 +22,7 @@ export function ChatPanel({
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const endRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const shareHeaders = useShareHeaders();
 
   useEffect(() => {
@@ -32,10 +33,7 @@ export function ChatPanel({
     if (!fileList) return;
     const MAX = 10 * 1024 * 1024;
     Array.from(fileList).forEach((file) => {
-      if (file.size > MAX) {
-        setError(`${file.name} is too large (max 10 MB)`);
-        return;
-      }
+      if (file.size > MAX) { setError(`${file.name} is too large (max 10 MB)`); return; }
       const id = Math.random().toString(36).slice(2);
       if (file.type.startsWith("image/")) {
         const reader = new FileReader();
@@ -57,15 +55,10 @@ export function ChatPanel({
     setSending(true);
 
     const fileNames = pendingFiles.map((f) => f.file.name);
-    const displayContent =
-      content + (fileNames.length > 0 ? `\n\n[Attachments: ${fileNames.join(", ")}]` : "");
+    const displayContent = content + (fileNames.length > 0 ? `\n\n[Attachments: ${fileNames.join(", ")}]` : "");
 
     const optimisticUser: ChatMessage = {
-      id: Date.now(),
-      business_id: business.id,
-      role: "user",
-      content: displayContent,
-      created_at: Date.now(),
+      id: Date.now(), business_id: business.id, role: "user", content: displayContent, created_at: Date.now(),
     };
     setMessages((prev) => [...prev, optimisticUser]);
     setInput("");
@@ -87,12 +80,7 @@ export function ChatPanel({
         fetchHeaders["content-type"] = "application/json";
       }
 
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: fetchHeaders,
-        body: fetchBody,
-      });
-
+      const res = await fetch("/api/chat", { method: "POST", headers: fetchHeaders, body: fetchBody });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `Request failed (${res.status})`);
@@ -119,91 +107,108 @@ export function ChatPanel({
   }
 
   return (
-    <div className="rounded-lg border border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 flex flex-col h-[calc(100svh-180px)] sm:h-[70vh]">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-900">
-        <div className="text-sm">
-          <span className="text-zinc-500">Chat with</span>{" "}
-          <span className={business.accent}>{business.name}</span>{" "}
-          <span className="text-zinc-500">— grounded in your notes, pipeline, and attachments.</span>
+    <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 flex flex-col h-[calc(100svh-200px)] sm:h-[72vh] overflow-hidden">
+
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-100 dark:border-zinc-900">
+        <div className="flex items-center gap-2">
+          <MessageSquare size={15} className="text-zinc-400" />
+          <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{business.name}</span>
+          <span className="text-xs text-zinc-400">— grounded in your notes, pipeline &amp; resources</span>
         </div>
         {messages.length > 0 && (
           <button
             onClick={clearAll}
-            className="text-xs text-zinc-500 hover:text-red-500 dark:hover:text-red-400 inline-flex items-center gap-1"
+            className="text-xs text-zinc-400 hover:text-red-500 dark:hover:text-red-400 inline-flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
           >
-            <Trash2 size={12} /> Clear
+            <Trash2 size={11} /> Clear history
           </button>
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
         {messages.length === 0 && (
-          <div className="text-sm text-zinc-500 max-w-md mx-auto text-center mt-12">
-            Ask anything about <span className={business.accent}>{business.name}</span>.
-            <div className="mt-2 text-zinc-400 dark:text-zinc-600">
-              Examples: &ldquo;What&apos;s in our pipeline right now?&rdquo; &middot; &ldquo;Draft a follow-up to last week&apos;s sponsor meeting&rdquo; &middot; &ldquo;Summarize what I know about [client]&rdquo;
+          <div className="flex flex-col items-center justify-center h-full gap-4 text-center pb-8">
+            <div className="w-12 h-12 rounded-2xl bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center">
+              <MessageSquare size={20} className="text-zinc-400" />
+            </div>
+            <div>
+              <div className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
+                Ask anything about {business.name}
+              </div>
+              <div className="text-xs text-zinc-400 dark:text-zinc-600 space-y-1 max-w-sm">
+                <div className="bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 rounded-lg">&ldquo;What&apos;s in our pipeline right now?&rdquo;</div>
+                <div className="bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 rounded-lg">&ldquo;Draft a follow-up from last week&apos;s sponsor meeting&rdquo;</div>
+                <div className="bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 rounded-lg">&ldquo;Summarize what I know about [client]&rdquo;</div>
+              </div>
             </div>
           </div>
         )}
+
         {messages.map((m) => (
           <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
             <div
-              className={`max-w-[80%] rounded-lg px-4 py-2.5 text-sm whitespace-pre-wrap leading-relaxed ${
+              className={`max-w-[78%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap leading-relaxed ${
                 m.role === "user"
-                  ? "bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900"
-                  : "bg-zinc-100 text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100 ring-1 ring-zinc-200 dark:ring-zinc-800"
+                  ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-br-sm"
+                  : "bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 rounded-bl-sm border border-zinc-200 dark:border-zinc-800"
               }`}
             >
               {m.content}
             </div>
           </div>
         ))}
+
         {sending && (
           <div className="flex justify-start">
-            <div className="bg-zinc-100 text-zinc-500 dark:bg-zinc-900 text-sm rounded-lg px-4 py-2.5 ring-1 ring-zinc-200 dark:ring-zinc-800">
-              Thinking…
+            <div className="bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl rounded-bl-sm px-4 py-3 inline-flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:0ms]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:150ms]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:300ms]" />
             </div>
           </div>
         )}
         <div ref={endRef} />
       </div>
 
+      {/* Error */}
       {error && (
-        <div className="px-4 py-2 text-xs text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/40 border-t border-red-200 dark:border-red-900/50">
-          {error}
+        <div className="px-5 py-2.5 text-xs text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/30 border-t border-red-100 dark:border-red-900/40 flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600"><X size={12} /></button>
         </div>
       )}
 
       {/* Pending file chips */}
       {pendingFiles.length > 0 && (
-        <div className="px-3 pt-2 flex flex-wrap gap-2 border-t border-zinc-100 dark:border-zinc-900">
+        <div className="px-4 pt-3 pb-1 flex flex-wrap gap-2 border-t border-zinc-100 dark:border-zinc-900">
           {pendingFiles.map((pf) => (
             <div
               key={pf.id}
-              className="flex items-center gap-1.5 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md pl-1.5 pr-1 py-1"
+              className="flex items-center gap-1.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg pl-2 pr-1.5 py-1"
             >
               {pf.preview ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={pf.preview} alt="" className="w-6 h-6 rounded object-cover" />
+                <img src={pf.preview} alt="" className="w-5 h-5 rounded object-cover" />
               ) : (
-                <FileText size={14} className="text-zinc-400" />
+                <FileText size={13} className="text-zinc-400" />
               )}
-              <span className="text-xs text-zinc-700 dark:text-zinc-300 max-w-[120px] truncate">
-                {pf.file.name}
-              </span>
+              <span className="text-xs text-zinc-700 dark:text-zinc-300 max-w-[110px] truncate">{pf.file.name}</span>
               <button
                 type="button"
                 onClick={() => setPendingFiles((prev) => prev.filter((f) => f.id !== pf.id))}
-                className="text-zinc-400 hover:text-red-500 dark:hover:text-red-400"
+                className="text-zinc-400 hover:text-red-500 ml-0.5"
               >
-                <X size={12} />
+                <X size={11} />
               </button>
             </div>
           ))}
         </div>
       )}
 
-      <form onSubmit={send} className="border-t border-zinc-200 dark:border-zinc-900 p-3 flex gap-2 items-center">
+      {/* Input */}
+      <form onSubmit={send} className="border-t border-zinc-100 dark:border-zinc-900 p-4 flex gap-2 items-center">
         <input
           ref={fileInputRef}
           type="file"
@@ -215,24 +220,24 @@ export function ChatPanel({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          className="shrink-0 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+          className="shrink-0 w-9 h-9 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 flex items-center justify-center transition-colors"
           title="Attach file or image"
         >
           <Paperclip size={16} />
         </button>
         <input
+          ref={inputRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder={`Message ${business.name}…`}
-          className="flex-1 bg-zinc-100 dark:bg-zinc-900 text-sm px-3 py-2 rounded-md outline-none focus:bg-zinc-200/60 dark:focus:bg-zinc-900/80 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 text-zinc-900 dark:text-zinc-100"
+          className="flex-1 h-9 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-sm px-3.5 rounded-lg outline-none focus:border-zinc-400 dark:focus:border-zinc-600 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 text-zinc-900 dark:text-zinc-100 transition-colors"
         />
         <button
           type="submit"
           disabled={sending || (!input.trim() && pendingFiles.length === 0)}
-          className="bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 text-sm font-medium px-4 py-2 rounded-md hover:bg-zinc-800 dark:hover:bg-white disabled:opacity-50 inline-flex items-center gap-1.5"
+          className="shrink-0 w-9 h-9 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-lg hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-40 flex items-center justify-center transition-colors"
         >
-          <Send size={14} />
-          Send
+          <Send size={15} />
         </button>
       </form>
     </div>

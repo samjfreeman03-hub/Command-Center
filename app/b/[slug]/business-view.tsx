@@ -79,7 +79,7 @@ export function BusinessView({
   }
 
   return (
-    <div className="p-4 sm:p-8 max-w-6xl">
+    <div className="p-5 sm:p-8 lg:p-10 max-w-5xl">
       {/* ── Header ── */}
       <header className="mb-7">
         <div className="flex items-start justify-between gap-4">

@@ -75,7 +75,7 @@ export function ResourcesPanel({
   return (
     <div className="space-y-6">
       {/* Add resource form */}
-      <div className="rounded-lg border border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 p-4 space-y-3">
+      <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-4 space-y-3">
         <div className="flex items-center gap-2">
           <div className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Add resource</div>
           <div className="flex rounded-md border border-zinc-200 dark:border-zinc-800 overflow-hidden ml-auto">
@@ -152,7 +152,7 @@ export function ResourcesPanel({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
-              className="w-full border border-dashed border-zinc-300 dark:border-zinc-700 rounded-md py-3 text-sm text-zinc-500 hover:border-zinc-400 dark:hover:border-zinc-600 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors inline-flex items-center justify-center gap-2 disabled:opacity-50"
+              className="w-full border border-dashed border-zinc-300 dark:border-zinc-700 rounded-xl py-5 text-sm text-zinc-400 hover:border-zinc-400 dark:hover:border-zinc-600 hover:text-zinc-600 dark:hover:text-zinc-400 transition-colors inline-flex items-center justify-center gap-2 disabled:opacity-50"
             >
               <Upload size={14} />
               {uploading ? "Uploading…" : "Choose file to upload"}
@@ -173,7 +173,7 @@ export function ResourcesPanel({
           {resources.map((r) => (
             <div
               key={r.id}
-              className="flex items-center gap-3 rounded-lg border border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 px-4 py-3"
+              className="flex items-center gap-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-900/30 transition-colors"
             >
               <div className="shrink-0 w-8 h-8 rounded-md bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center">
                 {r.type === "link" ? (
@@ -226,4 +226,4 @@ export function ResourcesPanel({
 }
 
 const inputCls =
-  "w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-900 dark:text-zinc-100 px-3 py-2 rounded-md outline-none focus:border-zinc-400 dark:focus:border-zinc-600 placeholder:text-zinc-400 dark:placeholder:text-zinc-600";
+  "w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-900 dark:text-zinc-100 px-3 h-9 rounded-lg outline-none focus:border-zinc-400 dark:focus:border-zinc-600 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 transition-colors";

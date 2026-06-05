@@ -82,27 +82,24 @@ export function TeamPanel({
       {/* Add member */}
       <form
         onSubmit={addMember}
-        className="flex flex-col sm:flex-row gap-2 rounded-lg border border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 p-3"
+        className="flex flex-col sm:flex-row gap-2 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-4"
       >
-        <div className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center shrink-0 self-center">
-          <UserCircle2 size={18} className="text-zinc-400" />
-        </div>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Name…"
-          className="flex-1 bg-transparent text-sm px-2 py-2 outline-none placeholder:text-zinc-400 dark:placeholder:text-zinc-600 text-zinc-900 dark:text-zinc-100"
+          placeholder="Name"
+          className="flex-1 h-9 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-sm px-3 rounded-lg outline-none focus:border-zinc-400 dark:focus:border-zinc-600 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 text-zinc-900 dark:text-zinc-100 transition-colors"
         />
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Title / role…"
-          className="flex-1 bg-zinc-100 dark:bg-zinc-900 text-sm px-3 py-2 rounded-md text-zinc-700 dark:text-zinc-300 outline-none placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
+          placeholder="Title / role"
+          className="flex-1 h-9 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-sm px-3 rounded-lg outline-none focus:border-zinc-400 dark:focus:border-zinc-600 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 text-zinc-700 dark:text-zinc-300 transition-colors"
         />
         <button
           type="submit"
           disabled={!name.trim()}
-          className="bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 text-sm font-medium px-4 py-2 rounded-md hover:bg-zinc-800 dark:hover:bg-white disabled:opacity-40 inline-flex items-center gap-1.5 shrink-0"
+          className="h-9 px-4 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-sm font-medium rounded-lg hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-40 transition-colors inline-flex items-center gap-1.5 shrink-0"
         >
           <Plus size={14} /> Add member
         </button>
@@ -121,7 +118,7 @@ export function TeamPanel({
             const mTodos = openTodos.filter((t) => t.assignee_ids?.includes(m.id));
             const color = MEMBER_COLORS[m.color_index % MEMBER_COLORS.length];
             return (
-              <div key={m.id} className="rounded-lg border border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 overflow-hidden">
+              <div key={m.id} className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden">
                 <div className="flex items-center gap-3 px-4 py-3">
                   <MemberAvatar member={m} size="lg" />
                   <div className="flex-1 min-w-0">
@@ -150,7 +147,7 @@ export function TeamPanel({
           })}
 
           {unassigned.length > 0 && (
-            <div className="rounded-lg border border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 overflow-hidden">
+            <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden">
               <div className="flex items-center gap-3 px-4 py-3">
                 <div className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
                   <UserCircle2 size={20} className="text-zinc-400" />
