@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { BUSINESSES, getBusiness } from "@/lib/businesses";
-import { ArrowUpRight, Circle, TrendingUp, CheckCircle2 } from "lucide-react";
+import { ArrowUpRight, TrendingUp, CheckCircle2 } from "lucide-react";
 import { format } from "date-fns";
+import { DashboardTodos } from "@/components/dashboard-todos";
 
 export const dynamic = "force-dynamic";
 
@@ -20,13 +21,6 @@ export default function Dashboard() {
   const pipelineByBusiness = new Map(pipelineSummary.map((p) => [p.business_id, p]));
   const todosByBusiness = new Map(todoCounts.map((t) => [t.business_id, t.open_count]));
 
-  const PRIORITY_ORDER = { high: 0, medium: 1, low: 2 } as const;
-  const todoGroups = BUSINESSES.map((b) => ({
-    business: b,
-    todos: openTodos
-      .filter((t) => t.business_id === b.id)
-      .sort((a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]),
-  })).filter((g) => g.todos.length > 0);
 
   return (
     <div className="p-4 sm:p-8 max-w-7xl">
@@ -84,45 +78,7 @@ export default function Dashboard() {
           count={openTodos.length}
           icon={<CheckCircle2 size={14} className="text-zinc-400" />}
         >
-          {todoGroups.length === 0 ? (
-            <Empty text="All clear. 🎉" />
-          ) : (
-            <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
-              {todoGroups.map(({ business: b, todos }) => (
-                <div key={b.id} className="py-4 first:pt-0 last:pb-0">
-                  {/* Company header */}
-                  <Link
-                    href={`/b/${b.id}?tab=todos`}
-                    className="inline-flex items-center gap-1.5 mb-3 group"
-                  >
-                    <span className={`w-2 h-2 rounded-full ${b.dot}`} />
-                    <span className={`text-xs font-semibold ${b.accent} group-hover:opacity-70 transition-opacity`}>
-                      {b.name}
-                    </span>
-                    <span className="text-xs text-zinc-400 ml-0.5">{todos.length}</span>
-                  </Link>
-                  {/* Todo items */}
-                  <div className="space-y-1.5">
-                    {todos.map((t) => (
-                      <div key={t.id} className="flex items-start gap-2.5">
-                        <Circle size={12} className="text-zinc-300 dark:text-zinc-700 shrink-0 mt-0.5" />
-                        <div className="flex-1 min-w-0 flex items-start justify-between gap-3">
-                          <span className={`text-sm leading-snug ${t.priority === "low" ? "text-zinc-400 dark:text-zinc-600" : "text-zinc-800 dark:text-zinc-200"}`}>
-                            {t.title}
-                          </span>
-                          {t.priority === "high" && (
-                            <span className="shrink-0 text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 rounded-md mt-0.5">
-                              HIGH
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <DashboardTodos initialTodos={openTodos} />
         </Panel>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
