@@ -99,6 +99,19 @@ export const BRAND_STATUSES = [
 
 export type BrandStatus = BrandContact["status"];
 
+export type BrandAttachment = {
+  id: number;
+  brand_id: number;
+  type: "link" | "file";
+  label: string | null;
+  url: string | null;
+  filename: string | null;
+  stored_name: string | null;
+  file_size: number | null;
+  mime_type: string | null;
+  created_at: number;
+};
+
 export type LeadAttachment = {
   id: number;
   lead_id: number;

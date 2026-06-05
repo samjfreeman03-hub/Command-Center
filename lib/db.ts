@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
 import { BUSINESSES } from "./businesses";
-import type { Todo, Lead, Note, ChatMessage, LeadAttachment, BusinessResource, TeamMember, BrandContact } from "./types";
+import type { Todo, Lead, Note, ChatMessage, LeadAttachment, BusinessResource, TeamMember, BrandContact, BrandAttachment } from "./types";
 
 const DB_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH
   ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH)
@@ -146,6 +146,20 @@ function migrate(db: Database.Database) {
       updated_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_brands_business ON brand_contacts(business_id);
+
+    CREATE TABLE IF NOT EXISTS brand_attachments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      brand_id INTEGER NOT NULL REFERENCES brand_contacts(id) ON DELETE CASCADE,
+      type TEXT NOT NULL CHECK(type IN ('link', 'file')),
+      label TEXT,
+      url TEXT,
+      filename TEXT,
+      stored_name TEXT,
+      file_size INTEGER,
+      mime_type TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+    );
+    CREATE INDEX IF NOT EXISTS idx_brand_attachments_brand ON brand_attachments(brand_id);
   `);
 }
 
@@ -649,6 +663,44 @@ export const db = {
 
   getBrandBizId(id: number): string | null {
     const row = getDb().prepare("SELECT business_id FROM brand_contacts WHERE id = ?").get(id) as { business_id: string } | undefined;
+    return row?.business_id ?? null;
+  },
+
+  // ---- Brand attachments ----
+  listBrandAttachments(brandId: number): BrandAttachment[] {
+    return getDb()
+      .prepare("SELECT * FROM brand_attachments WHERE brand_id = ? ORDER BY created_at ASC")
+      .all(brandId) as BrandAttachment[];
+  },
+
+  addBrandLink(brandId: number, url: string, label: string | null): BrandAttachment {
+    const result = getDb()
+      .prepare(`INSERT INTO brand_attachments (brand_id, type, url, label, created_at) VALUES (?, 'link', ?, ?, ?)`)
+      .run(brandId, url, label, Date.now());
+    return getDb().prepare("SELECT * FROM brand_attachments WHERE id = ?").get(result.lastInsertRowid) as BrandAttachment;
+  },
+
+  addBrandFile(brandId: number, filename: string, storedName: string, fileSize: number, mimeType: string): BrandAttachment {
+    const result = getDb()
+      .prepare(`INSERT INTO brand_attachments (brand_id, type, filename, stored_name, file_size, mime_type, created_at) VALUES (?, 'file', ?, ?, ?, ?, ?)`)
+      .run(brandId, filename, storedName, fileSize, mimeType, Date.now());
+    return getDb().prepare("SELECT * FROM brand_attachments WHERE id = ?").get(result.lastInsertRowid) as BrandAttachment;
+  },
+
+  getBrandAttachment(id: number): BrandAttachment | undefined {
+    return getDb().prepare("SELECT * FROM brand_attachments WHERE id = ?").get(id) as BrandAttachment | undefined;
+  },
+
+  deleteBrandAttachment(id: number): { stored_name: string | null } {
+    const row = getDb().prepare("SELECT stored_name FROM brand_attachments WHERE id = ?").get(id) as { stored_name: string | null } | undefined;
+    getDb().prepare("DELETE FROM brand_attachments WHERE id = ?").run(id);
+    return { stored_name: row?.stored_name ?? null };
+  },
+
+  getBrandAttachmentBizId(id: number): string | null {
+    const row = getDb()
+      .prepare(`SELECT bc.business_id FROM brand_attachments ba JOIN brand_contacts bc ON bc.id = ba.brand_id WHERE ba.id = ?`)
+      .get(id) as { business_id: string } | undefined;
     return row?.business_id ?? null;
   },
 
