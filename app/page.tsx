@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { BUSINESSES, getBusiness } from "@/lib/businesses";
-import { ArrowUpRight, Circle } from "lucide-react";
+import { ArrowUpRight, Circle, TrendingUp } from "lucide-react";
 import { format, isToday, isPast, parseISO } from "date-fns";
 
 export const dynamic = "force-dynamic";
@@ -24,19 +24,20 @@ export default function Dashboard() {
     (t) => t.due_date && (isToday(parseISO(t.due_date)) || isPast(parseISO(t.due_date)))
   );
   const upcomingTodos = openTodos.filter(
-    (t) =>
-      !t.due_date || (!isToday(parseISO(t.due_date)) && !isPast(parseISO(t.due_date)))
+    (t) => !t.due_date || (!isToday(parseISO(t.due_date)) && !isPast(parseISO(t.due_date)))
   );
 
   return (
     <div className="p-4 sm:p-8 max-w-7xl">
+      {/* Header */}
       <header className="mb-8">
-        <div className="text-xs uppercase tracking-[0.2em] text-zinc-500 mb-1">Today</div>
-        <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
+        <p className="text-xs font-medium uppercase tracking-[0.15em] text-zinc-400 dark:text-zinc-600 mb-1">Dashboard</p>
+        <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
           {format(new Date(), "EEEE, MMMM d")}
         </h1>
       </header>
 
+      {/* Business cards */}
       <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-10">
         {BUSINESSES.map((b) => {
           const pipe = pipelineByBusiness.get(b.id);
@@ -45,46 +46,54 @@ export default function Dashboard() {
             <Link
               key={b.id}
               href={`/b/${b.id}`}
-              className="group rounded-lg border border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 hover:border-zinc-300 dark:hover:border-zinc-800 transition-colors p-5"
+              className="group relative rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 hover:border-zinc-300 dark:hover:border-zinc-700 hover:shadow-md dark:hover:shadow-zinc-900/50 transition-all p-5 overflow-hidden"
             >
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className={`w-2 h-2 rounded-full ${b.dot}`} />
-                  <div className={`font-medium ${b.accent}`}>{b.name}</div>
+              {/* Colored left stripe */}
+              <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-xl ${b.dot}`} />
+
+              <div className="pl-3">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <div className={`text-base font-bold ${b.accent} mb-0.5`}>{b.name}</div>
+                    <p className="text-xs text-zinc-500 leading-relaxed line-clamp-2 max-w-[180px]">{b.tagline}</p>
+                  </div>
+                  <ArrowUpRight
+                    size={16}
+                    className="text-zinc-300 dark:text-zinc-700 group-hover:text-zinc-500 dark:group-hover:text-zinc-400 transition-colors shrink-0 mt-0.5"
+                  />
                 </div>
-                <ArrowUpRight size={16} className="text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-700 dark:group-hover:text-zinc-300 transition-colors" />
-              </div>
-              <div className="text-xs text-zinc-500 mb-4 leading-relaxed">{b.tagline}</div>
-              <div className="grid grid-cols-3 gap-3 text-sm">
-                <Stat label="Todos" value={open.toString()} />
-                <Stat label="Leads" value={(pipe?.open_count ?? 0).toString()} />
-                <Stat label="Pipeline" value={money(pipe?.pipeline_cents ?? 0)} />
+
+                <div className="grid grid-cols-3 gap-2">
+                  <Stat label="Todos" value={open.toString()} />
+                  <Stat label="Leads" value={(pipe?.open_count ?? 0).toString()} />
+                  <Stat label="Pipeline" value={money(pipe?.pipeline_cents ?? 0)} />
+                </div>
               </div>
             </Link>
           );
         })}
       </section>
 
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Panel title="Today / Overdue" count={todayTodos.length}>
+      {/* Lower panels */}
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <Panel title="Today / Overdue" count={todayTodos.length} accent="text-red-600 dark:text-red-400">
           {todayTodos.length === 0 ? (
-            <Empty text="Nothing scheduled for today." />
+            <Empty text="Nothing due today. 🎉" />
           ) : (
-            <ul className="divide-y divide-zinc-200 dark:divide-zinc-900">
+            <ul className="divide-y divide-zinc-100 dark:divide-zinc-900">
               {todayTodos.map((t) => {
                 const biz = getBusiness(t.business_id);
                 const overdue = t.due_date ? isPast(parseISO(t.due_date)) && !isToday(parseISO(t.due_date)) : false;
                 return (
-                  <li key={t.id} className="py-2.5 flex items-center gap-3">
-                    <Circle size={14} className="text-zinc-400 dark:text-zinc-600 shrink-0" />
+                  <li key={t.id} className="py-2.5 flex items-start gap-3">
+                    <Circle size={13} className="text-zinc-300 dark:text-zinc-700 shrink-0 mt-0.5" />
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm break-all text-zinc-900 dark:text-zinc-100">{t.title}</div>
-                      <div className="text-xs text-zinc-500 mt-0.5 flex items-center gap-2">
-                        {biz && <span className={biz.accent}>{biz.name}</span>}
+                      <div className="text-sm text-zinc-900 dark:text-zinc-100 break-words">{t.title}</div>
+                      <div className="text-xs text-zinc-400 mt-0.5 flex items-center gap-2 flex-wrap">
+                        {biz && <span className={`font-medium ${biz.accent}`}>{biz.name}</span>}
                         {t.due_date && (
-                          <span className={overdue ? "text-red-600 dark:text-red-400" : ""}>
-                            {overdue ? "overdue · " : ""}
-                            {format(parseISO(t.due_date), "MMM d")}
+                          <span className={overdue ? "text-red-500 dark:text-red-400" : ""}>
+                            {overdue ? "overdue · " : ""}{format(parseISO(t.due_date), "MMM d")}
                           </span>
                         )}
                       </div>
@@ -100,16 +109,16 @@ export default function Dashboard() {
           {upcomingTodos.length === 0 ? (
             <Empty text="No open todos." />
           ) : (
-            <ul className="divide-y divide-zinc-200 dark:divide-zinc-900">
+            <ul className="divide-y divide-zinc-100 dark:divide-zinc-900">
               {upcomingTodos.map((t) => {
                 const biz = getBusiness(t.business_id);
                 return (
-                  <li key={t.id} className="py-2.5 flex items-center gap-3">
-                    <Circle size={14} className="text-zinc-400 dark:text-zinc-600 shrink-0" />
+                  <li key={t.id} className="py-2.5 flex items-start gap-3">
+                    <Circle size={13} className="text-zinc-300 dark:text-zinc-700 shrink-0 mt-0.5" />
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm break-all text-zinc-900 dark:text-zinc-100">{t.title}</div>
-                      <div className="text-xs text-zinc-500 mt-0.5 flex items-center gap-2">
-                        {biz && <span className={biz.accent}>{biz.name}</span>}
+                      <div className="text-sm text-zinc-900 dark:text-zinc-100 break-words">{t.title}</div>
+                      <div className="text-xs text-zinc-400 mt-0.5 flex items-center gap-2 flex-wrap">
+                        {biz && <span className={`font-medium ${biz.accent}`}>{biz.name}</span>}
                         {t.due_date && <span>{format(parseISO(t.due_date), "MMM d")}</span>}
                       </div>
                     </div>
@@ -122,20 +131,20 @@ export default function Dashboard() {
 
         <Panel title="Recent notes" count={recentNotes.length}>
           {recentNotes.length === 0 ? (
-            <Empty text="No notes yet. Drop notes into a business to give your AI context." />
+            <Empty text="No notes yet." />
           ) : (
-            <ul className="divide-y divide-zinc-200 dark:divide-zinc-900">
+            <ul className="divide-y divide-zinc-100 dark:divide-zinc-900">
               {recentNotes.map((n) => {
                 const biz = getBusiness(n.business_id);
                 return (
                   <li key={n.id} className="py-2.5">
                     <Link
                       href={`/b/${n.business_id}?tab=notes`}
-                      className="block hover:bg-zinc-50 dark:hover:bg-zinc-900/40 -mx-2 px-2 py-1 rounded"
+                      className="block -mx-1 px-1 rounded hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors"
                     >
-                      <div className="text-sm truncate text-zinc-900 dark:text-zinc-100">{n.title}</div>
-                      <div className="text-xs text-zinc-500 mt-0.5 flex items-center gap-2">
-                        {biz && <span className={biz.accent}>{biz.name}</span>}
+                      <div className="text-sm text-zinc-900 dark:text-zinc-100 truncate">{n.title}</div>
+                      <div className="text-xs text-zinc-400 mt-0.5 flex items-center gap-2">
+                        {biz && <span className={`font-medium ${biz.accent}`}>{biz.name}</span>}
                         <span>{format(new Date(n.updated_at), "MMM d")}</span>
                       </div>
                     </Link>
@@ -147,25 +156,31 @@ export default function Dashboard() {
         </Panel>
 
         <Panel
-          title="Pipeline by business"
+          title="Pipeline"
           count={pipelineSummary.reduce((s, p) => s + p.open_count, 0)}
+          icon={<TrendingUp size={14} className="text-emerald-500" />}
         >
-          <ul className="divide-y divide-zinc-200 dark:divide-zinc-900">
+          <ul className="divide-y divide-zinc-100 dark:divide-zinc-900">
             {BUSINESSES.map((b) => {
               const p = pipelineByBusiness.get(b.id);
+              const hasPipe = (p?.open_count ?? 0) > 0 || (p?.pipeline_cents ?? 0) > 0;
               return (
-                <li key={b.id} className="py-2.5 flex items-center justify-between">
+                <li key={b.id} className="py-2.5">
                   <Link
                     href={`/b/${b.id}?tab=pipeline`}
-                    className="flex items-center gap-2 text-sm hover:text-zinc-950 dark:hover:text-zinc-50"
+                    className="flex items-center justify-between hover:opacity-80 transition-opacity"
                   >
-                    <span className={`w-2 h-2 rounded-full ${b.dot}`} />
-                    <span className={b.accent}>{b.name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${b.dot}`} />
+                      <span className={`text-sm font-medium ${b.accent}`}>{b.name}</span>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs">
+                      <span className="text-zinc-400">{p?.open_count ?? 0} active</span>
+                      <span className={hasPipe ? "text-zinc-700 dark:text-zinc-300 font-medium" : "text-zinc-400"}>
+                        {money(p?.pipeline_cents ?? 0)}
+                      </span>
+                    </div>
                   </Link>
-                  <div className="flex items-center gap-4 text-xs text-zinc-500">
-                    <span>{p?.open_count ?? 0} active</span>
-                    <span className="text-zinc-700 dark:text-zinc-300">{money(p?.pipeline_cents ?? 0)}</span>
-                  </div>
                 </li>
               );
             })}
@@ -178,9 +193,9 @@ export default function Dashboard() {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div>
-      <div className="text-xs text-zinc-500">{label}</div>
-      <div className="text-zinc-900 dark:text-zinc-100 mt-0.5 font-medium">{value}</div>
+    <div className="bg-zinc-50 dark:bg-zinc-900 rounded-lg px-2.5 py-2">
+      <div className="text-[10px] text-zinc-400 dark:text-zinc-600 mb-0.5">{label}</div>
+      <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{value}</div>
     </div>
   );
 }
@@ -188,17 +203,28 @@ function Stat({ label, value }: { label: string; value: string }) {
 function Panel({
   title,
   count,
+  icon,
+  accent,
   children,
 }: {
   title: string;
   count?: number;
+  icon?: React.ReactNode;
+  accent?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 p-5">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{title}</h2>
-        {count !== undefined && <span className="text-xs text-zinc-500">{count}</span>}
+    <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          {icon}
+          <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">{title}</h2>
+        </div>
+        {count !== undefined && (
+          <span className={`text-xs font-medium px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-900 ${accent ?? "text-zinc-500"}`}>
+            {count}
+          </span>
+        )}
       </div>
       {children}
     </div>
@@ -206,5 +232,5 @@ function Panel({
 }
 
 function Empty({ text }: { text: string }) {
-  return <div className="text-sm text-zinc-500 py-6 text-center">{text}</div>;
+  return <div className="text-sm text-zinc-400 py-6 text-center">{text}</div>;
 }
