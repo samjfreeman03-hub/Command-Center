@@ -57,7 +57,7 @@ export function SharedView({
           className="w-full shrink-0"
           style={{ backgroundColor: `${business.hex}13` }}
         >
-          <div className="max-w-5xl px-4 sm:px-8 lg:px-10 pt-7 pb-7">
+          <div className="px-4 sm:px-8 lg:px-10 pt-7 pb-7">
             <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold mb-2.5 ${business.accentBg} ${business.accent} ring-1`}>
               <span className={`w-1.5 h-1.5 rounded-full ${business.dot}`} />
               <span className="truncate max-w-[180px] sm:max-w-none">{business.fullName}</span>
@@ -70,7 +70,7 @@ export function SharedView({
         </header>
 
         {/* Tabs */}
-        <div className="max-w-5xl w-full px-4 sm:px-8 lg:px-10 pt-5 pb-1">
+        <div className="w-full px-4 sm:px-8 lg:px-10 pt-5 pb-1">
           <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1 pb-0.5">
             {TABS.map((t) => (
               <button
@@ -89,7 +89,7 @@ export function SharedView({
         </div>
 
         {/* Panels */}
-        <div className="max-w-5xl w-full px-4 sm:px-8 lg:px-10 pt-5 pb-10 flex-1">
+        <div className="w-full px-4 sm:px-8 lg:px-10 pt-5 pb-10 flex-1">
           {tab === "todos"     && <TodosPanel businessId={business.id} initial={initialTodos} members={members} />}
           {tab === "pipeline"  && <PipelinePanel businessId={business.id} initial={initialLeads} />}
           {tab === "brands"    && <BrandsPanel businessId={business.id} initial={initialBrands} />}

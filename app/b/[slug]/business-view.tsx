@@ -86,7 +86,7 @@ export function BusinessView({
         className="w-full shrink-0"
         style={{ backgroundColor: `${business.hex}13` }}
       >
-        <div className="max-w-5xl px-4 sm:px-8 lg:px-10 pt-7 pb-7">
+        <div className="px-4 sm:px-8 lg:px-10 pt-7 pb-7">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               {/* Brand badge */}
@@ -136,7 +136,7 @@ export function BusinessView({
       </header>
 
       {/* ── Tabs ── */}
-      <div className="max-w-5xl w-full px-4 sm:px-8 lg:px-10 pt-5 pb-1">
+      <div className="w-full px-4 sm:px-8 lg:px-10 pt-5 pb-1">
         <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1 pb-0.5">
           {TABS.map((t) => (
             <button
@@ -155,7 +155,7 @@ export function BusinessView({
       </div>
 
       {/* ── Tab panels ── */}
-      <div className="max-w-5xl w-full px-4 sm:px-8 lg:px-10 pt-5 pb-10 flex-1">
+      <div className="w-full px-4 sm:px-8 lg:px-10 pt-5 pb-10 flex-1">
         {tab === "todos"     && <TodosPanel businessId={business.id} initial={initialTodos} members={members} />}
         {tab === "pipeline"  && <PipelinePanel businessId={business.id} initial={initialLeads} />}
         {tab === "brands"    && <BrandsPanel businessId={business.id} initial={initialBrands} />}

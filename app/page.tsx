@@ -23,7 +23,7 @@ export default function Dashboard() {
 
 
   return (
-    <div className="p-4 sm:p-8 max-w-7xl">
+    <div className="p-4 sm:p-8">
       {/* Header */}
       <header className="mb-8">
         <p className="text-xs font-medium uppercase tracking-[0.15em] text-zinc-400 dark:text-zinc-600 mb-1">Dashboard</p>
