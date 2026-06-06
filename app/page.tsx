@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
-import { BUSINESSES, getBusiness } from "@/lib/businesses";
+import { BUSINESSES } from "@/lib/businesses";
 import { ArrowUpRight, TrendingUp, CheckCircle2 } from "lucide-react";
 import { format } from "date-fns";
 import { DashboardTodos } from "@/components/dashboard-todos";
@@ -16,7 +16,6 @@ export default function Dashboard() {
   const openTodos = db.listTodos({ status: "open" });
   const pipelineSummary = db.pipelineSummary();
   const todoCounts = db.todoCounts();
-  const recentNotes = db.listNotes({ limit: 5 });
 
   const pipelineByBusiness = new Map(pipelineSummary.map((p) => [p.business_id, p]));
   const todosByBusiness = new Map(todoCounts.map((t) => [t.business_id, t.open_count]));
@@ -81,33 +80,6 @@ export default function Dashboard() {
           <DashboardTodos initialTodos={openTodos} />
         </Panel>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <Panel title="Recent notes" count={recentNotes.length}>
-          {recentNotes.length === 0 ? (
-            <Empty text="No notes yet." />
-          ) : (
-            <ul className="divide-y divide-zinc-100 dark:divide-zinc-900">
-              {recentNotes.map((n) => {
-                const biz = getBusiness(n.business_id);
-                return (
-                  <li key={n.id} className="py-2.5">
-                    <Link
-                      href={`/b/${n.business_id}?tab=notes`}
-                      className="block -mx-1 px-1 rounded hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors"
-                    >
-                      <div className="text-sm text-zinc-900 dark:text-zinc-100 truncate">{n.title}</div>
-                      <div className="text-xs text-zinc-400 mt-0.5 flex items-center gap-2">
-                        {biz && <span className={`font-medium ${biz.accent}`}>{biz.name}</span>}
-                        <span>{format(new Date(n.updated_at), "MMM d")}</span>
-                      </div>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </Panel>
-
         <Panel
           title="Pipeline"
           count={pipelineSummary.reduce((s, p) => s + p.open_count, 0)}
@@ -139,7 +111,6 @@ export default function Dashboard() {
             })}
           </ul>
         </Panel>
-        </div>
 
       </section>
     </div>
