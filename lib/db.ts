@@ -253,6 +253,19 @@ export const db = {
     return todoWithAssignees(id);
   },
 
+  updateTodo(id: number, patch: { title?: string; due_date?: string | null; priority?: "low" | "medium" | "high" }): Todo {
+    const sets: string[] = [];
+    const args: unknown[] = [];
+    if (patch.title !== undefined) { sets.push("title = ?"); args.push(patch.title.trim()); }
+    if ("due_date" in patch) { sets.push("due_date = ?"); args.push(patch.due_date ?? null); }
+    if (patch.priority !== undefined) { sets.push("priority = ?"); args.push(patch.priority); }
+    if (sets.length > 0) {
+      args.push(id);
+      getDb().prepare(`UPDATE todos SET ${sets.join(", ")} WHERE id = ?`).run(...args);
+    }
+    return todoWithAssignees(id);
+  },
+
   setTodoAssignees(todoId: number, memberIds: number[]): Todo {
     const db = getDb();
     db.prepare("DELETE FROM todo_assignees WHERE todo_id = ?").run(todoId);

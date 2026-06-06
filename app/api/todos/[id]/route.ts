@@ -16,6 +16,14 @@ export async function PATCH(
     const todo = db.setTodoAssignees(Number(id), Array.isArray(body.assignee_ids) ? body.assignee_ids : []);
     return NextResponse.json(todo);
   }
+  if (body && ("title" in body || "due_date" in body || "priority" in body)) {
+    const todo = db.updateTodo(Number(id), {
+      title: body.title,
+      due_date: body.due_date,
+      priority: body.priority,
+    });
+    return NextResponse.json(todo);
+  }
   const todo = db.toggleTodo(Number(id));
   return NextResponse.json(todo);
 }

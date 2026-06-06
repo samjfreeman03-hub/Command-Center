@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef, useEffect } from "react";
 import type { Todo, TeamMember } from "@/lib/types";
-import { Check, Plus, Trash2, UserCircle2, Calendar, Flag, ChevronDown, X } from "lucide-react";
+import { Check, Plus, Trash2, UserCircle2, Calendar, Flag, ChevronDown, X, Pencil } from "lucide-react";
 import { format, parseISO, isPast, isToday } from "date-fns";
 import { useShareHeaders } from "@/lib/share-context";
 import { MemberAvatar, MEMBER_COLORS, memberInitials } from "@/components/team-panel";
@@ -87,6 +87,18 @@ export function TodosPanel({
         setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
       }
     });
+  }
+
+  async function update(id: number, patch: { title?: string; due_date?: string | null; priority?: "low" | "medium" | "high" }) {
+    const res = await fetch(`/api/todos/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", ...shareHeaders },
+      body: JSON.stringify(patch),
+    });
+    if (res.ok) {
+      const updated: Todo = await res.json();
+      setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
+    }
   }
 
   async function setAssignees(id: number, ids: number[]) {
@@ -213,7 +225,7 @@ export function TodosPanel({
         ) : (
           <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
             {open.map((t) => (
-              <TodoRow key={t.id} todo={t} members={members} onToggle={toggle} onDelete={remove} onSetAssignees={setAssignees} />
+              <TodoRow key={t.id} todo={t} members={members} onToggle={toggle} onDelete={remove} onSetAssignees={setAssignees} onUpdate={update} />
             ))}
           </div>
         )}
@@ -224,7 +236,7 @@ export function TodosPanel({
         <Section title="Done" count={done.length} muted>
           <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
             {done.map((t) => (
-              <TodoRow key={t.id} todo={t} members={members} onToggle={toggle} onDelete={remove} onSetAssignees={setAssignees} />
+              <TodoRow key={t.id} todo={t} members={members} onToggle={toggle} onDelete={remove} onSetAssignees={setAssignees} onUpdate={update} />
             ))}
           </div>
         </Section>
@@ -292,15 +304,24 @@ function TodoRow({
   onToggle,
   onDelete,
   onSetAssignees,
+  onUpdate,
 }: {
   todo: Todo;
   members: TeamMember[];
   onToggle: (id: number) => void;
   onDelete: (id: number) => void;
   onSetAssignees: (id: number, ids: number[]) => void;
+  onUpdate: (id: number, patch: { title?: string; due_date?: string | null; priority?: "low" | "medium" | "high" }) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(todo.title);
+  const [editDueDate, setEditDueDate] = useState(todo.due_date ?? "");
+  const [editPriority, setEditPriority] = useState<"low" | "medium" | "high">(todo.priority);
   const [showAssign, setShowAssign] = useState(false);
+  const [showEditAssign, setShowEditAssign] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
+  const editPickerRef = useRef<HTMLDivElement>(null);
+  const editTitleRef = useRef<HTMLInputElement>(null);
   const isDone = todo.status === "done";
   const overdue =
     todo.due_date && !isDone
@@ -310,15 +331,124 @@ function TodoRow({
   const pm = PRIORITY_META[todo.priority];
 
   useEffect(() => {
+    if (editing) setTimeout(() => editTitleRef.current?.focus(), 30);
+  }, [editing]);
+
+  useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
-        setShowAssign(false);
-      }
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setShowAssign(false);
+      if (editPickerRef.current && !editPickerRef.current.contains(e.target as Node)) setShowEditAssign(false);
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
+  function startEdit() {
+    setEditTitle(todo.title);
+    setEditDueDate(todo.due_date ?? "");
+    setEditPriority(todo.priority);
+    setEditing(true);
+  }
+
+  function cancelEdit() {
+    setEditing(false);
+    setShowEditAssign(false);
+  }
+
+  function saveEdit() {
+    if (!editTitle.trim()) return;
+    onUpdate(todo.id, {
+      title: editTitle.trim(),
+      due_date: editDueDate || null,
+      priority: editPriority,
+    });
+    setEditing(false);
+  }
+
+  // ── Edit mode ──
+  if (editing) {
+    return (
+      <div className="py-2 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden shadow-sm my-1">
+        <input
+          ref={editTitleRef}
+          value={editTitle}
+          onChange={(e) => setEditTitle(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") cancelEdit(); }}
+          className="w-full px-4 py-3 text-sm bg-transparent outline-none text-zinc-900 dark:text-zinc-100 border-b border-zinc-100 dark:border-zinc-900"
+        />
+        <div className="px-4 py-2.5 flex items-center gap-2 flex-wrap bg-zinc-50/50 dark:bg-zinc-900/30">
+          {/* Due date */}
+          <div className="relative">
+            <input
+              type="date"
+              value={editDueDate}
+              onChange={(e) => setEditDueDate(e.target.value)}
+              className="h-8 pl-8 pr-3 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg text-xs text-zinc-700 dark:text-zinc-300 outline-none focus:border-zinc-400 dark:focus:border-zinc-600 transition-colors"
+            />
+            <Calendar size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+          </div>
+          {/* Priority */}
+          <div className="relative">
+            <select
+              value={editPriority}
+              onChange={(e) => setEditPriority(e.target.value as "low" | "medium" | "high")}
+              className="h-8 pl-8 pr-7 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg text-xs text-zinc-700 dark:text-zinc-300 outline-none focus:border-zinc-400 dark:focus:border-zinc-600 appearance-none transition-colors"
+            >
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+            <Flag size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+            <ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+          </div>
+          {/* Assign */}
+          {members.length > 0 && (
+            <div className="relative" ref={editPickerRef}>
+              <button
+                type="button"
+                onClick={() => setShowEditAssign((v) => !v)}
+                className="h-8 px-3 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg text-xs text-zinc-600 dark:text-zinc-400 inline-flex items-center gap-1.5 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
+              >
+                {(todo.assignee_ids?.length ?? 0) === 0 ? (
+                  <><UserCircle2 size={13} /> Assign</>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    {assignees.slice(0, 3).map((m) => <MemberAvatar key={m.id} member={m} size="sm" />)}
+                    {assignees.length > 3 && <span>+{assignees.length - 3}</span>}
+                  </div>
+                )}
+              </button>
+              {showEditAssign && (
+                <AssigneePicker
+                  members={members}
+                  selected={todo.assignee_ids ?? []}
+                  onChange={(ids) => { onSetAssignees(todo.id, ids); setShowEditAssign(false); }}
+                />
+              )}
+            </div>
+          )}
+          {/* Actions */}
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={cancelEdit}
+              className="h-8 px-3 text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={saveEdit}
+              disabled={!editTitle.trim()}
+              className="h-8 px-4 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-xs font-semibold rounded-lg hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-40 transition-colors"
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Normal view ──
   return (
     <div className="flex items-start gap-3 py-3.5 group">
       {/* Checkbox */}
@@ -372,6 +502,13 @@ function TodoRow({
 
       {/* Hover actions */}
       <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity mt-0.5">
+        <button
+          onClick={startEdit}
+          className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+          title="Edit"
+        >
+          <Pencil size={13} />
+        </button>
         {members.length > 0 && (
           <div className="relative" ref={pickerRef}>
             <button
