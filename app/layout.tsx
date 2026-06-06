@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AdminShell } from "@/components/admin-shell";
@@ -21,6 +21,14 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
     title: "Command Center",
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover", // enables env(safe-area-inset-*) for notch/home bar
 };
 
 // Runs before paint to avoid flash of wrong theme.

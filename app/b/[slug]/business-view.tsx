@@ -155,7 +155,7 @@ export function BusinessView({
       </div>
 
       {/* ── Tab panels ── */}
-      <div className="w-full px-4 sm:px-8 lg:px-10 pt-5 pb-10 flex-1">
+      <div className="w-full px-4 sm:px-8 lg:px-10 pt-5 pb-10 safe-bottom flex-1">
         {tab === "todos"     && <TodosPanel businessId={business.id} initial={initialTodos} members={members} />}
         {tab === "pipeline"  && <PipelinePanel businessId={business.id} initial={initialLeads} />}
         {tab === "brands"    && <BrandsPanel businessId={business.id} initial={initialBrands} />}

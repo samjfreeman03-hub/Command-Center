@@ -379,10 +379,10 @@ function BrandModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 sm:p-8 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-end sm:items-start justify-center bg-black/40 sm:p-8 overflow-y-auto"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="w-full max-w-lg bg-white dark:bg-zinc-950 rounded-xl shadow-2xl border border-zinc-200 dark:border-zinc-800 mt-8 mb-8">
+      <div className="w-full sm:max-w-lg bg-white dark:bg-zinc-950 rounded-t-2xl sm:rounded-xl shadow-2xl border-t sm:border border-zinc-200 dark:border-zinc-800 sm:mt-8 sm:mb-8 safe-bottom">
 
         {/* Header */}
         <div className="flex items-start gap-3 px-5 py-4 border-b border-zinc-100 dark:border-zinc-900">

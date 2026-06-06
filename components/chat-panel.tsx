@@ -107,7 +107,7 @@ export function ChatPanel({
   }
 
   return (
-    <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 flex flex-col h-[calc(100svh-200px)] sm:h-[72vh] overflow-hidden">
+    <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 flex flex-col overflow-hidden" style={{ height: "calc(100dvh - 8rem)" }}>
 
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-100 dark:border-zinc-900">
@@ -208,7 +208,7 @@ export function ChatPanel({
       )}
 
       {/* Input */}
-      <form onSubmit={send} className="border-t border-zinc-100 dark:border-zinc-900 p-4 flex gap-2 items-center">
+      <form onSubmit={send} className="border-t border-zinc-100 dark:border-zinc-900 p-4 flex gap-2 items-center safe-bottom shrink-0">
         <input
           ref={fileInputRef}
           type="file"
@@ -230,12 +230,12 @@ export function ChatPanel({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder={`Message ${business.name}…`}
-          className="flex-1 h-9 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-sm px-3.5 rounded-lg outline-none focus:border-zinc-400 dark:focus:border-zinc-600 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 text-zinc-900 dark:text-zinc-100 transition-colors"
+          className="flex-1 h-11 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-sm px-3.5 rounded-xl outline-none focus:border-zinc-400 dark:focus:border-zinc-600 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 text-zinc-900 dark:text-zinc-100 transition-colors"
         />
         <button
           type="submit"
           disabled={sending || (!input.trim() && pendingFiles.length === 0)}
-          className="shrink-0 w-9 h-9 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-lg hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-40 flex items-center justify-center transition-colors"
+          className="shrink-0 w-11 h-11 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-xl hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-40 flex items-center justify-center transition-colors"
         >
           <Send size={15} />
         </button>

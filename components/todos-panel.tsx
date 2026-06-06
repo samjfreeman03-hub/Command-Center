@@ -209,7 +209,7 @@ export function TodosPanel({
       ) : (
         <button
           onClick={() => setShowAdd(true)}
-          className="w-full h-11 rounded-xl border border-dashed border-zinc-300 dark:border-zinc-800 text-sm text-zinc-400 dark:text-zinc-600 hover:border-zinc-400 dark:hover:border-zinc-700 hover:text-zinc-600 dark:hover:text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-900/30 transition-all inline-flex items-center justify-center gap-2"
+          className="w-full h-12 rounded-xl border border-dashed border-zinc-300 dark:border-zinc-800 text-sm text-zinc-400 dark:text-zinc-600 hover:border-zinc-400 dark:hover:border-zinc-700 hover:text-zinc-600 dark:hover:text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-900/30 transition-all inline-flex items-center justify-center gap-2 active:bg-zinc-100 dark:active:bg-zinc-900/50"
         >
           <Plus size={15} />
           Add todo
