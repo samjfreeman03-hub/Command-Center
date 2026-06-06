@@ -50,19 +50,22 @@ export function SharedView({
 
   return (
     <ShareTokenContext.Provider value={shareToken}>
-      <div className="p-5 sm:p-8 lg:p-10 max-w-5xl mx-auto">
-        <header className="mb-7">
-          <div className={`h-[3px] w-12 rounded-full ${business.dot} mb-5`} />
-          <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold mb-2.5 ${business.accentBg} ${business.accent} ring-1`}>
+      <div className="max-w-5xl mx-auto">
+        <header
+          className="px-5 sm:px-8 lg:px-10 pt-8 pb-8"
+          style={{ backgroundColor: `${business.hex}13` }}
+        >
+          <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold mb-3 ${business.accentBg} ${business.accent} ring-1`}>
             <span className={`w-1.5 h-1.5 rounded-full ${business.dot}`} />
             {business.fullName}
           </div>
-          <h1 className={`text-2xl sm:text-3xl font-bold tracking-tight mb-1 ${business.accent}`}>
+          <h1 className={`text-2xl sm:text-3xl font-bold tracking-tight mb-1.5 ${business.accent}`}>
             {business.name}
           </h1>
           <p className="text-sm text-zinc-500">{business.tagline}</p>
         </header>
 
+        <div className="px-5 sm:px-8 lg:px-10 pt-6">
         <div className="flex items-center gap-1.5 mb-7 overflow-x-auto scrollbar-none -mx-1 px-1 pb-0.5">
           {TABS.map((t) => (
             <button
@@ -93,6 +96,7 @@ export function SharedView({
             onMembersChange={setMembers}
           />
         )}
+        </div>
       </div>
     </ShareTokenContext.Provider>
   );

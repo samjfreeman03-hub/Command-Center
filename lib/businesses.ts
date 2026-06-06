@@ -8,6 +8,8 @@ export type Business = {
   dot: string;
   /** Active tab pill — brand bg + white text in light, neutral in dark */
   tabActive: string;
+  /** Raw hex for use in inline styles (e.g. header background tint) */
+  hex: string;
 };
 
 export const BUSINESSES: Business[] = [
@@ -20,6 +22,7 @@ export const BUSINESSES: Business[] = [
     accentBg: "bg-[#0B402C]/10 ring-[#0B402C]/25",
     dot: "bg-[#0B402C] dark:bg-[#4ade80]",
     tabActive: "bg-[#0B402C] text-white dark:bg-zinc-100 dark:text-zinc-900",
+    hex: "#0B402C",
   },
   {
     id: "flair",
@@ -30,6 +33,7 @@ export const BUSINESSES: Business[] = [
     accentBg: "bg-[#ED1F24]/10 ring-[#ED1F24]/25",
     dot: "bg-[#ED1F24]",
     tabActive: "bg-[#ED1F24] text-white dark:bg-zinc-100 dark:text-zinc-900",
+    hex: "#ED1F24",
   },
   {
     id: "campuslink",
@@ -40,6 +44,7 @@ export const BUSINESSES: Business[] = [
     accentBg: "bg-[#ED1F24]/10 ring-[#ED1F24]/25",
     dot: "bg-[#ED1F24]",
     tabActive: "bg-[#ED1F24] text-white dark:bg-zinc-100 dark:text-zinc-900",
+    hex: "#ED1F24",
   },
   {
     id: "stealth",
@@ -50,6 +55,7 @@ export const BUSINESSES: Business[] = [
     accentBg: "bg-zinc-950/8 ring-zinc-950/20 dark:bg-zinc-50/10 dark:ring-zinc-50/20",
     dot: "bg-zinc-950 dark:bg-zinc-50",
     tabActive: "bg-zinc-950 text-white dark:bg-zinc-100 dark:text-zinc-900",
+    hex: "#18181b",
   },
   {
     id: "techspace",
@@ -60,6 +66,7 @@ export const BUSINESSES: Business[] = [
     accentBg: "bg-sky-500/15 ring-sky-400/30",
     dot: "bg-sky-500 dark:bg-sky-400",
     tabActive: "bg-sky-500 text-white dark:bg-zinc-100 dark:text-zinc-900",
+    hex: "#0ea5e9",
   },
   {
     id: "personal",
@@ -70,6 +77,7 @@ export const BUSINESSES: Business[] = [
     accentBg: "bg-zinc-500/15 ring-zinc-400/30",
     dot: "bg-zinc-500 dark:bg-zinc-400",
     tabActive: "bg-zinc-600 text-white dark:bg-zinc-100 dark:text-zinc-900",
+    hex: "#71717a",
   },
 ];
 

@@ -79,20 +79,21 @@ export function BusinessView({
   }
 
   return (
-    <div className="p-5 sm:p-8 lg:p-10 max-w-5xl">
-      {/* ── Header ── */}
-      <header className="mb-7">
-        {/* Brand color accent bar */}
-        <div className={`h-[3px] w-12 rounded-full ${business.dot} mb-5`} />
+    <div className="max-w-5xl">
+      {/* ── Header — full-width brand color background ── */}
+      <header
+        className="px-5 sm:px-8 lg:px-10 pt-8 pb-8 mb-0"
+        style={{ backgroundColor: `${business.hex}13` }}
+      >
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
             {/* Brand badge */}
-            <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold mb-2.5 ${business.accentBg} ${business.accent} ring-1`}>
+            <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold mb-3 ${business.accentBg} ${business.accent} ring-1`}>
               <span className={`w-1.5 h-1.5 rounded-full ${business.dot}`} />
               {business.fullName}
             </div>
             {/* Name — brand colored */}
-            <h1 className={`text-2xl sm:text-3xl font-bold tracking-tight mb-1 ${business.accent}`}>
+            <h1 className={`text-2xl sm:text-3xl font-bold tracking-tight mb-1.5 ${business.accent}`}>
               {business.name}
             </h1>
             {/* Tagline (editable) */}
@@ -123,13 +124,16 @@ export function BusinessView({
           {/* Share button */}
           <button
             onClick={copyShareLink}
-            className="shrink-0 mt-1 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors"
+            className="shrink-0 mt-1 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 bg-white/60 dark:bg-zinc-900/60 backdrop-blur-sm hover:bg-white dark:hover:bg-zinc-900 transition-colors"
           >
             {copied ? <Check size={12} className="text-emerald-600" /> : <Link2 size={12} />}
             <span className="hidden sm:inline">{copied ? "Copied!" : "Share"}</span>
           </button>
         </div>
       </header>
+
+      {/* ── Tabs + content ── */}
+      <div className="px-5 sm:px-8 lg:px-10 pt-6">
 
       {/* ── Pill tabs ── */}
       <div className="flex items-center gap-1.5 mb-7 overflow-x-auto scrollbar-none -mx-1 px-1 pb-0.5">
@@ -163,6 +167,7 @@ export function BusinessView({
           onMembersChange={setMembers}
         />
       )}
+      </div>
     </div>
   );
 }
