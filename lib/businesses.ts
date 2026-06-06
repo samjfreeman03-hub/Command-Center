@@ -14,20 +14,20 @@ export const BUSINESSES: Business[] = [
     name: "MTRNM",
     fullName: "MTRNM (Metronome)",
     tagline: "Global house music event label & cultural curation",
-    // Deep forest green #1A4731 — lighter in dark mode for readability
-    accent: "text-[#1A4731] dark:text-[#4ade80]",
-    accentBg: "bg-[#1A4731]/10 ring-[#1A4731]/25",
-    dot: "bg-[#1A4731] dark:bg-[#4ade80]",
+    // Deep forest green #0B402C — lighter in dark mode for readability
+    accent: "text-[#0B402C] dark:text-[#4ade80]",
+    accentBg: "bg-[#0B402C]/10 ring-[#0B402C]/25",
+    dot: "bg-[#0B402C] dark:bg-[#4ade80]",
   },
   {
     id: "flair",
     name: "FLAIR",
     fullName: "FLAIR",
     tagline: "Next-gen marketing, activations, and UGC",
-    // Brand red #E63329
-    accent: "text-[#E63329] dark:text-[#f87171]",
-    accentBg: "bg-[#E63329]/10 ring-[#E63329]/25",
-    dot: "bg-[#E63329]",
+    // Brand red #ED1F24
+    accent: "text-[#ED1F24] dark:text-[#f87171]",
+    accentBg: "bg-[#ED1F24]/10 ring-[#ED1F24]/25",
+    dot: "bg-[#ED1F24]",
   },
   {
     id: "campuslink",
