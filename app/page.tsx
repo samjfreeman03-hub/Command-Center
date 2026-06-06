@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { BUSINESSES } from "@/lib/businesses";
-import { ArrowUpRight, TrendingUp, CheckCircle2 } from "lucide-react";
+import { ArrowUpRight, CheckCircle2 } from "lucide-react";
 import { format } from "date-fns";
 import { DashboardTodos } from "@/components/dashboard-todos";
 
@@ -17,8 +17,8 @@ export default function Dashboard() {
   const pipelineSummary = db.pipelineSummary();
   const todoCounts = db.todoCounts();
 
-  const pipelineByBusiness = new Map(pipelineSummary.map((p) => [p.business_id, p]));
   const todosByBusiness = new Map(todoCounts.map((t) => [t.business_id, t.open_count]));
+  const pipelineByBusiness = new Map(pipelineSummary.map((p) => [p.business_id, p]));
 
 
   return (
@@ -80,37 +80,6 @@ export default function Dashboard() {
           <DashboardTodos initialTodos={openTodos} />
         </Panel>
 
-        <Panel
-          title="Pipeline"
-          count={pipelineSummary.reduce((s, p) => s + p.open_count, 0)}
-          icon={<TrendingUp size={14} className="text-emerald-500" />}
-        >
-          <ul className="divide-y divide-zinc-100 dark:divide-zinc-900">
-            {BUSINESSES.map((b) => {
-              const p = pipelineByBusiness.get(b.id);
-              const hasPipe = (p?.open_count ?? 0) > 0 || (p?.pipeline_cents ?? 0) > 0;
-              return (
-                <li key={b.id} className="py-2.5">
-                  <Link
-                    href={`/b/${b.id}?tab=pipeline`}
-                    className="flex items-center justify-between hover:opacity-80 transition-opacity"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full ${b.dot}`} />
-                      <span className={`text-sm font-medium ${b.accent}`}>{b.name}</span>
-                    </div>
-                    <div className="flex items-center gap-4 text-xs">
-                      <span className="text-zinc-400">{p?.open_count ?? 0} active</span>
-                      <span className={hasPipe ? "text-zinc-700 dark:text-zinc-300 font-medium" : "text-zinc-400"}>
-                        {money(p?.pipeline_cents ?? 0)}
-                      </span>
-                    </div>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </Panel>
 
       </section>
     </div>
