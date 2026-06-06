@@ -82,6 +82,8 @@ export function BusinessView({
     <div className="p-5 sm:p-8 lg:p-10 max-w-5xl">
       {/* ── Header ── */}
       <header className="mb-7">
+        {/* Brand color accent bar */}
+        <div className={`h-[3px] w-12 rounded-full ${business.dot} mb-5`} />
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
             {/* Brand badge */}
@@ -89,8 +91,8 @@ export function BusinessView({
               <span className={`w-1.5 h-1.5 rounded-full ${business.dot}`} />
               {business.fullName}
             </div>
-            {/* Name */}
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100 mb-1">
+            {/* Name — brand colored */}
+            <h1 className={`text-2xl sm:text-3xl font-bold tracking-tight mb-1 ${business.accent}`}>
               {business.name}
             </h1>
             {/* Tagline (editable) */}
@@ -137,7 +139,7 @@ export function BusinessView({
             onClick={() => setTab(t.id)}
             className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
               tab === t.id
-                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-sm"
+                ? `${business.tabActive} shadow-sm`
                 : "text-zinc-500 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900"
             }`}
           >

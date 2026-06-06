@@ -50,29 +50,28 @@ export function SharedView({
 
   return (
     <ShareTokenContext.Provider value={shareToken}>
-      <div className="p-4 sm:p-8 max-w-6xl mx-auto">
-        <header className="mb-6">
-          <div className="flex items-center gap-2 mb-1">
-            <span className={`w-2.5 h-2.5 rounded-full ${business.dot}`} />
-            <div className={`text-xs uppercase tracking-[0.2em] ${business.accent}`}>
-              {business.fullName}
-            </div>
+      <div className="p-5 sm:p-8 lg:p-10 max-w-5xl mx-auto">
+        <header className="mb-7">
+          <div className={`h-[3px] w-12 rounded-full ${business.dot} mb-5`} />
+          <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold mb-2.5 ${business.accentBg} ${business.accent} ring-1`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${business.dot}`} />
+            {business.fullName}
           </div>
-          <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
+          <h1 className={`text-2xl sm:text-3xl font-bold tracking-tight mb-1 ${business.accent}`}>
             {business.name}
           </h1>
-          <p className="text-sm text-zinc-500 mt-1">{business.tagline}</p>
+          <p className="text-sm text-zinc-500">{business.tagline}</p>
         </header>
 
-        <div className="flex items-center gap-1 border-b border-zinc-200 dark:border-zinc-900 mb-6 overflow-x-auto scrollbar-none">
+        <div className="flex items-center gap-1.5 mb-7 overflow-x-auto scrollbar-none -mx-1 px-1 pb-0.5">
           {TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className={`px-4 py-2 text-sm border-b-2 -mb-px transition-colors whitespace-nowrap ${
+              className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
                 tab === t.id
-                  ? "border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-100"
-                  : "border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300"
+                  ? `${business.tabActive} shadow-sm`
+                  : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900"
               }`}
             >
               {t.label}

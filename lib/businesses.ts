@@ -6,6 +6,8 @@ export type Business = {
   accent: string;
   accentBg: string;
   dot: string;
+  /** Active tab pill — brand bg + white text in light, neutral in dark */
+  tabActive: string;
 };
 
 export const BUSINESSES: Business[] = [
@@ -14,40 +16,40 @@ export const BUSINESSES: Business[] = [
     name: "MTRNM",
     fullName: "MTRNM (Metronome)",
     tagline: "Global house music event label & cultural curation",
-    // Deep forest green #0B402C — lighter in dark mode for readability
     accent: "text-[#0B402C] dark:text-[#4ade80]",
     accentBg: "bg-[#0B402C]/10 ring-[#0B402C]/25",
     dot: "bg-[#0B402C] dark:bg-[#4ade80]",
+    tabActive: "bg-[#0B402C] text-white dark:bg-zinc-100 dark:text-zinc-900",
   },
   {
     id: "flair",
     name: "FLAIR",
     fullName: "FLAIR",
     tagline: "Next-gen marketing, activations, and UGC",
-    // Brand red #ED1F24
     accent: "text-[#ED1F24] dark:text-[#f87171]",
     accentBg: "bg-[#ED1F24]/10 ring-[#ED1F24]/25",
     dot: "bg-[#ED1F24]",
+    tabActive: "bg-[#ED1F24] text-white dark:bg-zinc-100 dark:text-zinc-900",
   },
   {
     id: "campuslink",
     name: "CampusLink",
     fullName: "CampusLink",
     tagline: "College marketing, campus activations, and student networks",
-    // Same brand red as FLAIR
-    accent: "text-[#E63329] dark:text-[#f87171]",
-    accentBg: "bg-[#E63329]/10 ring-[#E63329]/25",
-    dot: "bg-[#E63329]",
+    accent: "text-[#ED1F24] dark:text-[#f87171]",
+    accentBg: "bg-[#ED1F24]/10 ring-[#ED1F24]/25",
+    dot: "bg-[#ED1F24]",
+    tabActive: "bg-[#ED1F24] text-white dark:bg-zinc-100 dark:text-zinc-900",
   },
   {
     id: "stealth",
     name: "Stealth Labs",
     fullName: "Stealth Labs",
     tagline: "AI solutions for underserved industries",
-    // Pure black — inverts to white in dark mode
     accent: "text-zinc-950 dark:text-zinc-50",
     accentBg: "bg-zinc-950/8 ring-zinc-950/20 dark:bg-zinc-50/10 dark:ring-zinc-50/20",
     dot: "bg-zinc-950 dark:bg-zinc-50",
+    tabActive: "bg-zinc-950 text-white dark:bg-zinc-100 dark:text-zinc-900",
   },
   {
     id: "techspace",
@@ -57,6 +59,7 @@ export const BUSINESSES: Business[] = [
     accent: "text-sky-700 dark:text-sky-300",
     accentBg: "bg-sky-500/15 ring-sky-400/30",
     dot: "bg-sky-500 dark:bg-sky-400",
+    tabActive: "bg-sky-500 text-white dark:bg-zinc-100 dark:text-zinc-900",
   },
   {
     id: "personal",
@@ -66,6 +69,7 @@ export const BUSINESSES: Business[] = [
     accent: "text-zinc-700 dark:text-zinc-300",
     accentBg: "bg-zinc-500/15 ring-zinc-400/30",
     dot: "bg-zinc-500 dark:bg-zinc-400",
+    tabActive: "bg-zinc-600 text-white dark:bg-zinc-100 dark:text-zinc-900",
   },
 ];
 
