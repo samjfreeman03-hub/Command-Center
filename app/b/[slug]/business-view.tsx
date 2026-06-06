@@ -79,94 +79,97 @@ export function BusinessView({
   }
 
   return (
-    <div className="max-w-5xl">
-      {/* ── Header — full-width brand color background ── */}
+    <div className="flex flex-col min-h-screen">
+
+      {/* ── Header — true full-width brand background ── */}
       <header
-        className="px-5 sm:px-8 lg:px-10 pt-8 pb-8 mb-0"
+        className="w-full shrink-0"
         style={{ backgroundColor: `${business.hex}13` }}
       >
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
-            {/* Brand badge */}
-            <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold mb-3 ${business.accentBg} ${business.accent} ring-1`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${business.dot}`} />
-              {business.fullName}
+        <div className="max-w-5xl px-4 sm:px-8 lg:px-10 pt-7 pb-7">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              {/* Brand badge */}
+              <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold mb-2.5 ${business.accentBg} ${business.accent} ring-1`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${business.dot}`} />
+                <span className="truncate max-w-[180px] sm:max-w-none">{business.fullName}</span>
+              </div>
+              {/* Name — brand colored */}
+              <h1 className={`text-2xl sm:text-3xl font-bold tracking-tight mb-1 ${business.accent}`}>
+                {business.name}
+              </h1>
+              {/* Tagline (editable) */}
+              {editingTagline ? (
+                <input
+                  ref={taglineRef}
+                  value={taglineDraft}
+                  onChange={(e) => setTaglineDraft(e.target.value)}
+                  onBlur={saveTagline}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") saveTagline();
+                    if (e.key === "Escape") { setEditingTagline(false); setTaglineDraft(tagline); }
+                  }}
+                  autoFocus
+                  className="text-sm text-zinc-500 bg-transparent border-b border-zinc-300 dark:border-zinc-700 outline-none w-full max-w-sm sm:max-w-md"
+                />
+              ) : (
+                <button
+                  onClick={() => { setTaglineDraft(tagline); setEditingTagline(true); }}
+                  className="group flex items-center gap-1.5 text-left"
+                >
+                  <p className="text-sm text-zinc-500 leading-snug">{tagline}</p>
+                  <Pencil size={11} className="text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                </button>
+              )}
             </div>
-            {/* Name — brand colored */}
-            <h1 className={`text-2xl sm:text-3xl font-bold tracking-tight mb-1.5 ${business.accent}`}>
-              {business.name}
-            </h1>
-            {/* Tagline (editable) */}
-            {editingTagline ? (
-              <input
-                ref={taglineRef}
-                value={taglineDraft}
-                onChange={(e) => setTaglineDraft(e.target.value)}
-                onBlur={saveTagline}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") saveTagline();
-                  if (e.key === "Escape") { setEditingTagline(false); setTaglineDraft(tagline); }
-                }}
-                autoFocus
-                className="text-sm text-zinc-500 bg-transparent border-b border-zinc-300 dark:border-zinc-700 outline-none w-full max-w-md"
-              />
-            ) : (
-              <button
-                onClick={() => { setTaglineDraft(tagline); setEditingTagline(true); }}
-                className="group flex items-center gap-1.5 text-left"
-              >
-                <p className="text-sm text-zinc-500">{tagline}</p>
-                <Pencil size={11} className="text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-              </button>
-            )}
-          </div>
 
-          {/* Share button */}
-          <button
-            onClick={copyShareLink}
-            className="shrink-0 mt-1 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 bg-white/60 dark:bg-zinc-900/60 backdrop-blur-sm hover:bg-white dark:hover:bg-zinc-900 transition-colors"
-          >
-            {copied ? <Check size={12} className="text-emerald-600" /> : <Link2 size={12} />}
-            <span className="hidden sm:inline">{copied ? "Copied!" : "Share"}</span>
-          </button>
+            {/* Share button */}
+            <button
+              onClick={copyShareLink}
+              className="shrink-0 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/70 hover:bg-white dark:hover:bg-zinc-900 backdrop-blur-sm transition-colors"
+            >
+              {copied ? <Check size={12} className="text-emerald-600" /> : <Link2 size={12} />}
+              <span className="hidden sm:inline">{copied ? "Copied!" : "Share"}</span>
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* ── Tabs + content ── */}
-      <div className="px-5 sm:px-8 lg:px-10 pt-6">
-
-      {/* ── Pill tabs ── */}
-      <div className="flex items-center gap-1.5 mb-7 overflow-x-auto scrollbar-none -mx-1 px-1 pb-0.5">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
-              tab === t.id
-                ? `${business.tabActive} shadow-sm`
-                : "text-zinc-500 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+      {/* ── Tabs ── */}
+      <div className="max-w-5xl w-full px-4 sm:px-8 lg:px-10 pt-5 pb-1">
+        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1 pb-0.5">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
+                tab === t.id
+                  ? `${business.tabActive} shadow-sm`
+                  : "text-zinc-500 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ── Tab panels ── */}
-      {tab === "todos"     && <TodosPanel businessId={business.id} initial={initialTodos} members={members} />}
-      {tab === "pipeline"  && <PipelinePanel businessId={business.id} initial={initialLeads} />}
-      {tab === "brands"    && <BrandsPanel businessId={business.id} initial={initialBrands} />}
-      {tab === "resources" && <ResourcesPanel businessId={business.id} initial={initialResources} />}
-      {tab === "notes"     && <NotesPanel businessId={business.id} initial={initialNotes} />}
-      {tab === "chat"      && <ChatPanel business={business} initialMessages={initialChat} />}
-      {tab === "team"      && (
-        <TeamPanel
-          businessId={business.id}
-          initialMembers={members}
-          initialTodos={initialTodos}
-          onMembersChange={setMembers}
-        />
-      )}
+      <div className="max-w-5xl w-full px-4 sm:px-8 lg:px-10 pt-5 pb-10 flex-1">
+        {tab === "todos"     && <TodosPanel businessId={business.id} initial={initialTodos} members={members} />}
+        {tab === "pipeline"  && <PipelinePanel businessId={business.id} initial={initialLeads} />}
+        {tab === "brands"    && <BrandsPanel businessId={business.id} initial={initialBrands} />}
+        {tab === "resources" && <ResourcesPanel businessId={business.id} initial={initialResources} />}
+        {tab === "notes"     && <NotesPanel businessId={business.id} initial={initialNotes} />}
+        {tab === "chat"      && <ChatPanel business={business} initialMessages={initialChat} />}
+        {tab === "team"      && (
+          <TeamPanel
+            businessId={business.id}
+            initialMembers={members}
+            initialTodos={initialTodos}
+            onMembersChange={setMembers}
+          />
+        )}
       </div>
     </div>
   );
