@@ -4,6 +4,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { db } from "@/lib/db";
 import { canAccessBusiness } from "@/lib/server-auth";
+import { extractJSON } from "@/lib/extract-json";
 import type { OutreachDrafts } from "@/lib/types";
 
 const POSITIONING_PATH = path.join(process.cwd(), "lib", "prompts", "flair-positioning-brief.md");
@@ -106,8 +107,7 @@ Produce both templates now. Return ONLY the JSON object.`;
 
     let parsed: OutreachDrafts;
     try {
-      const cleaned = text.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
-      const obj = JSON.parse(cleaned);
+      const obj = extractJSON<{ templateA: OutreachDrafts["templateA"]; templateB: OutreachDrafts["templateB"]; reasoning?: string }>(text);
       parsed = {
         templateA: obj.templateA,
         templateB: obj.templateB,

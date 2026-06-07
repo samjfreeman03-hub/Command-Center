@@ -157,6 +157,21 @@ export type OutreachSignal = {
   source: string;
 };
 
+export type CandidateContact = {
+  name: string;
+  title: string;
+  linkedin_url: string | null;
+  role_category:
+    | "college-or-next-gen"
+    | "influencer-or-partnerships"
+    | "social-or-community"
+    | "experiential"
+    | "brand-marketing-exec"
+    | "other";
+  source: string | null;
+  confidence: "high" | "medium" | "low";
+};
+
 export type OutreachSignals = {
   signals: OutreachSignal[];
   summary_for_drafter: string;

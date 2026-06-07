@@ -4,6 +4,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { db } from "@/lib/db";
 import { canAccessBusiness } from "@/lib/server-auth";
+import { extractJSON } from "@/lib/extract-json";
 
 const POSITIONING_PATH = path.join(process.cwd(), "lib", "prompts", "flair-positioning-brief.md");
 const VOICE_PATH = path.join(process.cwd(), "lib", "prompts", "flair-voice-samples.md");
@@ -121,7 +122,7 @@ Write follow-up #${nextFollowupN}. Return ONLY the JSON object.`;
       .trim();
     let parsed: { text: string; reasoning?: string };
     try {
-      parsed = JSON.parse(raw.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, ""));
+      parsed = extractJSON(raw);
     } catch {
       return NextResponse.json({ error: "Drafter returned non-JSON", raw }, { status: 502 });
     }

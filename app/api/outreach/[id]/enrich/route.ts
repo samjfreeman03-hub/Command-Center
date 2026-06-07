@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "@/lib/db";
 import { canAccessBusiness } from "@/lib/server-auth";
+import { extractJSON } from "@/lib/extract-json";
 
 const CACHE_TTL_MS = 14 * 86400_000; // 14 days
 
@@ -88,7 +89,7 @@ Search the web (multiple queries if useful), then return the JSON object.`;
 
     let parsed: { signals: unknown[]; summary_for_drafter: string };
     try {
-      parsed = JSON.parse(raw.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, ""));
+      parsed = extractJSON(raw);
     } catch {
       return NextResponse.json({ error: "Enricher returned non-JSON", raw }, { status: 502 });
     }

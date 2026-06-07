@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { OutreachTarget, OutreachStatus, OutreachDrafts, OutreachSignals } from "@/lib/types";
+import type { OutreachTarget, OutreachStatus, OutreachDrafts, OutreachSignals, CandidateContact } from "@/lib/types";
 import { OUTREACH_STATUSES } from "@/lib/types";
 import {
   Plus, Sparkles, Copy, Check, ExternalLink, Trash2, Loader2, Clock, Send, RotateCcw, Search, Wand2,
@@ -30,8 +30,26 @@ type Candidate = {
   category: string;
   size: "enterprise" | "midsize" | "emerging";
   why_fit: string;
-  decision_maker_titles: string[];
   seasonality_hook: string;
+  contacts: CandidateContact[];
+};
+
+const ROLE_LABELS: Record<CandidateContact["role_category"], string> = {
+  "college-or-next-gen": "College / next-gen",
+  "influencer-or-partnerships": "Influencer / partnerships",
+  "social-or-community": "Social / community",
+  "experiential": "Experiential",
+  "brand-marketing-exec": "Brand exec",
+  "other": "Other",
+};
+
+const ROLE_COLORS: Record<CandidateContact["role_category"], string> = {
+  "college-or-next-gen": "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300",
+  "influencer-or-partnerships": "bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300",
+  "social-or-community": "bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300",
+  "experiential": "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300",
+  "brand-marketing-exec": "bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300",
+  "other": "bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400",
 };
 
 export function OutreachPanel({
@@ -53,10 +71,12 @@ export function OutreachPanel({
   const [followupDrafts, setFollowupDrafts] = useState<Record<number, { followup_n: number; text: string; reasoning?: string }>>({});
   const [followupSender, setFollowupSender] = useState<"Sam" | "Tyler">("Sam");
   const [showCandidates, setShowCandidates] = useState(false);
-  const [candidatesForm, setCandidatesForm] = useState({ category: "", size: "" as "" | "enterprise" | "midsize" | "emerging", count: 15, focus: "" });
+  const [candidatesForm, setCandidatesForm] = useState({ category: "", size: "" as "" | "enterprise" | "midsize" | "emerging", count: 10, focus: "" });
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [generatingCandidates, setGeneratingCandidates] = useState(false);
-  const [selectedCandidates, setSelectedCandidates] = useState<Set<number>>(new Set());
+  // Selection keys: `${brandIdx}:${contactIdx}` for a real contact,
+  // or `${brandIdx}:placeholder` for a brand-as-placeholder (no contact yet).
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [bulkAdding, setBulkAdding] = useState(false);
   const shareHeaders = useShareHeaders();
 
@@ -217,7 +237,7 @@ export function OutreachPanel({
   async function generateCandidates(e: React.FormEvent) {
     e.preventDefault();
     setGeneratingCandidates(true);
-    setSelectedCandidates(new Set());
+    setSelectedKeys(new Set());
     try {
       const res = await fetch("/api/outreach/candidates", {
         method: "POST",
@@ -230,8 +250,14 @@ export function OutreachPanel({
       });
       if (res.ok) {
         const data: { candidates: Candidate[] } = await res.json();
-        setCandidates(data.candidates ?? []);
-        setSelectedCandidates(new Set(data.candidates.map((_, i) => i)));
+        const cands = data.candidates ?? [];
+        setCandidates(cands);
+        // Default: select every contact found (preserve user agency by NOT pre-selecting placeholders)
+        const defaults = new Set<string>();
+        cands.forEach((c, bi) => {
+          (c.contacts ?? []).forEach((_, ci) => defaults.add(`${bi}:${ci}`));
+        });
+        setSelectedKeys(defaults);
       } else {
         const err = await res.json().catch(() => ({}));
         alert(`Generate failed: ${err.error ?? res.statusText}`);
@@ -242,13 +268,35 @@ export function OutreachPanel({
   }
 
   async function addSelectedCandidates() {
-    if (selectedCandidates.size === 0) return;
+    if (selectedKeys.size === 0) return;
     setBulkAdding(true);
     try {
       const newTargets: OutreachTarget[] = [];
-      for (const idx of Array.from(selectedCandidates).sort((a, b) => a - b)) {
-        const c = candidates[idx];
+      // Group selections by brand for stable ordering
+      const sortedKeys = Array.from(selectedKeys).sort();
+      for (const key of sortedKeys) {
+        const [brandIdxStr, contactIdxStr] = key.split(":");
+        const brandIdx = Number(brandIdxStr);
+        const c = candidates[brandIdx];
         if (!c) continue;
+
+        let person_name: string;
+        let person_title: string | null = null;
+        let linkedin_url: string | null = null;
+        let confidence_note = "";
+
+        if (contactIdxStr === "placeholder") {
+          person_name = "(to research)";
+          confidence_note = "\nNo contacts auto-found — needs manual research.";
+        } else {
+          const contact = c.contacts?.[Number(contactIdxStr)];
+          if (!contact) continue;
+          person_name = contact.name;
+          person_title = contact.title;
+          linkedin_url = contact.linkedin_url;
+          confidence_note = `\nContact source: ${contact.source ?? "(none)"} | Confidence: ${contact.confidence} | Role: ${ROLE_LABELS[contact.role_category] ?? contact.role_category}`;
+        }
+
         const res = await fetch("/api/outreach", {
           method: "POST",
           headers: { "content-type": "application/json", ...shareHeaders },
@@ -257,27 +305,44 @@ export function OutreachPanel({
             brand_name: c.brand_name,
             brand_category: c.category,
             brand_size: c.size,
-            person_name: "(to research)",
-            person_title: c.decision_maker_titles?.[0] ?? null,
+            person_name,
+            person_title,
+            linkedin_url,
             source: "auto-generated",
-            notes: `${c.why_fit}\n\nBack-to-school hook: ${c.seasonality_hook}\nDecision-maker targets: ${c.decision_maker_titles?.join(", ")}`,
+            notes: `${c.why_fit}\n\nBack-to-school hook: ${c.seasonality_hook}${confidence_note}`,
           }),
         });
         if (res.ok) newTargets.push(await res.json());
       }
       setTargets((prev) => [...newTargets, ...prev]);
       setCandidates([]);
-      setSelectedCandidates(new Set());
+      setSelectedKeys(new Set());
       setShowCandidates(false);
     } finally {
       setBulkAdding(false);
     }
   }
 
-  function toggleCandidate(idx: number) {
-    setSelectedCandidates((prev) => {
+  function toggleKey(key: string) {
+    setSelectedKeys((prev) => {
       const next = new Set(prev);
-      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
+
+  function toggleAllBrandContacts(brandIdx: number, candidate: Candidate) {
+    const keys = (candidate.contacts ?? []).map((_, ci) => `${brandIdx}:${ci}`);
+    if (keys.length === 0) {
+      // brand has no contacts — toggle the placeholder selection
+      toggleKey(`${brandIdx}:placeholder`);
+      return;
+    }
+    const allSelected = keys.every((k) => selectedKeys.has(k));
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (allSelected) keys.forEach((k) => next.delete(k));
+      else keys.forEach((k) => next.add(k));
       return next;
     });
   }
@@ -361,11 +426,12 @@ export function OutreachPanel({
           onGenerate={generateCandidates}
           generating={generatingCandidates}
           candidates={candidates}
-          selected={selectedCandidates}
-          onToggleCandidate={toggleCandidate}
+          selectedKeys={selectedKeys}
+          onToggleKey={toggleKey}
+          onToggleAllBrand={toggleAllBrandContacts}
           onAddSelected={addSelectedCandidates}
           bulkAdding={bulkAdding}
-          onCancel={() => { setShowCandidates(false); setCandidates([]); setSelectedCandidates(new Set()); }}
+          onCancel={() => { setShowCandidates(false); setCandidates([]); setSelectedKeys(new Set()); }}
         />
       )}
 
@@ -615,24 +681,30 @@ function AddTargetForm({
 }
 
 function CandidateGenerator({
-  form, setForm, onGenerate, generating, candidates, selected, onToggleCandidate, onAddSelected, bulkAdding, onCancel,
+  form, setForm, onGenerate, generating, candidates, selectedKeys, onToggleKey, onToggleAllBrand, onAddSelected, bulkAdding, onCancel,
 }: {
   form: { category: string; size: "" | "enterprise" | "midsize" | "emerging"; count: number; focus: string };
   setForm: React.Dispatch<React.SetStateAction<{ category: string; size: "" | "enterprise" | "midsize" | "emerging"; count: number; focus: string }>>;
   onGenerate: (e: React.FormEvent) => void;
   generating: boolean;
   candidates: Candidate[];
-  selected: Set<number>;
-  onToggleCandidate: (idx: number) => void;
+  selectedKeys: Set<string>;
+  onToggleKey: (key: string) => void;
+  onToggleAllBrand: (brandIdx: number, c: Candidate) => void;
   onAddSelected: () => void;
   bulkAdding: boolean;
   onCancel: () => void;
 }) {
+  const totalContactsFound = candidates.reduce((s, c) => s + (c.contacts?.length ?? 0), 0);
+
   return (
     <div className="border border-violet-200 dark:border-violet-900/40 rounded-lg p-4 space-y-3 bg-violet-50/40 dark:bg-violet-950/10">
       <div className="flex items-center gap-2 text-sm font-semibold text-violet-900 dark:text-violet-200">
-        <Wand2 size={14} /> Suggest brand candidates
+        <Wand2 size={14} /> Suggest brand candidates + contacts
       </div>
+      <p className="text-xs text-zinc-600 dark:text-zinc-400 -mt-1">
+        Generates brands AND web-searches for 2–4 specific LinkedIn contacts per brand (college / influencer / social / experiential / brand exec). Takes ~30–90 seconds.
+      </p>
       <form onSubmit={onGenerate} className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
           <div>
@@ -659,11 +731,11 @@ function CandidateGenerator({
             </select>
           </div>
           <div>
-            <label className="text-xs text-zinc-500 mb-1 block">Count</label>
+            <label className="text-xs text-zinc-500 mb-1 block"># of brands</label>
             <input
               type="number"
-              min={5}
-              max={30}
+              min={3}
+              max={20}
               value={form.count}
               onChange={(e) => setForm((f) => ({ ...f, count: Number(e.target.value) }))}
               className="w-full px-2.5 py-1.5 text-sm rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900"
@@ -696,59 +768,160 @@ function CandidateGenerator({
 
       {candidates.length > 0 && (
         <div className="space-y-2 pt-3 border-t border-violet-200 dark:border-violet-900/40">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="text-xs text-zinc-600 dark:text-zinc-400">
-              <span className="font-medium text-zinc-900 dark:text-zinc-100">{selected.size}</span> of {candidates.length} selected
+              <span className="font-medium text-zinc-900 dark:text-zinc-100">{candidates.length}</span> brand{candidates.length === 1 ? "" : "s"} ·{" "}
+              <span className="font-medium text-zinc-900 dark:text-zinc-100">{totalContactsFound}</span> contact{totalContactsFound === 1 ? "" : "s"} found ·{" "}
+              <span className="font-medium text-emerald-700 dark:text-emerald-400">{selectedKeys.size}</span> selected
             </div>
             <button
               onClick={onAddSelected}
-              disabled={selected.size === 0 || bulkAdding}
+              disabled={selectedKeys.size === 0 || bulkAdding}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
             >
               {bulkAdding ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
-              Add {selected.size} as targets
+              Add {selectedKeys.size} as target{selectedKeys.size === 1 ? "" : "s"}
             </button>
           </div>
-          <div className="space-y-1.5">
-            {candidates.map((c, idx) => {
-              const checked = selected.has(idx);
-              return (
-                <label
-                  key={idx}
-                  className={`flex items-start gap-2.5 p-2.5 rounded-md border cursor-pointer transition-colors ${
-                    checked
-                      ? "border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20"
-                      : "border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => onToggleCandidate(idx)}
-                    className="mt-0.5"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline gap-2 flex-wrap">
-                      <span className="font-medium text-sm text-zinc-900 dark:text-zinc-100">{c.brand_name}</span>
-                      <span className="text-xs text-zinc-500">{c.category}</span>
-                      <span className="text-xs text-zinc-400">· {c.size}</span>
-                    </div>
-                    <div className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5">{c.why_fit}</div>
-                    <div className="text-xs text-zinc-500 mt-1 flex items-baseline gap-2 flex-wrap">
-                      <span className="opacity-75">Targets:</span>
-                      {(c.decision_maker_titles ?? []).map((t, i) => (
-                        <span key={i} className="px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-[10px]">{t}</span>
-                      ))}
-                    </div>
-                    {c.seasonality_hook && (
-                      <div className="text-xs text-zinc-500 mt-1 italic">Hook: {c.seasonality_hook}</div>
-                    )}
-                  </div>
-                </label>
-              );
-            })}
+          <div className="space-y-3">
+            {candidates.map((c, brandIdx) => (
+              <CandidateBrandCard
+                key={brandIdx}
+                brandIdx={brandIdx}
+                candidate={c}
+                selectedKeys={selectedKeys}
+                onToggleKey={onToggleKey}
+                onToggleAllBrand={() => onToggleAllBrand(brandIdx, c)}
+              />
+            ))}
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+function CandidateBrandCard({
+  brandIdx, candidate, selectedKeys, onToggleKey, onToggleAllBrand,
+}: {
+  brandIdx: number;
+  candidate: Candidate;
+  selectedKeys: Set<string>;
+  onToggleKey: (key: string) => void;
+  onToggleAllBrand: () => void;
+}) {
+  const c = candidate;
+  const contacts = c.contacts ?? [];
+  const brandContactKeys = contacts.map((_, ci) => `${brandIdx}:${ci}`);
+  const allBrandSelected = brandContactKeys.length > 0 && brandContactKeys.every((k) => selectedKeys.has(k));
+  const someBrandSelected = brandContactKeys.some((k) => selectedKeys.has(k));
+  const placeholderKey = `${brandIdx}:placeholder`;
+  const placeholderSelected = selectedKeys.has(placeholderKey);
+
+  return (
+    <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg bg-white dark:bg-zinc-900 overflow-hidden">
+      <div className="px-3 py-2.5 border-b border-zinc-100 dark:border-zinc-800 flex items-start gap-2">
+        <input
+          type="checkbox"
+          checked={allBrandSelected}
+          ref={(el) => { if (el) el.indeterminate = !allBrandSelected && someBrandSelected; }}
+          onChange={onToggleAllBrand}
+          className="mt-1"
+          title="Select / deselect all contacts at this brand"
+        />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className="font-semibold text-sm text-zinc-900 dark:text-zinc-100">{c.brand_name}</span>
+            <span className="text-xs text-zinc-500">{c.category}</span>
+            <span className="text-xs text-zinc-400">· {c.size}</span>
+            {contacts.length === 0 && (
+              <span className="text-xs text-amber-700 dark:text-amber-400 italic">No contacts found</span>
+            )}
+          </div>
+          <div className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5">{c.why_fit}</div>
+          {c.seasonality_hook && (
+            <div className="text-xs text-zinc-500 mt-1 italic">Hook: {c.seasonality_hook}</div>
+          )}
+        </div>
+      </div>
+
+      {contacts.length > 0 ? (
+        <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+          {contacts.map((contact, ci) => {
+            const key = `${brandIdx}:${ci}`;
+            const checked = selectedKeys.has(key);
+            return (
+              <label
+                key={ci}
+                className={`flex items-start gap-2 px-3 py-2 cursor-pointer transition-colors ${
+                  checked ? "bg-emerald-50/40 dark:bg-emerald-950/15" : "hover:bg-zinc-50 dark:hover:bg-zinc-800/40"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => onToggleKey(key)}
+                  className="mt-1"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{contact.name}</span>
+                    <span className="text-xs text-zinc-600 dark:text-zinc-400">{contact.title}</span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1 text-xs flex-wrap">
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] ${ROLE_COLORS[contact.role_category] ?? ROLE_COLORS.other}`}>
+                      {ROLE_LABELS[contact.role_category] ?? contact.role_category}
+                    </span>
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
+                      contact.confidence === "high" ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300"
+                      : contact.confidence === "medium" ? "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300"
+                      : "bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300"
+                    }`}>
+                      {contact.confidence}
+                    </span>
+                    {contact.linkedin_url ? (
+                      <a
+                        href={contact.linkedin_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-flex items-center gap-1 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+                      >
+                        <ExternalLink size={10} /> LinkedIn
+                      </a>
+                    ) : (
+                      <span className="text-zinc-400 italic">no LinkedIn URL</span>
+                    )}
+                    {contact.source && (
+                      <a
+                        href={contact.source}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                        title="Source"
+                      >
+                        source ↗
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </label>
+            );
+          })}
+        </div>
+      ) : (
+        <label className="flex items-start gap-2 px-3 py-2 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/40">
+          <input
+            type="checkbox"
+            checked={placeholderSelected}
+            onChange={() => onToggleKey(placeholderKey)}
+            className="mt-1"
+          />
+          <span className="text-xs text-zinc-500">
+            Add this brand as a placeholder (you&apos;ll add the contact manually later)
+          </span>
+        </label>
       )}
     </div>
   );
