@@ -31,6 +31,7 @@ export async function POST(req: Request) {
     brand_size: body.brand_size,
     person_title: body.person_title,
     linkedin_url: body.linkedin_url,
+    person_email: body.person_email,
     source: body.source,
     notes: body.notes,
   });

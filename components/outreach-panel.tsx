@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { OutreachTarget, OutreachStatus, OutreachDrafts, OutreachSignals, CandidateContact } from "@/lib/types";
 import { OUTREACH_STATUSES } from "@/lib/types";
 import {
-  Plus, Sparkles, Copy, Check, ExternalLink, Trash2, Loader2, Clock, Send, RotateCcw, Search, Wand2, UserSearch, Users,
+  Plus, Sparkles, Copy, Check, ExternalLink, Trash2, Loader2, Clock, Send, RotateCcw, Search, Wand2, UserSearch, Users, Mail, ShieldCheck,
 } from "lucide-react";
 import { useShareHeaders } from "@/lib/share-context";
 
@@ -292,6 +292,7 @@ export function OutreachPanel({
         let person_name: string;
         let person_title: string | null = null;
         let linkedin_url: string | null = null;
+        let person_email: string | null = null;
         let confidence_note = "";
 
         if (contactIdxStr === "placeholder") {
@@ -303,7 +304,8 @@ export function OutreachPanel({
           person_name = contact.name;
           person_title = contact.title;
           linkedin_url = contact.linkedin_url;
-          confidence_note = `\nContact source: ${contact.source ?? "(none)"} | Confidence: ${contact.confidence} | Role: ${ROLE_LABELS[contact.role_category] ?? contact.role_category}`;
+          person_email = contact.email ?? null;
+          confidence_note = `\nContact source: ${contact.source ?? "(none)"} | Confidence: ${contact.confidence} | Role: ${ROLE_LABELS[contact.role_category] ?? contact.role_category}${contact.origin ? ` | Origin: ${contact.origin}` : ""}`;
         }
 
         const res = await fetch("/api/outreach", {
@@ -317,6 +319,7 @@ export function OutreachPanel({
             person_name,
             person_title,
             linkedin_url,
+            person_email,
             source: "auto-generated",
             notes: `${c.why_fit}\n\nBack-to-school hook: ${c.seasonality_hook}${confidence_note}`,
           }),
@@ -411,8 +414,9 @@ export function OutreachPanel({
           person_name: c.name,
           person_title: c.title,
           linkedin_url: c.linkedin_url,
+          person_email: c.email,
           source: "auto-generated",
-          notes: `Backfilled contact for ${target.brand_name}\nRole: ${ROLE_LABELS[c.role_category] ?? c.role_category} | Confidence: ${c.confidence}\nSource: ${c.source ?? "(none)"}`,
+          notes: `Backfilled contact for ${target.brand_name}\nRole: ${ROLE_LABELS[c.role_category] ?? c.role_category} | Confidence: ${c.confidence}${c.origin ? ` | Origin: ${c.origin}` : ""}\nSource: ${c.source ?? "(none)"}`,
         }),
       });
       if (res.ok) newTargets.push(await res.json());
@@ -478,8 +482,9 @@ export function OutreachPanel({
                 person_name: c.name,
                 person_title: c.title,
                 linkedin_url: c.linkedin_url,
+                person_email: c.email,
                 source: "auto-generated",
-                notes: `Backfilled contact for ${t.brand_name}\nRole: ${ROLE_LABELS[c.role_category] ?? c.role_category} | Confidence: ${c.confidence}\nSource: ${c.source ?? "(none)"}`,
+                notes: `Backfilled contact for ${t.brand_name}\nRole: ${ROLE_LABELS[c.role_category] ?? c.role_category} | Confidence: ${c.confidence}${c.origin ? ` | Origin: ${c.origin}` : ""}\nSource: ${c.source ?? "(none)"}`,
               }),
             });
             if (res.ok) {
@@ -1084,43 +1089,7 @@ function CandidateBrandCard({
                     <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{contact.name}</span>
                     <span className="text-xs text-zinc-600 dark:text-zinc-400">{contact.title}</span>
                   </div>
-                  <div className="flex items-center gap-2 mt-1 text-xs flex-wrap">
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] ${ROLE_COLORS[contact.role_category] ?? ROLE_COLORS.other}`}>
-                      {ROLE_LABELS[contact.role_category] ?? contact.role_category}
-                    </span>
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
-                      contact.confidence === "high" ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300"
-                      : contact.confidence === "medium" ? "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300"
-                      : "bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300"
-                    }`}>
-                      {contact.confidence}
-                    </span>
-                    {contact.linkedin_url ? (
-                      <a
-                        href={contact.linkedin_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="inline-flex items-center gap-1 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-                      >
-                        <ExternalLink size={10} /> LinkedIn
-                      </a>
-                    ) : (
-                      <span className="text-zinc-400 italic">no LinkedIn URL</span>
-                    )}
-                    {contact.source && (
-                      <a
-                        href={contact.source}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-                        title="Source"
-                      >
-                        source ↗
-                      </a>
-                    )}
-                  </div>
+                  <ContactMeta contact={contact} />
                 </div>
               </label>
             );
@@ -1224,6 +1193,15 @@ function TargetCard({
             <ExternalLink size={14} />
           </a>
         )}
+        {target.person_email && (
+          <a
+            href={`mailto:${target.person_email}`}
+            className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 p-1.5 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            title={`Email: ${target.person_email}`}
+          >
+            <Mail size={14} />
+          </a>
+        )}
         <button
           onClick={onFindContacts}
           disabled={findingContacts || drafting || enriching}
@@ -1298,43 +1276,7 @@ function TargetCard({
                           <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{c.name}</span>
                           <span className="text-xs text-zinc-600 dark:text-zinc-400">{c.title}</span>
                         </div>
-                        <div className="flex items-center gap-2 mt-1 text-xs flex-wrap">
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] ${ROLE_COLORS[c.role_category] ?? ROLE_COLORS.other}`}>
-                            {ROLE_LABELS[c.role_category] ?? c.role_category}
-                          </span>
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
-                            c.confidence === "high" ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300"
-                            : c.confidence === "medium" ? "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300"
-                            : "bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300"
-                          }`}>
-                            {c.confidence}
-                          </span>
-                          {c.linkedin_url ? (
-                            <a
-                              href={c.linkedin_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(e) => e.stopPropagation()}
-                              className="inline-flex items-center gap-1 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-                            >
-                              <ExternalLink size={10} /> LinkedIn
-                            </a>
-                          ) : (
-                            <span className="text-zinc-400 italic">no LinkedIn URL</span>
-                          )}
-                          {c.source && (
-                            <a
-                              href={c.source}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(e) => e.stopPropagation()}
-                              className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-                              title="Source"
-                            >
-                              source ↗
-                            </a>
-                          )}
-                        </div>
+                        <ContactMeta contact={c} />
                       </div>
                     </label>
                   );
@@ -1644,6 +1586,71 @@ function DraftLine({
       <div className="text-sm whitespace-pre-wrap bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2 text-zinc-800 dark:text-zinc-200">
         {text}
       </div>
+    </div>
+  );
+}
+
+function ContactMeta({ contact }: { contact: CandidateContact }) {
+  return (
+    <div className="flex items-center gap-2 mt-1 text-xs flex-wrap">
+      <span className={`px-1.5 py-0.5 rounded text-[10px] ${ROLE_COLORS[contact.role_category] ?? ROLE_COLORS.other}`}>
+        {ROLE_LABELS[contact.role_category] ?? contact.role_category}
+      </span>
+      <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
+        contact.confidence === "high" ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300"
+        : contact.confidence === "medium" ? "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300"
+        : "bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300"
+      }`}>
+        {contact.confidence}
+      </span>
+      {contact.origin && (
+        <span
+          className={`px-1.5 py-0.5 rounded text-[10px] font-medium inline-flex items-center gap-1 ${
+            contact.origin === "apollo"
+              ? "bg-sky-100 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300"
+              : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+          }`}
+          title={contact.origin === "apollo" ? "Verified via Apollo" : "Discovered via web search"}
+        >
+          {contact.origin === "apollo" ? <ShieldCheck size={9} /> : <Search size={9} />}
+          {contact.origin}
+        </span>
+      )}
+      {contact.linkedin_url ? (
+        <a
+          href={contact.linkedin_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="inline-flex items-center gap-1 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+        >
+          <ExternalLink size={10} /> LinkedIn
+        </a>
+      ) : (
+        <span className="text-zinc-400 italic">no LinkedIn URL</span>
+      )}
+      {contact.email && (
+        <a
+          href={`mailto:${contact.email}`}
+          onClick={(e) => e.stopPropagation()}
+          className="inline-flex items-center gap-1 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+          title={contact.email}
+        >
+          <Mail size={10} /> email
+        </a>
+      )}
+      {contact.source && (
+        <a
+          href={contact.source}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+          title="Source"
+        >
+          source ↗
+        </a>
+      )}
     </div>
   );
 }

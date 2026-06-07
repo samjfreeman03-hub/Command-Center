@@ -161,6 +161,7 @@ export type CandidateContact = {
   name: string;
   title: string;
   linkedin_url: string | null;
+  email: string | null;
   role_category:
     | "college-or-next-gen"
     | "influencer-or-partnerships"
@@ -170,6 +171,8 @@ export type CandidateContact = {
     | "other";
   source: string | null;
   confidence: "high" | "medium" | "low";
+  /** "apollo" when the contact came from Apollo's verified DB, "web_search" when from Claude's web search fallback. */
+  origin?: "apollo" | "web_search";
 };
 
 export type OutreachSignals = {
@@ -187,6 +190,7 @@ export type OutreachTarget = {
   person_name: string;
   person_title: string | null;
   linkedin_url: string | null;
+  person_email: string | null;
   source: "manual" | "auto-generated" | "import" | null;
   status: OutreachStatus;
   signals_json: string | null;

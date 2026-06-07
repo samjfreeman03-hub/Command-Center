@@ -193,6 +193,7 @@ function migrateAlter(db: Database.Database) {
   try { db.exec("ALTER TABLE todos ADD COLUMN assigned_to INTEGER"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE businesses ADD COLUMN tagline TEXT"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE brand_contacts ADD COLUMN website TEXT"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE outreach_targets ADD COLUMN person_email TEXT"); } catch { /* already exists */ }
 }
 
 function seed(db: Database.Database) {
@@ -770,14 +771,15 @@ export const db = {
     brand_size?: "enterprise" | "midsize" | "emerging";
     person_title?: string;
     linkedin_url?: string;
+    person_email?: string;
     source?: "manual" | "auto-generated" | "import";
     notes?: string;
   }): OutreachTarget {
     const now = Date.now();
     const result = getDb()
       .prepare(`INSERT INTO outreach_targets
-        (business_id, brand_name, brand_category, brand_size, person_name, person_title, linkedin_url, source, notes, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        (business_id, brand_name, brand_category, brand_size, person_name, person_title, linkedin_url, person_email, source, notes, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(
         input.business_id,
         input.brand_name.trim(),
@@ -786,6 +788,7 @@ export const db = {
         input.person_name.trim(),
         input.person_title?.trim() ?? null,
         input.linkedin_url?.trim() ?? null,
+        input.person_email?.trim() ?? null,
         input.source ?? "manual",
         input.notes?.trim() ?? null,
         now,
@@ -806,7 +809,7 @@ export const db = {
   updateOutreach(id: number, patch: Partial<OutreachTarget>): OutreachTarget {
     const allowed = [
       "brand_name", "brand_category", "brand_size",
-      "person_name", "person_title", "linkedin_url",
+      "person_name", "person_title", "linkedin_url", "person_email",
       "status", "signals_json", "drafts_json", "sent_history_json",
       "sent_at", "replied_at", "next_followup_at", "followup_count",
       "converted_lead_id", "notes",
