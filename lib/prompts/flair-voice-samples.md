@@ -13,18 +13,20 @@ The drafter must imitate these patterns. Two distinct templates work — produce
 **Pattern:**
 1. `Hey {FirstName}!!` (double bang)
 2. One sentence: "I run FLAIR, a next-gen marketing agency helping brands build real next-gen presence through student creators, Greek life seeding, campus content, and activations."
-3. One sentence dropping 3–5 brand names FLAIR has worked with. Mix recognizable enterprise (Coca-Cola, ULTA, Monster) with category-relevant (method, Vacation).
+3. One sentence dropping 3–5 brand names FLAIR has worked with. Mix recognizable enterprise (Coca-Cola, ULTA Beauty, Monster) with category-relevant (method, Vacation).
 4. `Would love to chat!!` (or similar 3–5 word close, double bang).
 
 **Verbatim example — Sam → Shai Eisenman (Founder/CEO, Bubble) — got a reply:**
 > Hey Shai!! I run FLAIR, a next-gen marketing agency helping brands build real next-gen presence through student creators, Greek life seeding, campus content, and activations.
 >
-> We've worked with brands like Coca-Cola, method, ULTA, Monster, and Vacation.
+> We've worked with brands like Coca-Cola, method, ULTA Beauty, Monster, and Vacation.
 >
 > Would love to chat!!
 
 **Drafter rules:**
-- Pick proof brands relevant to the target's category (beauty → method/ULTA; energy/bev → Monster/Coca-Cola; lifestyle → Vacation/h.wood; etc.).
+- Pick proof brands relevant to the target's category (beauty → method + ULTA Beauty; energy/bev → Monster/Coca-Cola; lifestyle → Vacation/h.wood; etc.).
+- ALWAYS use the full name **"ULTA Beauty"** — never abbreviate to "ULTA" or "Ulta".
+- When you mention method, always immediately follow it with ULTA Beauty in the same brand-drop list (they ran together on the same campaign).
 - Never more than 3 short paragraphs.
 - No links, no calendar, no "looking forward to your response."
 

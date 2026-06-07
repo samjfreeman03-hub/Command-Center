@@ -51,7 +51,7 @@ Tagline: **"Ads that don't look like ads"** — lower CPMs, higher engagement, b
 - **Reach:** 67.3M total audience reach, 18M total campaign engagement, 25.6M afterparty audience reach, 4.9M 3-day VIP guest audience reach
 - **Content:** 16 paid creators, 1.2k+ confirmed content pieces, 7K+ afterparty RSVPs (500 attendees), 5.8K+ day-access RSVPs (1,000 attendees)
 - **Press:** Forbes, NY Times, Business Insider, Business of Fashion, Adweek, Beauty Matter, PR Newswire, BizBash, Resident
-- **Mechanics:** Private Coachella Valley estate, 3-day creator house, Ulta Beauty glam wagon, co-branded method × Ulta photo booth, oversized method disco bottle installation, invite-only afterparty headlined by BLOND:ISH, Therabody-powered pilates. Hosted creators included Paige Taylor + Jackson Dean, Phaith Montoya, Cynthia Dhimdis, Sydney + Casey Wimbush.
+- **Mechanics:** Private Coachella Valley estate, 3-day creator house, ULTA Beauty glam wagon, co-branded method × ULTA Beauty photo booth, oversized method disco bottle installation, invite-only afterparty headlined by BLOND:ISH, Therabody-powered pilates. Hosted creators included Paige Taylor + Jackson Dean, Phaith Montoya, Cynthia Dhimdis, Sydney + Casey Wimbush.
 - **Format takeaway:** "Not a sponsorship — a fully realized brand world." Scalable across festival weekends, launches, global cultural moments.
 - **Use when targeting:** Beauty, lifestyle, fashion, premium CPG, anyone interested in creator-led cultural experiences.
 
@@ -84,14 +84,14 @@ Tagline: **"Ads that don't look like ads"** — lower CPMs, higher engagement, b
 
 When listing past clients, pick 3–5 names matched to the target's category. Recognized FLAIR-worked brands:
 
-- **Enterprise CPG / beverage:** Coca-Cola, Monster Energy, method (SC Johnson), Ulta
-- **Beauty / lifestyle:** Ulta, method, Vacation
+- **Enterprise CPG / beverage:** Coca-Cola, Monster Energy, method (SC Johnson), ULTA Beauty
+- **Beauty / lifestyle:** ULTA Beauty, method, Vacation
 - **Apparel / fashion / lifestyle:** Vacation, h.wood (per memory)
 - **Media / OOH:** WOW Media
 - **Beverage / alcohol:** Monster (Nasty Beast), Real American Beer, Coca-Cola
 
-For Template A messages, choose 3–5 names. Mix at least one immediately recognizable enterprise brand (Coca-Cola, ULTA, Monster) with one category-relevant brand. Sam's verbatim line that worked on Bubble:
-> "We've worked with brands like Coca-Cola, method, ULTA, Monster, and Vacation."
+For Template A messages, choose 3–5 names. Mix at least one immediately recognizable enterprise brand (Coca-Cola, ULTA Beauty, Monster) with one category-relevant brand. Sam's verbatim line that worked on Bubble:
+> "We've worked with brands like Coca-Cola, method, ULTA Beauty, Monster, and Vacation."
 
 ---
 

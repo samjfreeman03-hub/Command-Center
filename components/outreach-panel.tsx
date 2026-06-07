@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { OutreachTarget, OutreachStatus, OutreachDrafts, OutreachSignals, CandidateContact } from "@/lib/types";
 import { OUTREACH_STATUSES } from "@/lib/types";
 import {
-  Plus, Sparkles, Copy, Check, ExternalLink, Trash2, Loader2, Clock, Send, RotateCcw, Search, Wand2,
+  Plus, Sparkles, Copy, Check, ExternalLink, Trash2, Loader2, Clock, Send, RotateCcw, Search, Wand2, UserSearch, Users,
 } from "lucide-react";
 import { useShareHeaders } from "@/lib/share-context";
 
@@ -78,7 +78,16 @@ export function OutreachPanel({
   // or `${brandIdx}:placeholder` for a brand-as-placeholder (no contact yet).
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [bulkAdding, setBulkAdding] = useState(false);
+  // Per-target "Find contacts" state
+  const [findingContactsId, setFindingContactsId] = useState<number | null>(null);
+  const [foundContacts, setFoundContacts] = useState<Record<number, CandidateContact[]>>({});
+  const [selectedFound, setSelectedFound] = useState<Record<number, Set<number>>>({});
+  // Bulk backfill state
+  const [bulkBackfilling, setBulkBackfilling] = useState(false);
+  const [backfillProgress, setBackfillProgress] = useState<{ done: number; total: number; added: number } | null>(null);
   const shareHeaders = useShareHeaders();
+
+  const PLACEHOLDER_NAME = "(to research)";
 
   function setField<K extends keyof typeof EMPTY_FORM>(key: K, val: (typeof EMPTY_FORM)[K]) {
     setForm((f) => ({ ...f, [key]: val }));
@@ -347,6 +356,160 @@ export function OutreachPanel({
     });
   }
 
+  async function findContacts(target: OutreachTarget) {
+    setFindingContactsId(target.id);
+    try {
+      const res = await fetch(`/api/outreach/${target.id}/find-contacts`, {
+        method: "POST",
+        headers: shareHeaders,
+      });
+      if (res.ok) {
+        const data: { contacts: CandidateContact[] } = await res.json();
+        const contacts = data.contacts ?? [];
+        setFoundContacts((prev) => ({ ...prev, [target.id]: contacts }));
+        // Pre-select high + medium confidence by default
+        const presel = new Set<number>();
+        contacts.forEach((c, i) => {
+          if (c.confidence === "high" || c.confidence === "medium") presel.add(i);
+        });
+        setSelectedFound((prev) => ({ ...prev, [target.id]: presel }));
+        setExpandedId(target.id);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`Find contacts failed: ${err.error ?? res.statusText}`);
+      }
+    } finally {
+      setFindingContactsId(null);
+    }
+  }
+
+  function toggleFoundContact(targetId: number, contactIdx: number) {
+    setSelectedFound((prev) => {
+      const cur = prev[targetId] ?? new Set<number>();
+      const next = new Set(cur);
+      if (next.has(contactIdx)) next.delete(contactIdx); else next.add(contactIdx);
+      return { ...prev, [targetId]: next };
+    });
+  }
+
+  async function addFoundContacts(target: OutreachTarget) {
+    const contacts = foundContacts[target.id];
+    const selected = selectedFound[target.id];
+    if (!contacts || !selected || selected.size === 0) return;
+    const newTargets: OutreachTarget[] = [];
+    for (const idx of Array.from(selected).sort((a, b) => a - b)) {
+      const c = contacts[idx];
+      if (!c) continue;
+      const res = await fetch("/api/outreach", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...shareHeaders },
+        body: JSON.stringify({
+          business_id: target.business_id,
+          brand_name: target.brand_name,
+          brand_category: target.brand_category,
+          brand_size: target.brand_size,
+          person_name: c.name,
+          person_title: c.title,
+          linkedin_url: c.linkedin_url,
+          source: "auto-generated",
+          notes: `Backfilled contact for ${target.brand_name}\nRole: ${ROLE_LABELS[c.role_category] ?? c.role_category} | Confidence: ${c.confidence}\nSource: ${c.source ?? "(none)"}`,
+        }),
+      });
+      if (res.ok) newTargets.push(await res.json());
+    }
+    setTargets((prev) => [...newTargets, ...prev]);
+    // Retire the original placeholder if it was one
+    if (target.person_name === PLACEHOLDER_NAME) {
+      const res = await fetch(`/api/outreach/${target.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", ...shareHeaders },
+        body: JSON.stringify({
+          status: "dead",
+          notes: `${target.notes ?? ""}\n\n[Retired: backfilled with ${newTargets.length} real contacts]`.trim(),
+        }),
+      });
+      if (res.ok) {
+        const updated: OutreachTarget = await res.json();
+        setTargets((prev) => prev.map((t) => (t.id === target.id ? updated : t)));
+      }
+    }
+    setFoundContacts((prev) => { const n = { ...prev }; delete n[target.id]; return n; });
+    setSelectedFound((prev) => { const n = { ...prev }; delete n[target.id]; return n; });
+  }
+
+  async function bulkBackfill() {
+    const placeholders = targets.filter(
+      (t) => t.person_name === PLACEHOLDER_NAME && t.status !== "dead"
+    );
+    if (placeholders.length === 0) return;
+    const costEst = (placeholders.length * 0.8).toFixed(2);
+    if (!confirm(
+      `Backfill contacts for ${placeholders.length} placeholder brand${placeholders.length === 1 ? "" : "s"}?\n\n` +
+      `• High + medium confidence contacts will be auto-added as new targets\n` +
+      `• Placeholders will be marked dead (audit kept in notes)\n` +
+      `• Estimated cost: ~$${costEst}\n\n` +
+      `This runs sequentially and may take ${placeholders.length * 30}s+`
+    )) return;
+
+    setBulkBackfilling(true);
+    setBackfillProgress({ done: 0, total: placeholders.length, added: 0 });
+    let added = 0;
+    for (let i = 0; i < placeholders.length; i++) {
+      const t = placeholders[i];
+      try {
+        const findRes = await fetch(`/api/outreach/${t.id}/find-contacts`, {
+          method: "POST",
+          headers: shareHeaders,
+        });
+        if (findRes.ok) {
+          const { contacts }: { contacts: CandidateContact[] } = await findRes.json();
+          const auto = (contacts ?? []).filter(
+            (c) => c.confidence === "high" || c.confidence === "medium"
+          );
+          for (const c of auto) {
+            const res = await fetch("/api/outreach", {
+              method: "POST",
+              headers: { "content-type": "application/json", ...shareHeaders },
+              body: JSON.stringify({
+                business_id: t.business_id,
+                brand_name: t.brand_name,
+                brand_category: t.brand_category,
+                brand_size: t.brand_size,
+                person_name: c.name,
+                person_title: c.title,
+                linkedin_url: c.linkedin_url,
+                source: "auto-generated",
+                notes: `Backfilled contact for ${t.brand_name}\nRole: ${ROLE_LABELS[c.role_category] ?? c.role_category} | Confidence: ${c.confidence}\nSource: ${c.source ?? "(none)"}`,
+              }),
+            });
+            if (res.ok) {
+              const created: OutreachTarget = await res.json();
+              setTargets((prev) => [created, ...prev]);
+              added++;
+            }
+          }
+          const patchRes = await fetch(`/api/outreach/${t.id}`, {
+            method: "PATCH",
+            headers: { "content-type": "application/json", ...shareHeaders },
+            body: JSON.stringify({
+              status: "dead",
+              notes: `${t.notes ?? ""}\n\n[Retired by bulk backfill: ${auto.length} contacts added]`.trim(),
+            }),
+          });
+          if (patchRes.ok) {
+            const updated: OutreachTarget = await patchRes.json();
+            setTargets((prev) => prev.map((x) => (x.id === t.id ? updated : x)));
+          }
+        }
+      } catch {
+        // continue on errors — partial progress is fine
+      }
+      setBackfillProgress({ done: i + 1, total: placeholders.length, added });
+    }
+    setBulkBackfilling(false);
+    setTimeout(() => setBackfillProgress(null), 8000);
+  }
+
   async function remove(id: number) {
     if (!confirm("Delete this outreach target?")) return;
     setTargets((prev) => prev.filter((t) => t.id !== id));
@@ -460,10 +623,17 @@ export function OutreachPanel({
                   expanded={expandedId === t.id}
                   drafting={draftingId === t.id}
                   enriching={enrichingId === t.id}
+                  findingContacts={findingContactsId === t.id}
+                  foundContacts={foundContacts[t.id]}
+                  selectedFound={selectedFound[t.id]}
                   copiedKey={copiedKey}
+                  isPlaceholder={t.person_name === PLACEHOLDER_NAME}
                   onToggle={() => setExpandedId((cur) => (cur === t.id ? null : t.id))}
                   onDraft={() => draft(t)}
                   onEnrich={() => enrich(t)}
+                  onFindContacts={() => findContacts(t)}
+                  onToggleFoundContact={(idx) => toggleFoundContact(t.id, idx)}
+                  onAddFoundContacts={() => addFoundContacts(t)}
                   onMarkSent={(template) => markSent(t, template)}
                   onMarkReplied={() => markReplied(t.id)}
                   onMarkStatus={(s) => markStatusGeneric(t.id, s)}
@@ -517,6 +687,45 @@ export function OutreachPanel({
       {/* ALL view */}
       {view === "all" && (
         <div className="space-y-3">
+          {/* Bulk backfill banner */}
+          {(() => {
+            const placeholders = targets.filter(
+              (t) => t.person_name === PLACEHOLDER_NAME && t.status !== "dead"
+            );
+            if (placeholders.length === 0 && !backfillProgress) return null;
+            return (
+              <div className="border border-amber-200 dark:border-amber-900/40 rounded-lg p-3 bg-amber-50/40 dark:bg-amber-950/15 flex items-center justify-between gap-3 flex-wrap">
+                <div className="text-sm text-zinc-700 dark:text-zinc-300">
+                  {backfillProgress ? (
+                    <span>
+                      <Loader2 size={12} className="inline animate-spin mr-1.5" />
+                      Backfilling {backfillProgress.done} / {backfillProgress.total} brands ·{" "}
+                      <span className="font-medium text-emerald-700 dark:text-emerald-400">
+                        {backfillProgress.added} contacts added
+                      </span>
+                    </span>
+                  ) : (
+                    <span>
+                      <Users size={13} className="inline mr-1.5 text-amber-700 dark:text-amber-400" />
+                      <span className="font-medium">{placeholders.length}</span> brand
+                      {placeholders.length === 1 ? "" : "s"} added without a contact yet.
+                    </span>
+                  )}
+                </div>
+                {!backfillProgress && (
+                  <button
+                    onClick={bulkBackfill}
+                    disabled={bulkBackfilling}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+                  >
+                    <UserSearch size={13} />
+                    Backfill all contacts (~${(placeholders.length * 0.8).toFixed(2)})
+                  </button>
+                )}
+              </div>
+            );
+          })()}
+
           <div className="flex items-center gap-1.5 flex-wrap">
             <FilterChip active={filter === "all"} onClick={() => setFilter("all")}>
               All <span className="opacity-50">{targets.length}</span>
@@ -545,10 +754,17 @@ export function OutreachPanel({
                   expanded={expandedId === t.id}
                   drafting={draftingId === t.id}
                   enriching={enrichingId === t.id}
+                  findingContacts={findingContactsId === t.id}
+                  foundContacts={foundContacts[t.id]}
+                  selectedFound={selectedFound[t.id]}
                   copiedKey={copiedKey}
+                  isPlaceholder={t.person_name === PLACEHOLDER_NAME}
                   onToggle={() => setExpandedId((cur) => (cur === t.id ? null : t.id))}
                   onDraft={() => draft(t)}
                   onEnrich={() => enrich(t)}
+                  onFindContacts={() => findContacts(t)}
+                  onToggleFoundContact={(idx) => toggleFoundContact(t.id, idx)}
+                  onAddFoundContacts={() => addFoundContacts(t)}
                   onMarkSent={(template) => markSent(t, template)}
                   onMarkReplied={() => markReplied(t.id)}
                   onMarkStatus={(s) => markStatusGeneric(t.id, s)}
@@ -944,16 +1160,25 @@ function Input({
 }
 
 function TargetCard({
-  target, expanded, drafting, enriching, copiedKey, onToggle, onDraft, onEnrich, onMarkSent, onMarkReplied, onMarkStatus, onCopy, onDelete,
+  target, expanded, drafting, enriching, findingContacts, foundContacts, selectedFound, copiedKey, isPlaceholder,
+  onToggle, onDraft, onEnrich, onFindContacts, onToggleFoundContact, onAddFoundContacts,
+  onMarkSent, onMarkReplied, onMarkStatus, onCopy, onDelete,
 }: {
   target: OutreachTarget;
   expanded: boolean;
   drafting: boolean;
   enriching: boolean;
+  findingContacts: boolean;
+  foundContacts?: CandidateContact[];
+  selectedFound?: Set<number>;
   copiedKey: string | null;
+  isPlaceholder: boolean;
   onToggle: () => void;
   onDraft: () => void;
   onEnrich: () => void;
+  onFindContacts: () => void;
+  onToggleFoundContact: (idx: number) => void;
+  onAddFoundContacts: () => void;
   onMarkSent: (template: "A" | "B") => void;
   onMarkReplied: () => void;
   onMarkStatus: (s: OutreachStatus) => void;
@@ -1000,8 +1225,21 @@ function TargetCard({
           </a>
         )}
         <button
+          onClick={onFindContacts}
+          disabled={findingContacts || drafting || enriching}
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md disabled:opacity-50 ${
+            isPlaceholder
+              ? "bg-amber-600 text-white hover:bg-amber-700"
+              : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          }`}
+          title={isPlaceholder ? "Find real contacts at this brand (placeholder)" : "Find more contacts at this brand"}
+        >
+          {findingContacts ? <Loader2 size={12} className="animate-spin" /> : <UserSearch size={12} />}
+          {isPlaceholder ? "Find contacts" : "Contacts"}
+        </button>
+        <button
           onClick={onEnrich}
-          disabled={enriching || drafting}
+          disabled={enriching || drafting || findingContacts}
           className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50"
           title={signals ? "Refresh signals" : "Search web for brand signals"}
         >
@@ -1010,8 +1248,9 @@ function TargetCard({
         </button>
         <button
           onClick={onDraft}
-          disabled={drafting || enriching}
+          disabled={drafting || enriching || findingContacts || isPlaceholder}
           className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50"
+          title={isPlaceholder ? "Find a real contact first" : undefined}
         >
           {drafting ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
           {drafts ? "Redraft" : "Draft"}
@@ -1020,6 +1259,90 @@ function TargetCard({
 
       {expanded && (
         <div className="border-t border-zinc-200 dark:border-zinc-800 p-4 space-y-4 bg-zinc-50/50 dark:bg-zinc-950/30">
+          {/* Found contacts section */}
+          {foundContacts && foundContacts.length > 0 && (
+            <div className="border border-amber-200 dark:border-amber-900/40 rounded-md bg-amber-50/40 dark:bg-amber-950/15 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="text-xs font-semibold text-amber-900 dark:text-amber-200">
+                  <UserSearch size={12} className="inline mr-1" /> Found {foundContacts.length} contact{foundContacts.length === 1 ? "" : "s"} at {target.brand_name}
+                </div>
+                <button
+                  onClick={onAddFoundContacts}
+                  disabled={!selectedFound || selectedFound.size === 0}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  <Plus size={12} /> Add {selectedFound?.size ?? 0} as targets
+                  {isPlaceholder && " (retire placeholder)"}
+                </button>
+              </div>
+              <div className="space-y-1">
+                {foundContacts.map((c, idx) => {
+                  const checked = selectedFound?.has(idx) ?? false;
+                  return (
+                    <label
+                      key={idx}
+                      className={`flex items-start gap-2 p-2 rounded-md cursor-pointer transition-colors ${
+                        checked
+                          ? "bg-emerald-50/60 dark:bg-emerald-950/20"
+                          : "bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800/40"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => onToggleFoundContact(idx)}
+                        className="mt-1"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline gap-2 flex-wrap">
+                          <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{c.name}</span>
+                          <span className="text-xs text-zinc-600 dark:text-zinc-400">{c.title}</span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1 text-xs flex-wrap">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] ${ROLE_COLORS[c.role_category] ?? ROLE_COLORS.other}`}>
+                            {ROLE_LABELS[c.role_category] ?? c.role_category}
+                          </span>
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
+                            c.confidence === "high" ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300"
+                            : c.confidence === "medium" ? "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300"
+                            : "bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300"
+                          }`}>
+                            {c.confidence}
+                          </span>
+                          {c.linkedin_url ? (
+                            <a
+                              href={c.linkedin_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center gap-1 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+                            >
+                              <ExternalLink size={10} /> LinkedIn
+                            </a>
+                          ) : (
+                            <span className="text-zinc-400 italic">no LinkedIn URL</span>
+                          )}
+                          {c.source && (
+                            <a
+                              href={c.source}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                              title="Source"
+                            >
+                              source ↗
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {signals && (
             <details className="text-xs" open={!drafts}>
               <summary className="cursor-pointer text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 font-medium">
