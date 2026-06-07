@@ -99,7 +99,7 @@ export async function POST(
   let used: "apollo" | "web_search" | "apollo+web_search" = "apollo";
   if (apolloIsConfigured()) {
     try {
-      contacts = await apolloFindContactsForBrand(target.brand_name);
+      contacts = await apolloFindContactsForBrand(target.brand_name, 5, target.brand_category);
     } catch (err) {
       console.warn("[find-contacts] Apollo failed:", err);
       contacts = [];

@@ -176,7 +176,7 @@ Return ONLY the JSON object.`,
       let contacts: CandidateContact[] = [];
       if (apolloOK) {
         try {
-          contacts = await apolloFindContactsForBrand(b.brand_name);
+          contacts = await apolloFindContactsForBrand(b.brand_name, 5, b.category);
           if (contacts.length > 0) apolloHits++;
         } catch {
           contacts = [];

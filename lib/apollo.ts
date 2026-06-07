@@ -65,6 +65,9 @@ type ApolloOrganization = {
   website_url?: string | null;
   primary_domain?: string | null;
   estimated_num_employees?: number;
+  industry?: string | null;
+  keywords?: string[] | null;
+  short_description?: string | null;
 };
 
 export function apolloIsConfigured(): boolean {
@@ -90,12 +93,51 @@ async function apolloPost<T = unknown>(pathname: string, body: object): Promise<
   return (await res.json()) as T;
 }
 
+async function apolloGet<T = unknown>(pathname: string): Promise<T | null> {
+  const apiKey = process.env.APOLLO_API_KEY;
+  if (!apiKey) throw new Error("APOLLO_API_KEY not set");
+  const res = await fetch(`${APOLLO_BASE}${pathname}`, {
+    method: "GET",
+    headers: {
+      "X-Api-Key": apiKey,
+      "content-type": "application/json",
+      "Cache-Control": "no-cache",
+    },
+  });
+  if (!res.ok) return null;
+  return (await res.json()) as T;
+}
+
 /**
- * Look up the most likely Apollo organization for a brand name. Picks the
- * largest match by employee count to disambiguate when multiple companies
- * share a name (e.g. "Bubble" → Bubble Skincare not Bubble.io).
+ * Enrich a single org by domain. Returns rich data including industry name,
+ * keywords, descriptions, employee count — fields not present in the basic
+ * /mixed_companies/search response. Used for disambiguation when multiple
+ * orgs share a name.
  */
-export async function apolloSearchOrg(brandName: string): Promise<ApolloOrganization | null> {
+async function apolloEnrichOrg(domain: string): Promise<ApolloOrganization | null> {
+  if (!domain) return null;
+  const res = await apolloGet<{ organization?: ApolloOrganization }>(
+    `/organizations/enrich?domain=${encodeURIComponent(domain)}`
+  );
+  return res?.organization ?? null;
+}
+
+/**
+ * Look up the most likely Apollo organization for a brand name.
+ *
+ * Disambiguation strategy when multiple companies share a name:
+ *   1. Exact case-insensitive name match wins.
+ *   2. If brand_category is provided, prefer the org whose domain or name
+ *      hints at that category (e.g. "skincare" in the domain for a beauty brand).
+ *   3. Otherwise prefer the largest org by employee count.
+ *
+ * Example: "Bubble" returns bubble.io, hellobubble.com (skincare), joinbubble.com.
+ *          With category="beauty" we'd prefer hellobubble.com.
+ */
+export async function apolloSearchOrg(
+  brandName: string,
+  brandCategory?: string | null
+): Promise<ApolloOrganization | null> {
   try {
     const res = await apolloPost<{ organizations?: ApolloOrganization[] }>(
       "/mixed_companies/search",
@@ -107,10 +149,61 @@ export async function apolloSearchOrg(brandName: string): Promise<ApolloOrganiza
     );
     const orgs = res.organizations ?? [];
     if (orgs.length === 0) return null;
-    // Prefer exact name match; otherwise largest by employee count
+
     const exact = orgs.find(
       (o) => (o.name ?? "").toLowerCase() === brandName.toLowerCase()
     );
+    if (exact && orgs.filter((o) => (o.name ?? "").toLowerCase() === brandName.toLowerCase()).length === 1) {
+      return exact;
+    }
+
+    // Category-aware tie-breaker when multiple orgs share the name.
+    // For exact-name collisions, call /organizations/enrich per candidate
+    // to fetch industry + keywords + description (not in basic search response).
+    const exactMatches = orgs.filter(
+      (o) => (o.name ?? "").toLowerCase() === brandName.toLowerCase()
+    );
+    const needsDisambiguation = exactMatches.length > 1 || (!exact && orgs.length > 1);
+
+    if (brandCategory && needsDisambiguation) {
+      const categoryHints: Record<string, string[]> = {
+        beauty: ["beauty", "skincare", "skin care", "cosmetics", "makeup", "haircare", "personal care", "fragrance"],
+        wellness: ["wellness", "supplement", "vitamin", "health", "fitness", "nutrition"],
+        lifestyle: ["lifestyle", "apparel", "fashion", "home"],
+        fashion: ["fashion", "apparel", "clothing", "wear"],
+        apparel: ["apparel", "clothing", "wear", "fashion", "garment"],
+        cpg: ["food", "beverage", "snack", "consumer goods", "consumer packaged"],
+        beverage: ["beverage", "drinks", "drink", "energy drink", "soda", "spirits", "alcohol"],
+        edtech: ["edu", "education", "learning", "school", "tutoring"],
+        "dtc-genz": ["beauty", "wellness", "skincare", "lifestyle"],
+        enterprise: ["enterprise"],
+      };
+      const hints = categoryHints[brandCategory.toLowerCase()] ?? [brandCategory.toLowerCase()];
+      // Limit enrich to top 5 candidates to cap API calls
+      const candidates = (exactMatches.length > 0 ? exactMatches : orgs).slice(0, 5);
+      const enriched = await Promise.all(
+        candidates.map(async (o) => {
+          const domain = o.primary_domain ?? (o.website_url ? new URL(o.website_url).hostname.replace(/^www\./, "") : null);
+          const richer = domain ? await apolloEnrichOrg(domain) : null;
+          // Merge — prefer enriched fields when present
+          return { ...o, ...(richer ?? {}) };
+        })
+      );
+      const categoryMatch = enriched.find((o) => {
+        const fields = [
+          o.name,
+          o.primary_domain,
+          o.website_url,
+          o.industry,
+          o.short_description,
+          ...(o.keywords ?? []),
+        ];
+        const blob = fields.filter(Boolean).join(" ").toLowerCase();
+        return hints.some((h) => blob.includes(h));
+      });
+      if (categoryMatch) return categoryMatch;
+    }
+
     if (exact) return exact;
     return orgs
       .slice()
@@ -176,18 +269,24 @@ async function apolloMatchPerson(person: ApolloPerson): Promise<ApolloPerson | n
  */
 export async function apolloFindContactsForBrand(
   brandName: string,
-  maxResults = 5
+  maxResults = 5,
+  brandCategory?: string | null
 ): Promise<CandidateContact[]> {
-  const org = await apolloSearchOrg(brandName);
+  const org = await apolloSearchOrg(brandName, brandCategory);
   if (!org) return [];
 
   let peopleResp: { people?: ApolloPerson[] };
   try {
+    // /mixed_people/api_search is the API-caller endpoint;
+    // /mixed_people/search is deprecated for API access (UI-only).
+    // person_seniorities filter excludes ambassadors/interns/associates —
+    // we only want decision-makers who control marketing budget.
     peopleResp = await apolloPost<{ people?: ApolloPerson[] }>(
-      "/mixed_people/search",
+      "/mixed_people/api_search",
       {
         organization_ids: [org.id],
         person_titles: ICP_TITLE_KEYWORDS,
+        person_seniorities: ["c_suite", "founder", "owner", "vp", "head", "director", "manager", "senior"],
         page: 1,
         per_page: 25,
       }
