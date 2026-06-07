@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
 import { BUSINESSES } from "./businesses";
-import type { Todo, Lead, Note, ChatMessage, LeadAttachment, BusinessResource, TeamMember, BrandContact, BrandAttachment } from "./types";
+import type { Todo, Lead, Note, ChatMessage, LeadAttachment, BusinessResource, TeamMember, BrandContact, BrandAttachment, OutreachTarget, OutreachStatus } from "./types";
 
 const DB_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH
   ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH)
@@ -160,6 +160,32 @@ function migrate(db: Database.Database) {
       created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
     );
     CREATE INDEX IF NOT EXISTS idx_brand_attachments_brand ON brand_attachments(brand_id);
+
+    CREATE TABLE IF NOT EXISTS outreach_targets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      business_id TEXT NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+      brand_name TEXT NOT NULL,
+      brand_category TEXT,
+      brand_size TEXT,
+      person_name TEXT NOT NULL,
+      person_title TEXT,
+      linkedin_url TEXT,
+      source TEXT DEFAULT 'manual',
+      status TEXT NOT NULL DEFAULT 'queued',
+      signals_json TEXT,
+      drafts_json TEXT,
+      sent_history_json TEXT,
+      sent_at INTEGER,
+      replied_at INTEGER,
+      next_followup_at INTEGER,
+      followup_count INTEGER NOT NULL DEFAULT 0,
+      converted_lead_id INTEGER REFERENCES leads(id) ON DELETE SET NULL,
+      notes TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_outreach_business_status ON outreach_targets(business_id, status);
+    CREATE INDEX IF NOT EXISTS idx_outreach_followup ON outreach_targets(next_followup_at);
   `);
 }
 
@@ -715,6 +741,176 @@ export const db = {
       .prepare(`SELECT bc.business_id FROM brand_attachments ba JOIN brand_contacts bc ON bc.id = ba.brand_id WHERE ba.id = ?`)
       .get(id) as { business_id: string } | undefined;
     return row?.business_id ?? null;
+  },
+
+  // ---- Outreach targets ----
+  listOutreach(opts: { businessId: string; status?: OutreachStatus }): OutreachTarget[] {
+    const conds: string[] = ["business_id = ?"];
+    const args: unknown[] = [opts.businessId];
+    if (opts.status) { conds.push("status = ?"); args.push(opts.status); }
+    const sql = `SELECT * FROM outreach_targets WHERE ${conds.join(" AND ")} ORDER BY
+      CASE status
+        WHEN 'drafted' THEN 0
+        WHEN 'queued' THEN 1
+        WHEN 'sent' THEN 2
+        WHEN 'replied' THEN 3
+        WHEN 'converted' THEN 4
+        WHEN 'declined' THEN 5
+        WHEN 'dead' THEN 6
+      END,
+      updated_at DESC`;
+    return getDb().prepare(sql).all(...args) as OutreachTarget[];
+  },
+
+  createOutreach(input: {
+    business_id: string;
+    brand_name: string;
+    person_name: string;
+    brand_category?: string;
+    brand_size?: "enterprise" | "midsize" | "emerging";
+    person_title?: string;
+    linkedin_url?: string;
+    source?: "manual" | "auto-generated" | "import";
+    notes?: string;
+  }): OutreachTarget {
+    const now = Date.now();
+    const result = getDb()
+      .prepare(`INSERT INTO outreach_targets
+        (business_id, brand_name, brand_category, brand_size, person_name, person_title, linkedin_url, source, notes, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(
+        input.business_id,
+        input.brand_name.trim(),
+        input.brand_category?.trim() ?? null,
+        input.brand_size ?? null,
+        input.person_name.trim(),
+        input.person_title?.trim() ?? null,
+        input.linkedin_url?.trim() ?? null,
+        input.source ?? "manual",
+        input.notes?.trim() ?? null,
+        now,
+        now,
+      );
+    return getDb().prepare("SELECT * FROM outreach_targets WHERE id = ?").get(result.lastInsertRowid) as OutreachTarget;
+  },
+
+  getOutreach(id: number): OutreachTarget | undefined {
+    return getDb().prepare("SELECT * FROM outreach_targets WHERE id = ?").get(id) as OutreachTarget | undefined;
+  },
+
+  getOutreachBizId(id: number): string | null {
+    const row = getDb().prepare("SELECT business_id FROM outreach_targets WHERE id = ?").get(id) as { business_id: string } | undefined;
+    return row?.business_id ?? null;
+  },
+
+  updateOutreach(id: number, patch: Partial<OutreachTarget>): OutreachTarget {
+    const allowed = [
+      "brand_name", "brand_category", "brand_size",
+      "person_name", "person_title", "linkedin_url",
+      "status", "signals_json", "drafts_json", "sent_history_json",
+      "sent_at", "replied_at", "next_followup_at", "followup_count",
+      "converted_lead_id", "notes",
+    ] as const;
+    const sets: string[] = [];
+    const args: unknown[] = [];
+    for (const key of allowed) {
+      if (key in patch) {
+        sets.push(`${key} = ?`);
+        args.push((patch as Record<string, unknown>)[key] ?? null);
+      }
+    }
+    if (sets.length === 0) return getDb().prepare("SELECT * FROM outreach_targets WHERE id = ?").get(id) as OutreachTarget;
+    sets.push("updated_at = ?");
+    args.push(Date.now(), id);
+    getDb().prepare(`UPDATE outreach_targets SET ${sets.join(", ")} WHERE id = ?`).run(...args);
+    return getDb().prepare("SELECT * FROM outreach_targets WHERE id = ?").get(id) as OutreachTarget;
+  },
+
+  deleteOutreach(id: number) {
+    getDb().prepare("DELETE FROM outreach_targets WHERE id = ?").run(id);
+  },
+
+  /**
+   * Daily queue for the morning surface.
+   * - newTargets: queued or drafted but never sent, oldest first (up to limit)
+   * - followups: targets with a follow-up due now (next_followup_at <= now and not replied/dead)
+   */
+  listDailyQueue(opts: { businessId: string; limit?: number }): {
+    newTargets: OutreachTarget[];
+    followups: OutreachTarget[];
+  } {
+    const now = Date.now();
+    const limit = opts.limit ?? 10;
+    const newTargets = getDb()
+      .prepare(
+        `SELECT * FROM outreach_targets
+         WHERE business_id = ? AND status IN ('queued', 'drafted') AND sent_at IS NULL
+         ORDER BY created_at ASC
+         LIMIT ?`
+      )
+      .all(opts.businessId, limit) as OutreachTarget[];
+    const followups = getDb()
+      .prepare(
+        `SELECT * FROM outreach_targets
+         WHERE business_id = ?
+           AND status = 'sent'
+           AND next_followup_at IS NOT NULL
+           AND next_followup_at <= ?
+           AND followup_count < 3
+         ORDER BY next_followup_at ASC`
+      )
+      .all(opts.businessId, now) as OutreachTarget[];
+    return { newTargets, followups };
+  },
+
+  /** Cadence map: follow-up #N is sent {DAYS[N]} days after first send. */
+  outreachCadenceDays(n: 1 | 2 | 3): number {
+    return ({ 1: 3, 2: 7, 3: 14 } as const)[n];
+  },
+
+  /** Mark first send. Sets sent_at, schedules follow-up #1 at +3d, appends to history. */
+  markOutreachSent(id: number, payload: { text: string; template: "A" | "B" }): OutreachTarget {
+    const target = getDb().prepare("SELECT * FROM outreach_targets WHERE id = ?").get(id) as OutreachTarget | undefined;
+    if (!target) throw new Error("Target not found");
+    const now = Date.now();
+    const history = target.sent_history_json ? JSON.parse(target.sent_history_json) : [];
+    history.push({ at: now, follow_up_n: 0, template: payload.template, text: payload.text });
+    return this.updateOutreach(id, {
+      status: "sent",
+      sent_at: now,
+      next_followup_at: now + 3 * 86400_000,
+      sent_history_json: JSON.stringify(history),
+    });
+  },
+
+  /** Mark a follow-up sent. Advances followup_count and schedules the next, or clears cadence after #3. */
+  markFollowupSent(id: number, payload: { text: string }): OutreachTarget {
+    const target = getDb().prepare("SELECT * FROM outreach_targets WHERE id = ?").get(id) as OutreachTarget | undefined;
+    if (!target) throw new Error("Target not found");
+    if (!target.sent_at) throw new Error("Cannot send follow-up before first send");
+    const now = Date.now();
+    const nextN = (target.followup_count + 1) as 1 | 2 | 3;
+    const history = target.sent_history_json ? JSON.parse(target.sent_history_json) : [];
+    history.push({ at: now, follow_up_n: nextN, text: payload.text });
+    const nextScheduledN = (nextN + 1) as 2 | 3 | 4;
+    const next_followup_at =
+      nextScheduledN <= 3
+        ? target.sent_at + this.outreachCadenceDays(nextScheduledN as 2 | 3) * 86400_000
+        : null;
+    return this.updateOutreach(id, {
+      followup_count: nextN,
+      next_followup_at,
+      sent_history_json: JSON.stringify(history),
+    });
+  },
+
+  /** Reply received — cancel cadence, flag as replied. */
+  markOutreachReplied(id: number): OutreachTarget {
+    return this.updateOutreach(id, {
+      status: "replied",
+      replied_at: Date.now(),
+      next_followup_at: null,
+    });
   },
 
   // ---- Dashboard helpers ----

@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import type { Business } from "@/lib/businesses";
-import type { Todo, Lead, Note, ChatMessage, BusinessResource, TeamMember, BrandContact } from "@/lib/types";
+import type { Todo, Lead, Note, ChatMessage, BusinessResource, TeamMember, BrandContact, OutreachTarget } from "@/lib/types";
 import { TodosPanel } from "@/components/todos-panel";
 import { PipelinePanel } from "@/components/pipeline-panel";
 import { ResourcesPanel } from "@/components/resources-panel";
@@ -10,11 +10,13 @@ import { NotesPanel } from "@/components/notes-panel";
 import { ChatPanel } from "@/components/chat-panel";
 import { TeamPanel } from "@/components/team-panel";
 import { BrandsPanel } from "@/components/brands-panel";
+import { OutreachPanel } from "@/components/outreach-panel";
 import { Link2, Check, Pencil } from "lucide-react";
 
 const TABS = [
   { id: "todos",     label: "Todos" },
   { id: "pipeline",  label: "Pipeline" },
+  { id: "outreach",  label: "Outreach" },
   { id: "brands",    label: "CRM" },
   { id: "resources", label: "Resources" },
   { id: "notes",     label: "Notes" },
@@ -34,6 +36,7 @@ export function BusinessView({
   initialChat,
   initialMembers,
   initialBrands,
+  initialOutreach,
   shareToken,
   initialTagline,
 }: {
@@ -46,6 +49,7 @@ export function BusinessView({
   initialChat: ChatMessage[];
   initialMembers: TeamMember[];
   initialBrands: BrandContact[];
+  initialOutreach: OutreachTarget[];
   shareToken: string;
   initialTagline: string;
 }) {
@@ -158,6 +162,7 @@ export function BusinessView({
       <div className="w-full px-4 sm:px-8 lg:px-10 pt-5 pb-10 safe-bottom flex-1">
         {tab === "todos"     && <TodosPanel businessId={business.id} initial={initialTodos} members={members} />}
         {tab === "pipeline"  && <PipelinePanel businessId={business.id} initial={initialLeads} />}
+        {tab === "outreach"  && <OutreachPanel businessId={business.id} initial={initialOutreach} />}
         {tab === "brands"    && <BrandsPanel businessId={business.id} initial={initialBrands} />}
         {tab === "resources" && <ResourcesPanel businessId={business.id} initial={initialResources} />}
         {tab === "notes"     && <NotesPanel businessId={business.id} initial={initialNotes} />}

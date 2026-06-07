@@ -124,3 +124,65 @@ export type LeadAttachment = {
   mime_type: string | null;
   created_at: number;
 };
+
+export type OutreachStatus =
+  | "queued"
+  | "drafted"
+  | "sent"
+  | "replied"
+  | "converted"
+  | "declined"
+  | "dead";
+
+export const OUTREACH_STATUSES = [
+  { value: "queued",    label: "Queued",    color: "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400" },
+  { value: "drafted",   label: "Drafted",   color: "bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300" },
+  { value: "sent",      label: "Sent",      color: "bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300" },
+  { value: "replied",   label: "Replied",   color: "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300" },
+  { value: "converted", label: "Converted", color: "bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300" },
+  { value: "declined",  label: "Declined",  color: "bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300" },
+  { value: "dead",      label: "Dead",      color: "bg-zinc-100 dark:bg-zinc-900 text-zinc-400 dark:text-zinc-600" },
+] as const;
+
+export type OutreachDrafts = {
+  templateA: { connectionNote: string; firstDM: string };
+  templateB: { connectionNote: string; firstDM: string };
+  reasoning?: string;
+  generated_at: number;
+};
+
+export type OutreachSignal = {
+  type: "campaign" | "hire" | "funding" | "launch" | "partnership" | "other";
+  summary: string;
+  source: string;
+};
+
+export type OutreachSignals = {
+  signals: OutreachSignal[];
+  summary_for_drafter: string;
+  fetched_at: number;
+};
+
+export type OutreachTarget = {
+  id: number;
+  business_id: string;
+  brand_name: string;
+  brand_category: string | null;
+  brand_size: "enterprise" | "midsize" | "emerging" | null;
+  person_name: string;
+  person_title: string | null;
+  linkedin_url: string | null;
+  source: "manual" | "auto-generated" | "import" | null;
+  status: OutreachStatus;
+  signals_json: string | null;
+  drafts_json: string | null;
+  sent_history_json: string | null;
+  sent_at: number | null;
+  replied_at: number | null;
+  next_followup_at: number | null;
+  followup_count: number;
+  converted_lead_id: number | null;
+  notes: string | null;
+  created_at: number;
+  updated_at: number;
+};

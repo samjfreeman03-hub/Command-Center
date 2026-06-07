@@ -17,7 +17,7 @@ export default async function BusinessPage({
   const business = getBusiness(slug);
   if (!business) notFound();
 
-  const [todos, leads, resources, notes, chat, members, brands] = await Promise.all([
+  const [todos, leads, resources, notes, chat, members, brands, outreach] = await Promise.all([
     Promise.resolve(db.listTodos({ businessId: slug })),
     Promise.resolve(db.listLeads({ businessId: slug })),
     Promise.resolve(db.listBusinessResources(slug)),
@@ -25,6 +25,7 @@ export default async function BusinessPage({
     Promise.resolve(db.listChat(slug)),
     Promise.resolve(db.listTeamMembers(slug)),
     Promise.resolve(db.listBrandContacts(slug)),
+    Promise.resolve(db.listOutreach({ businessId: slug })),
   ]);
 
   const shareToken = db.getOrCreateShareToken(slug);
@@ -41,6 +42,7 @@ export default async function BusinessPage({
       initialChat={chat}
       initialMembers={members}
       initialBrands={brands}
+      initialOutreach={outreach}
       shareToken={shareToken}
       initialTagline={customTagline ?? business.tagline}
     />
