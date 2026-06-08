@@ -4,17 +4,25 @@ import type { CandidateContact } from "./types";
  * Apollo.io API client (server-side only — never import in client components).
  *
  * Docs: https://docs.apollo.io/reference
+ * Requires: Apollo Basic / Pro / Org plan (API access NOT included on Free tier).
  *
  * Endpoints we use:
- *   - POST /api/v1/mixed_companies/search  — find a company by name
- *   - POST /api/v1/mixed_people/search     — find people at a company, filterable by title
- *   - POST /api/v1/people/match            — enrich a single person (unlocks email — costs credit)
+ *   - POST /api/v1/mixed_companies/search  — find a company by name (free)
+ *   - GET  /api/v1/organizations/enrich    — enrich org by domain for disambiguation (free)
+ *   - POST /api/v1/mixed_people/api_search — find people at a company, filter by title + seniority (free)
+ *   - POST /api/v1/people/match            — unlock a single person's email (1 credit)
+ *
+ * Note: /api/v1/mixed_people/search is deprecated for API callers (use api_search).
  *
  * Strategy for FLAIR contact discovery:
- *   1. Resolve brand name → org_id (so we don't pull people from unrelated namesake companies).
- *   2. Search people at that org filtered by ICP-relevant titles.
- *   3. Map results to CandidateContact shape.
- *   4. For any returned person missing a LinkedIn URL, call /people/match to enrich (per user preference).
+ *   1. Resolve brand name → org_id via search; if multiple namesake orgs exist
+ *      AND brand_category is provided, call /organizations/enrich on each and
+ *      pick the one whose industry / keywords match the category.
+ *   2. Search people at that org filtered by ICP-relevant titles AND seniority
+ *      (manager+) so we only get decision-makers, not entry-level ambassadors.
+ *   3. Map results to CandidateContact shape, sorted by role priority.
+ *   4. For any returned person missing a LinkedIn URL, call /people/match to
+ *      unlock their email (per user preference: LinkedIn-first, email fallback).
  */
 
 const APOLLO_BASE = "https://api.apollo.io/api/v1";

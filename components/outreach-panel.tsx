@@ -446,13 +446,15 @@ export function OutreachPanel({
       (t) => t.person_name === PLACEHOLDER_NAME && t.status !== "dead"
     );
     if (placeholders.length === 0) return;
-    const costEst = (placeholders.length * 0.8).toFixed(2);
+    // Cost ≈ ~5 Apollo credits per brand (1 org search + 1 enrich + ~5 people unlocks).
+    // On Pro plan ($99/4000 credits) that's ~$0.025 × 5 = ~$0.13 per brand.
+    const costEst = (placeholders.length * 0.15).toFixed(2);
     if (!confirm(
       `Backfill contacts for ${placeholders.length} placeholder brand${placeholders.length === 1 ? "" : "s"}?\n\n` +
       `• High + medium confidence contacts will be auto-added as new targets\n` +
       `• Placeholders will be marked dead (audit kept in notes)\n` +
-      `• Estimated cost: ~$${costEst}\n\n` +
-      `This runs sequentially and may take ${placeholders.length * 30}s+`
+      `• Estimated cost: ~$${costEst} in Apollo credits (Pro plan)\n\n` +
+      `Runs sequentially, ~${placeholders.length * 8}s total (~8s per brand on Apollo)`
     )) return;
 
     setBulkBackfilling(true);
@@ -724,7 +726,7 @@ export function OutreachPanel({
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
                   >
                     <UserSearch size={13} />
-                    Backfill all contacts (~${(placeholders.length * 0.8).toFixed(2)})
+                    Backfill all contacts (~${(placeholders.length * 0.15).toFixed(2)})
                   </button>
                 )}
               </div>
