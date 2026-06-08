@@ -763,6 +763,30 @@ export const db = {
     return getDb().prepare(sql).all(...args) as OutreachTarget[];
   },
 
+  /**
+   * Check whether an "active" outreach target already exists for this brand+person
+   * at this business. "Active" excludes dead/declined/converted — so re-adding a
+   * previously-dead target is allowed (intentional re-engagement).
+   * Case-insensitive trimmed match.
+   */
+  findActiveDuplicate(input: {
+    business_id: string;
+    brand_name: string;
+    person_name: string;
+  }): OutreachTarget | undefined {
+    const row = getDb()
+      .prepare(
+        `SELECT * FROM outreach_targets
+         WHERE business_id = ?
+           AND LOWER(TRIM(brand_name)) = LOWER(TRIM(?))
+           AND LOWER(TRIM(person_name)) = LOWER(TRIM(?))
+           AND status NOT IN ('dead', 'declined', 'converted')
+         LIMIT 1`
+      )
+      .get(input.business_id, input.brand_name, input.person_name) as OutreachTarget | undefined;
+    return row;
+  },
+
   createOutreach(input: {
     business_id: string;
     brand_name: string;

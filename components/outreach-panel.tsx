@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { OutreachTarget, OutreachStatus, OutreachDrafts, OutreachSignals, CandidateContact } from "@/lib/types";
 import { OUTREACH_STATUSES } from "@/lib/types";
 import {
-  Plus, Sparkles, Copy, Check, ExternalLink, Trash2, Loader2, Clock, Send, RotateCcw, Search, Wand2, UserSearch, Users, Mail, ShieldCheck,
+  Plus, Sparkles, Copy, Check, ExternalLink, Trash2, Loader2, Clock, Send, RotateCcw, Search, Wand2, UserSearch, Users, Mail, ShieldCheck, Download,
 } from "lucide-react";
 import { useShareHeaders } from "@/lib/share-context";
 
@@ -70,6 +70,16 @@ export function OutreachPanel({
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [followupDrafts, setFollowupDrafts] = useState<Record<number, { followup_n: number; text: string; reasoning?: string }>>({});
   const [followupSender, setFollowupSender] = useState<"Sam" | "Tyler">("Sam");
+  // Persist sender choice across page loads
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem("flair-outreach-sender");
+    if (stored === "Sam" || stored === "Tyler") setFollowupSender(stored);
+  }, []);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("flair-outreach-sender", followupSender);
+  }, [followupSender]);
   const [showCandidates, setShowCandidates] = useState(false);
   const [candidatesForm, setCandidatesForm] = useState({ category: "", size: "" as "" | "enterprise" | "midsize" | "emerging", count: 10, focus: "" });
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -105,6 +115,15 @@ export function OutreachPanel({
         brand_size: form.brand_size || undefined,
       }),
     });
+    if (res.status === 409) {
+      const data: { existing?: OutreachTarget } = await res.json().catch(() => ({}));
+      alert(
+        `Already in your queue: ${form.person_name} at ${form.brand_name}` +
+        (data.existing ? ` (status: ${data.existing.status})` : "")
+      );
+      if (data.existing) setExpandedId(data.existing.id);
+      return;
+    }
     if (res.ok) {
       const created: OutreachTarget = await res.json();
       setTargets((prev) => [created, ...prev]);
@@ -174,10 +193,8 @@ export function OutreachPanel({
     }
   }
 
-  async function markSent(target: OutreachTarget, template: "A" | "B") {
-    const drafts: OutreachDrafts | null = target.drafts_json ? JSON.parse(target.drafts_json) : null;
-    if (!drafts) return;
-    const text = template === "A" ? drafts.templateA.firstDM : drafts.templateB.firstDM;
+  async function markSent(target: OutreachTarget, template: "A" | "B", text: string) {
+    if (!text || !text.trim()) return;
     const res = await fetch(`/api/outreach/${target.id}/action`, {
       method: "POST",
       headers: { "content-type": "application/json", ...shareHeaders },
@@ -279,6 +296,7 @@ export function OutreachPanel({
   async function addSelectedCandidates() {
     if (selectedKeys.size === 0) return;
     setBulkAdding(true);
+    let skipped = 0;
     try {
       const newTargets: OutreachTarget[] = [];
       // Group selections by brand for stable ordering
@@ -324,12 +342,16 @@ export function OutreachPanel({
             notes: `${c.why_fit}\n\nBack-to-school hook: ${c.seasonality_hook}${confidence_note}`,
           }),
         });
+        if (res.status === 409) { skipped++; continue; }
         if (res.ok) newTargets.push(await res.json());
       }
       setTargets((prev) => [...newTargets, ...prev]);
       setCandidates([]);
       setSelectedKeys(new Set());
       setShowCandidates(false);
+      if (skipped > 0) {
+        alert(`Added ${newTargets.length} new target${newTargets.length === 1 ? "" : "s"}. Skipped ${skipped} duplicate${skipped === 1 ? "" : "s"} already in your queue.`);
+      }
     } finally {
       setBulkAdding(false);
     }
@@ -400,6 +422,7 @@ export function OutreachPanel({
     const selected = selectedFound[target.id];
     if (!contacts || !selected || selected.size === 0) return;
     const newTargets: OutreachTarget[] = [];
+    let skipped = 0;
     for (const idx of Array.from(selected).sort((a, b) => a - b)) {
       const c = contacts[idx];
       if (!c) continue;
@@ -419,9 +442,13 @@ export function OutreachPanel({
           notes: `Backfilled contact for ${target.brand_name}\nRole: ${ROLE_LABELS[c.role_category] ?? c.role_category} | Confidence: ${c.confidence}${c.origin ? ` | Origin: ${c.origin}` : ""}\nSource: ${c.source ?? "(none)"}`,
         }),
       });
+      if (res.status === 409) { skipped++; continue; }
       if (res.ok) newTargets.push(await res.json());
     }
     setTargets((prev) => [...newTargets, ...prev]);
+    if (skipped > 0) {
+      alert(`Added ${newTargets.length} new contact${newTargets.length === 1 ? "" : "s"}. Skipped ${skipped} duplicate${skipped === 1 ? "" : "s"} (already in queue).`);
+    }
     // Retire the original placeholder if it was one
     if (target.person_name === PLACEHOLDER_NAME) {
       const res = await fetch(`/api/outreach/${target.id}`, {
@@ -489,6 +516,8 @@ export function OutreachPanel({
                 notes: `Backfilled contact for ${t.brand_name}\nRole: ${ROLE_LABELS[c.role_category] ?? c.role_category} | Confidence: ${c.confidence}${c.origin ? ` | Origin: ${c.origin}` : ""}\nSource: ${c.source ?? "(none)"}`,
               }),
             });
+            // 409 = duplicate already in queue — skip silently
+            if (res.status === 409) continue;
             if (res.ok) {
               const created: OutreachTarget = await res.json();
               setTargets((prev) => [created, ...prev]);
@@ -641,7 +670,7 @@ export function OutreachPanel({
                   onFindContacts={() => findContacts(t)}
                   onToggleFoundContact={(idx) => toggleFoundContact(t.id, idx)}
                   onAddFoundContacts={() => addFoundContacts(t)}
-                  onMarkSent={(template) => markSent(t, template)}
+                  onMarkSent={(template, text) => markSent(t, template, text)}
                   onMarkReplied={() => markReplied(t.id)}
                   onMarkStatus={(s) => markStatusGeneric(t.id, s)}
                   onCopy={copy}
@@ -733,19 +762,29 @@ export function OutreachPanel({
             );
           })()}
 
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <FilterChip active={filter === "all"} onClick={() => setFilter("all")}>
-              All <span className="opacity-50">{targets.length}</span>
-            </FilterChip>
-            {OUTREACH_STATUSES.map((s) => (
-              <FilterChip
-                key={s.value}
-                active={filter === s.value}
-                onClick={() => setFilter(s.value)}
-              >
-                {s.label} <span className="opacity-50">{counts[s.value] ?? 0}</span>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <FilterChip active={filter === "all"} onClick={() => setFilter("all")}>
+                All <span className="opacity-50">{targets.length}</span>
               </FilterChip>
-            ))}
+              {OUTREACH_STATUSES.map((s) => (
+                <FilterChip
+                  key={s.value}
+                  active={filter === s.value}
+                  onClick={() => setFilter(s.value)}
+                >
+                  {s.label} <span className="opacity-50">{counts[s.value] ?? 0}</span>
+                </FilterChip>
+              ))}
+            </div>
+            <a
+              href={`/api/outreach/export?business_id=${businessId}`}
+              download
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800"
+              title="Download all outreach targets as CSV"
+            >
+              <Download size={11} /> Export CSV
+            </a>
           </div>
 
           {filtered.length === 0 ? (
@@ -772,7 +811,7 @@ export function OutreachPanel({
                   onFindContacts={() => findContacts(t)}
                   onToggleFoundContact={(idx) => toggleFoundContact(t.id, idx)}
                   onAddFoundContacts={() => addFoundContacts(t)}
-                  onMarkSent={(template) => markSent(t, template)}
+                  onMarkSent={(template, text) => markSent(t, template, text)}
                   onMarkReplied={() => markReplied(t.id)}
                   onMarkStatus={(s) => markStatusGeneric(t.id, s)}
                   onCopy={copy}
@@ -1150,7 +1189,7 @@ function TargetCard({
   onFindContacts: () => void;
   onToggleFoundContact: (idx: number) => void;
   onAddFoundContacts: () => void;
-  onMarkSent: (template: "A" | "B") => void;
+  onMarkSent: (template: "A" | "B", firstDMText: string) => void;
   onMarkReplied: () => void;
   onMarkStatus: (s: OutreachStatus) => void;
   onCopy: (text: string, key: string) => void;
@@ -1337,7 +1376,7 @@ function TargetCard({
                 keyPrefix={`a-${target.id}`}
                 copiedKey={copiedKey}
                 onCopy={onCopy}
-                onMarkSent={target.status !== "sent" && target.status !== "replied" ? () => onMarkSent("A") : undefined}
+                onMarkSent={target.status !== "sent" && target.status !== "replied" ? (text) => onMarkSent("A", text) : undefined}
               />
               <DraftBlock
                 label="Template B — Specific question (Tyler-style)"
@@ -1346,7 +1385,7 @@ function TargetCard({
                 keyPrefix={`b-${target.id}`}
                 copiedKey={copiedKey}
                 onCopy={onCopy}
-                onMarkSent={target.status !== "sent" && target.status !== "replied" ? () => onMarkSent("B") : undefined}
+                onMarkSent={target.status !== "sent" && target.status !== "replied" ? (text) => onMarkSent("B", text) : undefined}
               />
               {drafts.reasoning && (
                 <p className="text-xs text-zinc-500 italic">Why: {drafts.reasoning}</p>
@@ -1530,49 +1569,66 @@ function DraftBlock({
   keyPrefix: string;
   copiedKey: string | null;
   onCopy: (text: string, key: string) => void;
-  onMarkSent?: () => void;
+  /** Receives the (possibly edited) firstDM text so sent_history reflects what was actually sent. */
+  onMarkSent?: (firstDMText: string) => void;
 }) {
+  const [noteText, setNoteText] = useState(connectionNote);
+  const [dmText, setDmText] = useState(firstDM);
+  // Reset edits if the underlying drafts change (e.g. user clicks Redraft)
+  useEffect(() => { setNoteText(connectionNote); }, [connectionNote]);
+  useEffect(() => { setDmText(firstDM); }, [firstDM]);
+
+  const noteEdited = noteText !== connectionNote;
+  const dmEdited = dmText !== firstDM;
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
         <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">{label}</div>
         {onMarkSent && (
           <button
-            onClick={onMarkSent}
+            onClick={() => onMarkSent(dmText)}
             className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded bg-emerald-600 text-white hover:bg-emerald-700"
           >
-            <Send size={10} /> Sent this
+            <Send size={10} /> Sent this{dmEdited && " (edited)"}
           </button>
         )}
       </div>
       <DraftLine
-        sublabel={`Connection note (${connectionNote.length}/300)`}
-        text={connectionNote}
+        sublabel={`Connection note (${noteText.length}/300)${noteEdited ? " · edited" : ""}`}
+        text={noteText}
+        onChange={setNoteText}
         keyId={`${keyPrefix}-note`}
         copiedKey={copiedKey}
         onCopy={onCopy}
+        maxRows={3}
       />
       <DraftLine
-        sublabel={`First DM (${firstDM.length}/600)`}
-        text={firstDM}
+        sublabel={`First DM (${dmText.length}/600)${dmEdited ? " · edited" : ""}`}
+        text={dmText}
+        onChange={setDmText}
         keyId={`${keyPrefix}-dm`}
         copiedKey={copiedKey}
         onCopy={onCopy}
+        maxRows={6}
       />
     </div>
   );
 }
 
 function DraftLine({
-  sublabel, text, keyId, copiedKey, onCopy,
+  sublabel, text, onChange, keyId, copiedKey, onCopy, maxRows,
 }: {
   sublabel: string;
   text: string;
+  onChange: (next: string) => void;
   keyId: string;
   copiedKey: string | null;
   onCopy: (text: string, key: string) => void;
+  maxRows?: number;
 }) {
   const copied = copiedKey === keyId;
+  const rows = Math.min(maxRows ?? 6, Math.max(2, Math.ceil(text.length / 70)));
   return (
     <div>
       <div className="flex items-center justify-between gap-2 mb-1">
@@ -1585,9 +1641,13 @@ function DraftLine({
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
-      <div className="text-sm whitespace-pre-wrap bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2 text-zinc-800 dark:text-zinc-200">
-        {text}
-      </div>
+      <textarea
+        value={text}
+        onChange={(e) => onChange(e.target.value)}
+        rows={rows}
+        spellCheck
+        className="w-full text-sm whitespace-pre-wrap bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2 text-zinc-800 dark:text-zinc-200 resize-y focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+      />
     </div>
   );
 }

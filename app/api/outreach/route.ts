@@ -23,6 +23,25 @@ export async function POST(req: Request) {
   if (!(await canAccessBusiness(body.business_id))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // Dedup: silently skip if an active target already exists for this brand+person.
+  // "(to research)" placeholders are special — multiple are allowed because they
+  // represent distinct unresearched brands, not the same person.
+  const placeholderName = "(to research)";
+  if (body.person_name !== placeholderName) {
+    const existing = db.findActiveDuplicate({
+      business_id: body.business_id,
+      brand_name: body.brand_name,
+      person_name: body.person_name,
+    });
+    if (existing) {
+      return NextResponse.json(
+        { duplicate: true, existing },
+        { status: 409 }
+      );
+    }
+  }
+
   const target = db.createOutreach({
     business_id: body.business_id,
     brand_name: body.brand_name,
