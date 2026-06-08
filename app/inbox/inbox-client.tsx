@@ -232,12 +232,12 @@ export function InboxClient({
       </div>
 
       {/* ── Main pane ── */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
 
         {/* Email list */}
-        <div className={`${mobileView === "detail" ? "hidden md:flex" : "flex"} flex-col w-full md:w-72 lg:w-80 xl:w-96 shrink-0 border-r border-zinc-200 dark:border-zinc-800 overflow-y-auto`}>
+        <div className={`${mobileView === "detail" ? "hidden md:block" : "block"} w-full md:w-72 lg:w-80 xl:w-96 shrink-0 border-r border-zinc-200 dark:border-zinc-800 overflow-y-auto`}>
           {filtered.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-2 p-8 text-center">
+            <div className="h-full flex flex-col items-center justify-center gap-2 p-8 text-center">
               <Inbox size={32} className="text-zinc-300 dark:text-zinc-700" />
               <p className="text-sm text-zinc-500">
                 {emails.length === 0 ? "No emails yet — hit Sync." : "No emails in this account."}
@@ -246,7 +246,7 @@ export function InboxClient({
           ) : (
             filtered.map((email) => (
               <button key={email.id} onClick={() => openEmail(email)}
-                className={`w-full text-left px-4 py-3 border-b border-zinc-100 dark:border-zinc-900 transition-colors ${
+                className={`block w-full text-left px-4 py-3 border-b border-zinc-100 dark:border-zinc-900 transition-colors ${
                   selectedEmail?.id === email.id ? "bg-zinc-100 dark:bg-zinc-900" : "hover:bg-zinc-50 dark:hover:bg-zinc-900/50"
                 }`}>
                 <div className="flex items-start gap-3">
@@ -281,7 +281,7 @@ export function InboxClient({
         </div>
 
         {/* Email detail */}
-        <div className={`${mobileView === "list" ? "hidden md:flex" : "flex"} flex-col flex-1 overflow-hidden`}>
+        <div className={`${mobileView === "list" ? "hidden md:flex" : "flex"} flex-col flex-1 min-h-0 min-w-0 overflow-hidden`}>
           {selectedEmail ? (
             <>
               {/* Detail header */}
