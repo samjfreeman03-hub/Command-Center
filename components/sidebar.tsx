@@ -4,17 +4,27 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BUSINESSES } from "@/lib/businesses";
-import { LayoutDashboard, Inbox, LogOut, Sun, Moon, X } from "lucide-react";
+import { LayoutDashboard, Mail, ExternalLink, LogOut, Sun, Moon, X } from "lucide-react";
+
+type EmailAccount = { name: string; address: string };
 
 export function Sidebar({ onLogout, onClose }: { onLogout?: () => void; onClose?: () => void }) {
   const pathname = usePathname();
   const [theme, setTheme] = useState<"light" | "dark" | null>(null);
+  const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
 
   useEffect(() => {
     const stored = localStorage.getItem("theme") as "light" | "dark" | null;
     const initial: "light" | "dark" =
       stored ?? (document.documentElement.classList.contains("dark") ? "dark" : "light");
     setTheme(initial);
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/email/accounts")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: EmailAccount[]) => setEmailAccounts(data))
+      .catch(() => {});
   }, []);
 
   function toggleTheme() {
@@ -52,11 +62,31 @@ export function Sidebar({ onLogout, onClose }: { onLogout?: () => void; onClose?
         <NavItem href="/" active={pathname === "/"} icon={<LayoutDashboard size={15} />}>
           Dashboard
         </NavItem>
-        {/* Inbox temporarily hidden — code preserved in app/inbox/ */}
-        {/* <NavItem href="/inbox" active={pathname === "/inbox"} icon={<Inbox size={15} />}>
-          Inbox
-        </NavItem> */}
       </div>
+
+      {/* Gmail quick-launch */}
+      {emailAccounts.length > 0 && (
+        <div className="mt-4 px-3">
+          <div className="px-2 mb-2 text-[10px] uppercase tracking-[0.12em] font-semibold text-zinc-400 dark:text-zinc-600">
+            Email
+          </div>
+          <div className="space-y-0.5">
+            {emailAccounts.map((acct) => (
+              <a
+                key={acct.address}
+                href={`https://mail.google.com/mail/u/?authuser=${encodeURIComponent(acct.address)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2.5 px-3 py-2.5 md:py-2 rounded-lg text-sm text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors group"
+              >
+                <Mail size={15} className="shrink-0" />
+                <span className="truncate flex-1">{acct.name}</span>
+                <ExternalLink size={12} className="shrink-0 opacity-0 group-hover:opacity-60 transition-opacity" />
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Businesses */}
       <div className="mt-5 px-3 flex-1">
