@@ -52,9 +52,10 @@ export function Sidebar({ onLogout, onClose }: { onLogout?: () => void; onClose?
         <NavItem href="/" active={pathname === "/"} icon={<LayoutDashboard size={15} />}>
           Dashboard
         </NavItem>
-        <NavItem href="/inbox" active={pathname === "/inbox"} icon={<Inbox size={15} />}>
+        {/* Inbox temporarily hidden — code preserved in app/inbox/ */}
+        {/* <NavItem href="/inbox" active={pathname === "/inbox"} icon={<Inbox size={15} />}>
           Inbox
-        </NavItem>
+        </NavItem> */}
       </div>
 
       {/* Businesses */}
