@@ -3,6 +3,8 @@ import { isAdmin } from "@/lib/server-auth";
 import { getEmailAccounts, GMAIL_IMAP } from "@/lib/email-config";
 import { db } from "@/lib/db";
 
+export const maxDuration = 60; // seconds
+
 export async function POST(req: Request) {
   if (!(await isAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -32,59 +34,58 @@ export async function POST(req: Request) {
 
       await client.connect();
 
+      const mailbox = await client.mailboxOpen("INBOX");
+      const total = mailbox.exists ?? 0;
+
       let fetched = 0;
-      await client.mailboxOpen("INBOX");
 
-      // Fetch last 100 messages
-      const messages = [];
-      for await (const msg of client.fetch("1:*", {
-        uid: true, flags: true, envelope: true, bodyStructure: true, source: true,
-      }, { uid: false })) {
-        messages.push(msg);
-      }
+      if (total > 0) {
+        // Only fetch the last 100 messages — no full scan
+        const start = Math.max(1, total - 99);
+        const range = `${start}:${total}`;
 
-      // Process newest first, up to 100
-      const toProcess = messages.slice(-100).reverse();
+        for await (const msg of client.fetch(range, {
+          uid: true,
+          flags: true,
+          source: true,
+        })) {
+          try {
+            const parsed = await simpleParser(msg.source as Buffer);
+            const flags = msg.flags as Set<string>;
+            const isRead = flags.has("\\Seen");
 
-      for (const msg of toProcess) {
-        try {
-          const parsed = await simpleParser(msg.source as Buffer);
-          const flags = msg.flags as Set<string>;
-          const isRead = flags.has("\\Seen");
+            const fromAddr = parsed.from?.value?.[0]?.address ?? "";
+            const fromName = parsed.from?.value?.[0]?.name ?? "";
+            const toList = (parsed.to
+              ? Array.isArray(parsed.to) ? parsed.to : [parsed.to]
+              : []).flatMap((a) => a.value ?? []).map((v) => v.address ?? "").filter(Boolean);
+            const ccList = (parsed.cc
+              ? Array.isArray(parsed.cc) ? parsed.cc : [parsed.cc]
+              : []).flatMap((a) => a.value ?? []).map((v) => v.address ?? "").filter(Boolean);
 
-          const fromAddr = parsed.from?.value?.[0]?.address ?? "";
-          const fromName = parsed.from?.value?.[0]?.name ?? "";
-          const toList = (parsed.to ? (Array.isArray(parsed.to) ? parsed.to : [parsed.to]) : [])
-            .flatMap((a) => a.value ?? [])
-            .map((v) => v.address ?? "")
-            .filter(Boolean);
-          const ccList = (parsed.cc ? (Array.isArray(parsed.cc) ? parsed.cc : [parsed.cc]) : [])
-            .flatMap((a) => a.value ?? [])
-            .map((v) => v.address ?? "")
-            .filter(Boolean);
+            const bodyText = parsed.text ?? "";
+            const snippet = bodyText.slice(0, 200).replace(/\s+/g, " ").trim();
 
-          const bodyText = parsed.text ?? "";
-          const snippet = bodyText.slice(0, 200).replace(/\s+/g, " ").trim();
-
-          db.upsertEmail({
-            account_address: account.address,
-            uid: msg.uid as number,
-            message_id: parsed.messageId ?? undefined,
-            subject: parsed.subject ?? "(no subject)",
-            from_address: fromAddr,
-            from_name: fromName || undefined,
-            to_addresses: toList,
-            cc_addresses: ccList,
-            date: (parsed.date ?? new Date()).getTime(),
-            snippet,
-            body_html: parsed.html || undefined,
-            body_text: bodyText || undefined,
-            is_read: isRead,
-            labels: [],
-          });
-          fetched++;
-        } catch {
-          // skip malformed messages
+            db.upsertEmail({
+              account_address: account.address,
+              uid: msg.uid as number,
+              message_id: parsed.messageId ?? undefined,
+              subject: parsed.subject ?? "(no subject)",
+              from_address: fromAddr,
+              from_name: fromName || undefined,
+              to_addresses: toList,
+              cc_addresses: ccList,
+              date: (parsed.date ?? new Date()).getTime(),
+              snippet,
+              body_html: parsed.html || undefined,
+              body_text: bodyText || undefined,
+              is_read: isRead,
+              labels: [],
+            });
+            fetched++;
+          } catch {
+            // skip malformed messages
+          }
         }
       }
 
