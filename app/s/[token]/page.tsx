@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { BUSINESSES } from "@/lib/businesses";
+import { hasSharePasswordAuth } from "@/lib/server-auth";
 import { SharedView } from "./shared-view";
+import { SharePasswordGate } from "./share-password-gate";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +18,12 @@ export default async function SharePage({
 
   const business = BUSINESSES.find((b) => b.id === businessId);
   if (!business) notFound();
+
+  // Password gate — render the gate instead of the SharedView until the
+  // visitor enters the team password. Cookie persists 30 days.
+  if (!(await hasSharePasswordAuth(businessId))) {
+    return <SharePasswordGate business={business} />;
+  }
 
   const [todos, leads, resources, notes, chat, members, brands, outreach] = await Promise.all([
     Promise.resolve(db.listTodos({ businessId })),
