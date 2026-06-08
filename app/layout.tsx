@@ -32,9 +32,13 @@ export const viewport: Viewport = {
 };
 
 // Runs before paint to avoid flash of wrong theme.
+// Share views (/s/...) always render in light mode — visitors don't have
+// access to the sidebar theme toggle, so we force a consistent clean look
+// for team members regardless of their OS dark-mode preference.
 const themeInit = `
 (function() {
   try {
+    if (window.location.pathname.startsWith('/s/')) return; // share view → always light
     var stored = localStorage.getItem('theme');
     var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     var useDark = stored ? stored === 'dark' : prefersDark;
