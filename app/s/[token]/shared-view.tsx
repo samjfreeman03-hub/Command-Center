@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { Business } from "@/lib/businesses";
-import type { Todo, Lead, Note, ChatMessage, BusinessResource, TeamMember, BrandContact } from "@/lib/types";
+import type { Todo, Lead, Note, ChatMessage, BusinessResource, TeamMember, BrandContact, OutreachTarget } from "@/lib/types";
 import { TodosPanel } from "@/components/todos-panel";
 import { PipelinePanel } from "@/components/pipeline-panel";
 import { ResourcesPanel } from "@/components/resources-panel";
@@ -10,11 +10,13 @@ import { NotesPanel } from "@/components/notes-panel";
 import { ChatPanel } from "@/components/chat-panel";
 import { TeamPanel } from "@/components/team-panel";
 import { BrandsPanel } from "@/components/brands-panel";
+import { OutreachPanel } from "@/components/outreach-panel";
 import { ShareTokenContext } from "@/lib/share-context";
 
 const TABS = [
   { id: "todos",     label: "Todos" },
   { id: "pipeline",  label: "Pipeline" },
+  { id: "outreach",  label: "Outreach" },
   { id: "brands",    label: "CRM" },
   { id: "resources", label: "Resources" },
   { id: "notes",     label: "Notes" },
@@ -34,6 +36,7 @@ export function SharedView({
   initialChat,
   initialMembers,
   initialBrands,
+  initialOutreach,
 }: {
   business: Business;
   shareToken: string;
@@ -44,6 +47,7 @@ export function SharedView({
   initialChat: ChatMessage[];
   initialMembers: TeamMember[];
   initialBrands: BrandContact[];
+  initialOutreach: OutreachTarget[];
 }) {
   const [tab, setTab] = useState<TabId>("todos");
   const [members, setMembers] = useState<TeamMember[]>(initialMembers);
@@ -52,11 +56,8 @@ export function SharedView({
     <ShareTokenContext.Provider value={shareToken}>
       <div className="flex flex-col min-h-screen">
 
-        {/* Header — full-width brand background */}
-        <header
-          className="w-full shrink-0"
-          style={{ backgroundColor: `${business.hex}13` }}
-        >
+        {/* Header — clean white background (no brand tint) for shared/team use */}
+        <header className="w-full shrink-0 bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-zinc-800">
           <div className="px-4 sm:px-8 lg:px-10 pt-7 pb-7">
             <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold mb-2.5 ${business.accentBg} ${business.accent} ring-1`}>
               <span className={`w-1.5 h-1.5 rounded-full ${business.dot}`} />
@@ -92,6 +93,7 @@ export function SharedView({
         <div className="w-full px-4 sm:px-8 lg:px-10 pt-5 pb-10 flex-1">
           {tab === "todos"     && <TodosPanel businessId={business.id} initial={initialTodos} members={members} />}
           {tab === "pipeline"  && <PipelinePanel businessId={business.id} initial={initialLeads} />}
+          {tab === "outreach"  && <OutreachPanel businessId={business.id} initial={initialOutreach} />}
           {tab === "brands"    && <BrandsPanel businessId={business.id} initial={initialBrands} />}
           {tab === "resources" && <ResourcesPanel businessId={business.id} initial={initialResources} />}
           {tab === "notes"     && <NotesPanel businessId={business.id} initial={initialNotes} />}
