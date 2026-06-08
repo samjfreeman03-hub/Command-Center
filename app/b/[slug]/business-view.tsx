@@ -85,11 +85,8 @@ export function BusinessView({
   return (
     <div className="flex flex-col min-h-screen">
 
-      {/* ── Header — true full-width brand background ── */}
-      <header
-        className="w-full shrink-0"
-        style={{ backgroundColor: `${business.hex}13` }}
-      >
+      {/* ── Header — white background, brand identity carried by pill + name color + dot ── */}
+      <header className="w-full shrink-0 bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-zinc-800">
         <div className="px-4 sm:px-8 lg:px-10 pt-7 pb-7">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
