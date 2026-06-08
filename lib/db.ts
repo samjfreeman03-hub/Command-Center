@@ -4,6 +4,21 @@ import fs from "node:fs";
 import { BUSINESSES } from "./businesses";
 import type { Todo, Lead, Note, ChatMessage, LeadAttachment, BusinessResource, TeamMember, BrandContact, BrandAttachment, OutreachTarget, OutreachStatus } from "./types";
 
+// Email row types (internal to db.ts)
+type RawEmailRow = {
+  id: number; account_address: string; uid: number; message_id: string | null;
+  subject: string; from_address: string; from_name: string | null;
+  to_addresses: string; cc_addresses: string; date: number;
+  snippet: string | null; body_html: string | null; body_text: string | null;
+  is_read: number; labels: string; fetched_at: number;
+};
+export type EmailRow = Omit<RawEmailRow, "to_addresses"|"cc_addresses"|"labels"|"is_read"> & {
+  to_addresses: string[]; cc_addresses: string[]; labels: string[]; is_read: boolean;
+};
+function parseEmailRow(r: RawEmailRow): EmailRow {
+  return { ...r, to_addresses: JSON.parse(r.to_addresses), cc_addresses: JSON.parse(r.cc_addresses), labels: JSON.parse(r.labels), is_read: r.is_read === 1 };
+}
+
 const DB_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH
   ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH)
   : path.join(process.cwd(), "data");
@@ -160,6 +175,28 @@ function migrate(db: Database.Database) {
       created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
     );
     CREATE INDEX IF NOT EXISTS idx_brand_attachments_brand ON brand_attachments(brand_id);
+
+    CREATE TABLE IF NOT EXISTS emails (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      account_address TEXT NOT NULL,
+      uid INTEGER NOT NULL,
+      message_id TEXT,
+      subject TEXT NOT NULL DEFAULT '(no subject)',
+      from_address TEXT NOT NULL,
+      from_name TEXT,
+      to_addresses TEXT NOT NULL DEFAULT '[]',
+      cc_addresses TEXT NOT NULL DEFAULT '[]',
+      date INTEGER NOT NULL,
+      snippet TEXT,
+      body_html TEXT,
+      body_text TEXT,
+      is_read INTEGER NOT NULL DEFAULT 0,
+      labels TEXT NOT NULL DEFAULT '[]',
+      fetched_at INTEGER NOT NULL,
+      UNIQUE(account_address, uid)
+    );
+    CREATE INDEX IF NOT EXISTS idx_emails_account ON emails(account_address);
+    CREATE INDEX IF NOT EXISTS idx_emails_date ON emails(date);
 
     CREATE TABLE IF NOT EXISTS outreach_targets (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -938,6 +975,62 @@ export const db = {
       replied_at: Date.now(),
       next_followup_at: null,
     });
+  },
+
+  // ---- Email cache ----
+  upsertEmail(e: {
+    account_address: string; uid: number; message_id?: string; subject: string;
+    from_address: string; from_name?: string; to_addresses: string[]; cc_addresses: string[];
+    date: number; snippet?: string; body_html?: string; body_text?: string;
+    is_read: boolean; labels: string[];
+  }) {
+    getDb().prepare(`
+      INSERT INTO emails (account_address, uid, message_id, subject, from_address, from_name,
+        to_addresses, cc_addresses, date, snippet, body_html, body_text, is_read, labels, fetched_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(account_address, uid) DO UPDATE SET
+        subject=excluded.subject, from_address=excluded.from_address, from_name=excluded.from_name,
+        to_addresses=excluded.to_addresses, cc_addresses=excluded.cc_addresses,
+        snippet=excluded.snippet, body_html=excluded.body_html, body_text=excluded.body_text,
+        is_read=excluded.is_read, labels=excluded.labels, fetched_at=excluded.fetched_at
+    `).run(
+      e.account_address, e.uid, e.message_id ?? null, e.subject,
+      e.from_address, e.from_name ?? null,
+      JSON.stringify(e.to_addresses), JSON.stringify(e.cc_addresses),
+      e.date, e.snippet ?? null, e.body_html ?? null, e.body_text ?? null,
+      e.is_read ? 1 : 0, JSON.stringify(e.labels), Date.now()
+    );
+  },
+
+  listEmails(account?: string, limit = 100): EmailRow[] {
+    const where = account ? "WHERE account_address = ?" : "";
+    const args = account ? [account, limit] : [limit];
+    const rows = getDb().prepare(
+      `SELECT * FROM emails ${where} ORDER BY date DESC LIMIT ?`
+    ).all(...args) as RawEmailRow[];
+    return rows.map(parseEmailRow);
+  },
+
+  getEmail(id: number): EmailRow | undefined {
+    const row = getDb().prepare("SELECT * FROM emails WHERE id = ?").get(id) as RawEmailRow | undefined;
+    return row ? parseEmailRow(row) : undefined;
+  },
+
+  markEmailRead(id: number) {
+    getDb().prepare("UPDATE emails SET is_read = 1 WHERE id = ?").run(id);
+  },
+
+  deleteEmailCache(account?: string) {
+    if (account) {
+      getDb().prepare("DELETE FROM emails WHERE account_address = ?").run(account);
+    } else {
+      getDb().prepare("DELETE FROM emails").run();
+    }
+  },
+
+  getLatestEmailUid(account: string): number {
+    const row = getDb().prepare("SELECT MAX(uid) as max_uid FROM emails WHERE account_address = ?").get(account) as { max_uid: number | null };
+    return row?.max_uid ?? 0;
   },
 
   // ---- Dashboard helpers ----

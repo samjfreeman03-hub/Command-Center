@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BUSINESSES } from "@/lib/businesses";
-import { LayoutDashboard, LogOut, Sun, Moon, X } from "lucide-react";
+import { LayoutDashboard, Inbox, LogOut, Sun, Moon, X } from "lucide-react";
 
 export function Sidebar({ onLogout, onClose }: { onLogout?: () => void; onClose?: () => void }) {
   const pathname = usePathname();
@@ -51,6 +51,9 @@ export function Sidebar({ onLogout, onClose }: { onLogout?: () => void; onClose?
       <div className="px-3 space-y-0.5">
         <NavItem href="/" active={pathname === "/"} icon={<LayoutDashboard size={15} />}>
           Dashboard
+        </NavItem>
+        <NavItem href="/inbox" active={pathname === "/inbox"} icon={<Inbox size={15} />}>
+          Inbox
         </NavItem>
       </div>
 
