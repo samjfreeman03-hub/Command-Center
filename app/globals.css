@@ -44,6 +44,14 @@ body {
   .mobile-content-offset { padding-top: 0; }
 }
 
+/* Inbox: full available height minus mobile header on small screens */
+.inbox-height {
+  height: calc(100dvh - 3.25rem - env(safe-area-inset-top, 0px));
+}
+@media (min-width: 768px) {
+  .inbox-height { height: 100dvh; }
+}
+
 /* Bottom padding to clear iOS home indicator */
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);

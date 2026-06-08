@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import type { EmailRow } from "@/lib/db";
 import {
   RefreshCw, Send, X, ChevronLeft, Inbox, Pencil,
@@ -183,7 +183,7 @@ export function InboxClient({
   const isStarred = (email: EmailRow) => email.labels.includes("starred");
 
   return (
-    <div className="flex flex-col" style={{ height: "calc(100dvh - 0px)" }}>
+    <div className="flex flex-col overflow-hidden inbox-height">
 
       {/* ── Top bar ── */}
       <div className="px-4 sm:px-8 pt-5 pb-3 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
@@ -358,14 +358,11 @@ export function InboxClient({
               </div>
 
               {/* Body */}
-              <div className="flex-1 overflow-y-auto px-5 py-5 scroll-touch">
+              <div className="flex-1 min-h-0 overflow-hidden">
                 {selectedEmail.body_html ? (
-                  <div
-                    className="prose prose-sm dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-200"
-                    dangerouslySetInnerHTML={{ __html: selectedEmail.body_html }}
-                  />
+                  <EmailBodyFrame html={selectedEmail.body_html} />
                 ) : (
-                  <pre className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed font-sans">
+                  <pre className="h-full overflow-y-auto px-5 py-5 text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed font-sans scroll-touch">
                     {selectedEmail.body_text || "No content"}
                   </pre>
                 )}
@@ -455,5 +452,62 @@ export function InboxClient({
         </div>
       )}
     </div>
+  );
+}
+
+/** Renders HTML email inside a sandboxed iframe to isolate its CSS from the app */
+function EmailBodyFrame({ html }: { html: string }) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  const writeContent = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    const doc = iframe.contentDocument;
+    if (!doc) return;
+
+    // Detect dark mode
+    const isDark = document.documentElement.classList.contains("dark");
+
+    doc.open();
+    doc.write(`<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    color: ${isDark ? "#e4e4e7" : "#27272a"};
+    background: ${isDark ? "#09090b" : "#ffffff"};
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
+  img { max-width: 100%; height: auto; }
+  table { max-width: 100% !important; }
+  a { color: ${isDark ? "#7dd3fc" : "#0369a1"}; }
+  pre, code { white-space: pre-wrap; max-width: 100%; overflow-x: auto; }
+</style>
+</head>
+<body>${html}</body>
+</html>`);
+    doc.close();
+  }, [html]);
+
+  useEffect(() => {
+    writeContent();
+  }, [writeContent]);
+
+  return (
+    <iframe
+      ref={iframeRef}
+      className="w-full h-full border-0"
+      sandbox="allow-same-origin"
+      title="Email content"
+    />
   );
 }
