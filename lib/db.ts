@@ -1020,6 +1020,26 @@ export const db = {
     getDb().prepare("UPDATE emails SET is_read = 1 WHERE id = ?").run(id);
   },
 
+  setEmailStarred(id: number, starred: boolean) {
+    const labels = this.getEmail(id)?.labels ?? [];
+    const next = starred
+      ? [...new Set([...labels, "starred"])]
+      : labels.filter((l) => l !== "starred");
+    getDb().prepare("UPDATE emails SET labels = ? WHERE id = ?").run(JSON.stringify(next), id);
+  },
+
+  setEmailLabel(id: number, label: string | null) {
+    const email = this.getEmail(id);
+    if (!email) return;
+    const base = email.labels.filter((l) => l !== "starred" && l.startsWith("lbl:"));
+    const next = label ? [...email.labels.filter((l) => l === "starred"), `lbl:${label}`] : email.labels.filter((l) => !l.startsWith("lbl:"));
+    getDb().prepare("UPDATE emails SET labels = ? WHERE id = ?").run(JSON.stringify(next), id);
+  },
+
+  deleteEmailFromCache(id: number) {
+    getDb().prepare("DELETE FROM emails WHERE id = ?").run(id);
+  },
+
   deleteEmailCache(account?: string) {
     if (account) {
       getDb().prepare("DELETE FROM emails WHERE account_address = ?").run(account);
