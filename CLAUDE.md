@@ -327,10 +327,43 @@ across:
 
 ---
 
-## 8. FLAIR Outreach Module
+## 8. Outreach Module (FLAIR + MTRNM, multi-business)
 
-The full LinkedIn outreach pipeline lives in `components/outreach-panel.tsx`
-(~1700 lines) plus 10+ API routes under `app/api/outreach/`.
+The full outreach pipeline lives in `components/outreach-panel.tsx`
+(~1800 lines) plus 10+ API routes under `app/api/outreach/`.
+
+### Multi-business architecture (added 2026-06-10)
+
+`lib/outreach-config.ts` is the single source of truth for which businesses
+have outreach and how each behaves. Per-business config includes: positioning
++ voice prompt filenames, drafter identity/rules, enrich focus, fit framing,
+Apollo ICP title keywords, contact priorities, candidate criteria, categories,
+senders, and UI template labels. `OUTREACH_BUSINESS_IDS` gates the Outreach
+tab in both `business-view.tsx` and `shared-view.tsx` — currently
+**FLAIR + MTRNM only**. All outreach API routes resolve the config from the
+target's `business_id` and return 400 for unconfigured businesses.
+
+- **FLAIR prompts:** `lib/prompts/flair-positioning-brief.md` + `flair-voice-samples.md`
+- **MTRNM prompts:** `lib/prompts/mtrnm-positioning-brief.md` + `mtrnm-voice-samples.md`
+  (synthesized from MTRNM Partnerships Deck 2026, method oasis case study,
+  NATM/NATC concept decks). MTRNM Template A = generalized "dream collab" hook;
+  Template B = semi-personalized KITH-style DM; voice is lowercase insider.
+  MTRNM sender is Sam only (no Tyler toggle).
+
+### Fit-aware drafting (added 2026-06-10)
+
+- Enrich (`/enrich`) outputs `fit_rationale` alongside signals — 2-3 sentences
+  on why {brand} × {business} makes sense. Cached signals missing the rationale
+  re-enrich once. The drafter weaves the single strongest signal + fit into
+  every variant ("insider observation, never scraped research").
+
+### Email outreach (added 2026-06-10)
+
+- Drafts now include `email: { subject, body }` alongside Template A/B.
+  Panel renders `EmailDraftBlock` with copy, edit, mailto deep-link (when the
+  target has `person_email`), and "Sent this" (template `"Email"`).
+- Apollo unlocks emails for **all** found contacts via `/people/match`
+  (1 credit each) — not just contacts missing LinkedIn URLs.
 
 ### Core flow
 
