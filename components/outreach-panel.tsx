@@ -1670,23 +1670,38 @@ function EmailDraftBlock({
 
   const subjectEdited = subjectText !== subject;
   const bodyEdited = bodyText !== body;
-  const mailtoHref = toEmail
-    ? `mailto:${toEmail}?subject=${encodeURIComponent(subjectText)}&body=${encodeURIComponent(bodyText)}`
+  // Gmail compose deep-link: opens a pre-filled draft in whichever Google
+  // account is active in the browser (to + subject + body).
+  const gmailHref = toEmail
+    ? `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(toEmail)}&su=${encodeURIComponent(subjectText)}&body=${encodeURIComponent(bodyText)}`
     : null;
+  const emailCopied = copiedKey === `${keyPrefix}-addr`;
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 inline-flex items-center gap-1.5">
           <Mail size={11} /> Email — Cold email variant
         </div>
-        <div className="flex items-center gap-1.5">
-          {mailtoHref && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {toEmail && (
+            <button
+              onClick={() => onCopy(toEmail, `${keyPrefix}-addr`)}
+              className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              title={toEmail}
+            >
+              {emailCopied ? <Check size={10} className="text-emerald-600" /> : <Copy size={10} />}
+              {emailCopied ? "Copied" : "Copy email"}
+            </button>
+          )}
+          {gmailHref && (
             <a
-              href={mailtoHref}
+              href={gmailHref}
+              target="_blank"
+              rel="noopener noreferrer"
               className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded bg-sky-600 text-white hover:bg-sky-700"
             >
-              <Mail size={10} /> Open in mail
+              <Mail size={10} /> Open in Gmail
             </a>
           )}
           {onMarkSent && (
