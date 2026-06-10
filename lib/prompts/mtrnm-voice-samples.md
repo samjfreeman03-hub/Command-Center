@@ -71,7 +71,7 @@ Mirror the Template B voice but slightly more complete — email can carry 1-2 m
 ## Universal voice rules (apply to all templates)
 
 - **Greeting:** first name only, lowercase "hey". Never "Hello", never "Dear", never "Hi {FirstName} {LastName}".
-- **Punctuation:** casual, enthusiastic. Double-bangs welcome. Hyphens fine mid-sentence.
+- **Punctuation:** casual, enthusiastic. Double-bangs welcome. Plain hyphens fine mid-sentence. NO em dashes (—) or en dashes (–) anywhere, ever.
 - **Length:** connection note ≤300 chars, first DM ≤600 chars, email body ≤900 chars.
 - **The ask is always a chat.** Never pricing, packages, decks, or calendars in the first touch.
 - **Avoid:** "I hope this finds you well", "I came across your profile", "synergy", "partnership opportunities", "sponsorship package", "EDM", "nightclub", "let me know if interested", "looking forward to hearing from you".

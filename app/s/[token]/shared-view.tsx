@@ -67,7 +67,7 @@ export function SharedView({
 
         {/* Header — clean white background (no brand tint) for shared/team use */}
         <header className="w-full shrink-0 bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-zinc-800">
-          <div className="px-4 sm:px-8 lg:px-10 pt-7 pb-7">
+          <div className="px-4 sm:px-8 lg:px-10 pt-5 pb-5 sm:pt-7 sm:pb-7">
             <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold mb-2.5 ${business.accentBg} ${business.accent} ring-1`}>
               <span className={`w-1.5 h-1.5 rounded-full ${business.dot}`} />
               <span className="truncate max-w-[180px] sm:max-w-none">{business.fullName}</span>
@@ -79,8 +79,8 @@ export function SharedView({
           </div>
         </header>
 
-        {/* Tabs */}
-        <div className="w-full px-4 sm:px-8 lg:px-10 pt-5 pb-1">
+        {/* Tabs (sticky while scrolling panels) */}
+        <div className="tabs-sticky-top w-full px-4 sm:px-8 lg:px-10 pt-3 pb-2 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md">
           <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1 pb-0.5">
             {tabs.map((t) => (
               <button

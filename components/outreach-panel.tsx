@@ -1406,7 +1406,7 @@ function TargetCard({
                 onCopy={onCopy}
                 onMarkSent={target.status !== "sent" && target.status !== "replied" ? (text) => onMarkSent("B", text) : undefined}
               />
-              {drafts.email && (
+              {drafts.email ? (
                 <EmailDraftBlock
                   subject={drafts.email.subject}
                   body={drafts.email.body}
@@ -1416,6 +1416,10 @@ function TargetCard({
                   onCopy={onCopy}
                   onMarkSent={target.status !== "sent" && target.status !== "replied" ? (text) => onMarkSent("Email", text) : undefined}
                 />
+              ) : (
+                <p className="text-[11px] text-zinc-400 italic">
+                  These drafts predate the email variant. Click <span className="inline-flex items-center gap-0.5 font-medium not-italic"><Sparkles size={10} /> Redraft</span> to generate Template A + B and a cold email together.
+                </p>
               )}
               {drafts.reasoning && (
                 <p className="text-xs text-zinc-500 italic">Why: {drafts.reasoning}</p>

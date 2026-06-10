@@ -57,6 +57,31 @@ body {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* Sticky tab bar on business pages: clears the fixed mobile header on small
+   screens, sticks to the viewport top on desktop. */
+.tabs-sticky {
+  position: sticky;
+  top: calc(3.25rem + env(safe-area-inset-top, 0px));
+  z-index: 20;
+}
+@media (min-width: 768px) {
+  .tabs-sticky { top: 0; }
+}
+
+/* Share-view variant: no fixed mobile header, so stick to the very top. */
+.tabs-sticky-top {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+/* Keyboard focus ring (keyboard nav only — not mouse clicks) */
+:focus-visible {
+  outline: 2px solid rgb(113 113 122 / 0.55);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 /* Left padding for sidebar in landscape with notch */
 .safe-left {
   padding-left: env(safe-area-inset-left, 0px);

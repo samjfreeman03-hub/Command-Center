@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import type { Lead, LeadAttachment } from "@/lib/types";
 import { LEAD_STAGES } from "@/lib/types";
-import { Plus, Trash2, Link2, Paperclip, X, Upload, ExternalLink, Download } from "lucide-react";
+import { Plus, Trash2, Link2, Paperclip, X, Upload, ExternalLink, Download, TrendingUp } from "lucide-react";
 import { useShareHeaders } from "@/lib/share-context";
 
 const STAGE_LABELS: Record<Lead["stage"], string> = {
@@ -124,7 +124,15 @@ export function PipelinePanel({
           );
         })}
         {leads.length === 0 && (
-          <div className="text-sm text-zinc-500 py-10 text-center">No leads yet.</div>
+          <div className="flex flex-col items-center gap-3 py-12 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center">
+              <TrendingUp size={20} className="text-zinc-400" />
+            </div>
+            <div>
+              <div className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">No leads yet</div>
+              <div className="text-xs text-zinc-400">Click &ldquo;New lead&rdquo; to start tracking your pipeline.</div>
+            </div>
+          </div>
         )}
       </div>
     </div>

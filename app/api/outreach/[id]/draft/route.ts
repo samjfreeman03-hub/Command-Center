@@ -15,6 +15,11 @@ function readPrompt(file: string): string {
   return fs.existsSync(full) ? fs.readFileSync(full, "utf-8") : "";
 }
 
+/** Hard guarantee: no em/en dashes ever reach a draft, regardless of model output. */
+function stripDashes(text: string): string {
+  return text.replace(/[—–]/g, "-");
+}
+
 function loadPrefix(cfg: OutreachConfig): string {
   const positioning = readPrompt(cfg.positioningFile);
   const voice = readPrompt(cfg.voiceFile);
@@ -51,10 +56,20 @@ Rules:
 - Use ONLY the target's FIRST NAME in greetings.
 - NEVER include links or calendar references in any variant.
 
-SIGNALS & FIT (critical):
-- When enriched signals and/or a fit rationale are provided for the target, weave the SINGLE strongest hook naturally into the drafts — one specific reference that shows why {brand} × ${cfg.name} makes obvious sense.
-- The fit must read like an insider observation, never like scraped research. One specific beat per message, maximum.
-- If no signals are provided, write from category knowledge only — do not invent specifics about the brand.
+PUNCTUATION (hard rule):
+- ABSOLUTELY NO em dashes (—) or en dashes (–) anywhere, in any variant, ever. Not mid-sentence, not as a sign-off marker, not in the subject line.
+- Use a comma, a period, or a plain hyphen with spaces ( - ) instead. Sign-offs use a plain hyphen: "-Tyler" not "—Tyler".
+
+USING THE ENRICHED CONTEXT (this is what separates a good draft from a generic one):
+- When ENRICHED CONTEXT is provided below the target, you MUST use it. A draft that ignores provided signals is a failed draft.
+- Pick the single most pitchable signal and make it the personalization beat:
+  * Template A: reference it in ONE short clause so the brand drop lands as "we already know your world" rather than a cold list.
+  * Template B: build the question AROUND the signal. The specific tactic you ask about should clearly connect to what the brand is doing right now.
+  * Email: open or close with it. One sentence that proves this isn't a blast.
+- Use the FIT RATIONALE to choose WHICH angle to pitch, and let it shape word choice. Do not paste it in.
+- Sound like a person who genuinely follows the brand: mention the signal the way a fan would in conversation ("loved the [X] drop", "saw you're going big on [Y] this year"), never like a researcher ("I noticed that your company recently..."). No dates, no statistics from articles, no source names.
+- One personalization beat per message maximum. Everything else stays in the template voice.
+- If NO enriched context is provided, write from category knowledge only. Never invent campaigns, hires, or launches.
 
 ${cfg.draftRules}
 `;
@@ -83,11 +98,19 @@ export async function POST(
   if (!target) return NextResponse.json({ error: "Target not found" }, { status: 404 });
 
   const signals = target.signals_json ? JSON.parse(target.signals_json) : null;
-  const signalsBlock = signals
-    ? `\nRecent signals about ${target.brand_name}:\n${JSON.stringify(signals, null, 2)}${
-        signals.fit_rationale ? `\n\nFIT RATIONALE (weave this in): ${signals.fit_rationale}` : ""
-      }`
-    : `\n(No signals enriched yet — write from category knowledge only, do not invent specifics about this brand.)`;
+  let signalsBlock: string;
+  if (signals && (signals.signals?.length > 0 || signals.fit_rationale)) {
+    const signalLines = (signals.signals ?? [])
+      .map((s: { type: string; summary: string }) => `- [${s.type}] ${s.summary}`)
+      .join("\n");
+    signalsBlock = `
+ENRICHED CONTEXT about ${target.brand_name} (you MUST use this per the system rules):
+${signalLines || "- (no individual signals, use the fit rationale)"}
+${signals.summary_for_drafter ? `\nMost pitchable hook: ${signals.summary_for_drafter}` : ""}
+${signals.fit_rationale ? `\nFIT RATIONALE (why ${target.brand_name} x ${cfg.name} makes sense, let it shape the angle): ${signals.fit_rationale}` : ""}`;
+  } else {
+    signalsBlock = `\n(No enriched context available. Write from category knowledge only, do not invent specifics about this brand.)`;
+  }
 
   const userPrompt = `TARGET:
 - Brand: ${target.brand_name}
@@ -129,9 +152,17 @@ Produce both LinkedIn templates and the email variant now. Return ONLY the JSON 
         reasoning?: string;
       }>(text);
       parsed = {
-        templateA: obj.templateA,
-        templateB: obj.templateB,
-        email: obj.email,
+        templateA: {
+          connectionNote: stripDashes(obj.templateA.connectionNote),
+          firstDM: stripDashes(obj.templateA.firstDM),
+        },
+        templateB: {
+          connectionNote: stripDashes(obj.templateB.connectionNote),
+          firstDM: stripDashes(obj.templateB.firstDM),
+        },
+        email: obj.email
+          ? { subject: stripDashes(obj.email.subject), body: stripDashes(obj.email.body) }
+          : undefined,
         reasoning: obj.reasoning,
         generated_at: Date.now(),
       };

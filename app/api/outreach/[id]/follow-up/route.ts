@@ -15,6 +15,11 @@ function readPrompt(file: string): string {
   return fs.existsSync(full) ? fs.readFileSync(full, "utf-8") : "";
 }
 
+/** Hard guarantee: no em/en dashes ever reach a draft, regardless of model output. */
+function stripDashes(text: string): string {
+  return text.replace(/[—–]/g, "-");
+}
+
 function loadPrefix(cfg: OutreachConfig): string {
   const positioning = readPrompt(cfg.positioningFile);
   const voice = readPrompt(cfg.voiceFile);
@@ -29,9 +34,10 @@ UNIVERSAL RULES:
 - First name only, casual greeting matching the voice samples below.
 - NEVER repeat the original pitch verbatim.
 - NEVER include calendar links or "looking forward to your response".
+- ABSOLUTELY NO em dashes (—) or en dashes (–) anywhere. Use commas, periods, or a plain hyphen instead.
 - For Sam: double-bang punctuation, no sign-off.
-- For Tyler: single-bang, may sign off "—Tyler".
-- If enriched signals or a fit rationale are present, follow-up #2 is the place to use ONE specific beat from them.
+- For Tyler: single-bang, may sign off "-Tyler" (plain hyphen).
+- If enriched signals or a fit rationale are present, follow-up #2 is the place to use ONE specific beat from them. Mention it the way a fan would in conversation, never like a researcher.
 
 ================================================================================
 ${cfg.name} POSITIONING BRIEF (proof points + vocabulary you may pull from)
@@ -140,7 +146,7 @@ Write follow-up #${nextFollowupN}. Return ONLY the JSON object.`;
     }
     return NextResponse.json({
       followup_n: nextFollowupN,
-      text: parsed.text,
+      text: stripDashes(parsed.text),
       reasoning: parsed.reasoning,
       usage: response.usage,
     });

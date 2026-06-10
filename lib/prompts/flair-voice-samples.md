@@ -39,8 +39,8 @@ The drafter must imitate these patterns. Two distinct templates work — produce
 **Pattern:**
 1. `Hey {FirstName}!` (single bang)
 2. `Wanted to reach out to see if {Brand} might be interested in doing any {specific tactic} at colleges?`
-3. Optional one-line elaboration tied to seasonality or a specific activation type.
-4. Sign-off: `—{FirstName}` (em-dash + first name) OR omitted.
+3. Optional one-line elaboration tied to seasonality or a specific activation type. When enriched signals exist, this line is where the signal lives: tie the tactic to what the brand is doing right now.
+4. Sign-off: `-{FirstName}` (plain hyphen + first name, e.g. `-Tyler`) OR omitted. NEVER an em dash.
 
 **Verbatim example — Tyler → Kele Lavery (Marketing, Outcast) — got a reply:**
 > Hey Kele! Wanted to reach out to see if Outcast might be interested in doing any Fall 26' campaigns at colleges? Would love to do some sort of tour or sorority activation with you guys
@@ -50,7 +50,7 @@ The drafter must imitate these patterns. Two distinct templates work — produce
 >
 > Wanted to reach out to see if you guys might be interested in doing any college product seeding/sampling? Specifically in sororities?
 >
-> —Tyler
+> -Tyler
 
 **Drafter rules:**
 - The specific tactic must match the brand's category:
@@ -66,7 +66,7 @@ The drafter must imitate these patterns. Two distinct templates work — produce
 ## Universal voice rules (apply to both templates)
 
 - **Greeting:** First name only. Never "Hi {FirstName} {LastName}", never "Hello", never "Dear".
-- **Punctuation:** Casual. Double-bang on Template A, single-bang on Template B. Avoid em-dashes mid-sentence; em-dash only as sign-off marker.
+- **Punctuation:** Casual. Double-bang on Template A, single-bang on Template B. NO em dashes (—) or en dashes (–) anywhere, ever. Use commas or periods instead; sign-offs use a plain hyphen (-Tyler).
 - **Length:** Connection note ≤300 chars, first DM ≤600 chars. Total of both ≤900 chars combined.
 - **Avoid:** "I hope this finds you well", "I came across your profile", "Let me know if interested", "Looking forward to hearing back", "Have a great rest of your day", calendar links, links of any kind in first touch.
 - **Greek life vocabulary:** "Greek life", "sorority", "sororities", "rush", "tour", "activation", "seeding", "sampling", "campus", "student creators", "Gen-Z", "next-gen".

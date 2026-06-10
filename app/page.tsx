@@ -1,15 +1,29 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { BUSINESSES } from "@/lib/businesses";
-import { ArrowUpRight, CheckCircle2 } from "lucide-react";
-import { format } from "date-fns";
+import { ArrowUpRight, CheckCircle2, TrendingUp, Users, ListTodo } from "lucide-react";
 import { DashboardTodos } from "@/components/dashboard-todos";
 
 export const dynamic = "force-dynamic";
 
+const LA_TZ = "America/Los_Angeles";
+
 function money(cents: number | null) {
   if (!cents) return "—";
   return `$${(cents / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+}
+
+/** Date + greeting in Sam's timezone (server runs UTC on Railway). */
+function laNow() {
+  const now = new Date();
+  const hour = Number(
+    new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: false, timeZone: LA_TZ }).format(now)
+  );
+  const dateLabel = new Intl.DateTimeFormat("en-US", {
+    weekday: "long", month: "long", day: "numeric", timeZone: LA_TZ,
+  }).format(now);
+  const greeting = hour < 5 ? "Burning the midnight oil" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  return { dateLabel, greeting };
 }
 
 export default function Dashboard() {
@@ -20,15 +34,26 @@ export default function Dashboard() {
   const todosByBusiness = new Map(todoCounts.map((t) => [t.business_id, t.open_count]));
   const pipelineByBusiness = new Map(pipelineSummary.map((p) => [p.business_id, p]));
 
+  const totalPipeline = pipelineSummary.reduce((s, p) => s + p.pipeline_cents, 0);
+  const totalLeads = pipelineSummary.reduce((s, p) => s + p.open_count, 0);
+  const { dateLabel, greeting } = laNow();
 
   return (
     <div className="p-4 sm:p-8">
       {/* Header */}
-      <header className="mb-8">
-        <p className="text-xs font-medium uppercase tracking-[0.15em] text-zinc-400 dark:text-zinc-600 mb-1">Dashboard</p>
-        <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
-          {format(new Date(), "EEEE, MMMM d")}
-        </h1>
+      <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.15em] text-zinc-400 dark:text-zinc-600 mb-1">{greeting}, Sam</p>
+          <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
+            {dateLabel}
+          </h1>
+        </div>
+        {/* At-a-glance totals */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <HeaderStat icon={<ListTodo size={13} />} label="open todos" value={openTodos.length.toString()} />
+          <HeaderStat icon={<Users size={13} />} label="active leads" value={totalLeads.toString()} />
+          <HeaderStat icon={<TrendingUp size={13} />} label="pipeline" value={money(totalPipeline) === "—" ? "$0" : money(totalPipeline)} />
+        </div>
       </header>
 
       {/* Business cards */}
@@ -40,7 +65,7 @@ export default function Dashboard() {
             <Link
               key={b.id}
               href={`/b/${b.id}`}
-              className="group relative rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 hover:border-zinc-300 dark:hover:border-zinc-700 hover:shadow-md dark:hover:shadow-zinc-900/50 transition-all p-5 overflow-hidden"
+              className="group relative rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 hover:border-zinc-300 dark:hover:border-zinc-700 hover:shadow-lg hover:shadow-zinc-200/60 dark:hover:shadow-zinc-900/60 hover:-translate-y-0.5 transition-all duration-200 p-5 overflow-hidden"
             >
               {/* Colored left stripe */}
               <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-xl ${b.dot}`} />
@@ -82,6 +107,16 @@ export default function Dashboard() {
 
 
       </section>
+    </div>
+  );
+}
+
+function HeaderStat({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-1.5 text-xs">
+      <span className="text-zinc-400">{icon}</span>
+      <span className="font-semibold text-zinc-900 dark:text-zinc-100 tabular-nums">{value}</span>
+      <span className="text-zinc-400 dark:text-zinc-600">{label}</span>
     </div>
   );
 }

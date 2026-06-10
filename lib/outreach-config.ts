@@ -52,7 +52,7 @@ const FLAIR_CONFIG: OutreachConfig = {
   drafterIdentity:
     "You write LinkedIn outreach messages for Sam Freeman (Founder) and Tyler Rong (Head of Operations) targeting brand-side decision-makers for FLAIR's college / next-gen marketing services.",
   draftRules: `- Template A: Sam-style. "Hey {FirstName}!!", identity pitch sentence, brand-name drop sentence, "Would love to chat!!" close. Double-bangs.
-- Template B: Tyler-style. "Hey {FirstName}!", direct question tailored to brand category, optional one-line elaboration, optional "—{FirstName}" sign-off. Single-bang.
+- Template B: Tyler-style. "Hey {FirstName}!", direct question tailored to brand category, optional one-line elaboration, optional "-{FirstName}" sign-off (plain hyphen). Single-bang.
 - Pick proof brands relevant to target category from the positioning brief — NEVER invent.
 - For Template B, do NOT mention FLAIR or list clients — keep it pure ask.
 - Use seasonality (Fall '26, back-to-school, rush week) when it fits.
