@@ -21,8 +21,8 @@ import type { CandidateContact } from "./types";
  *   2. Search people at that org filtered by ICP-relevant titles AND seniority
  *      (manager+) so we only get decision-makers, not entry-level ambassadors.
  *   3. Map results to CandidateContact shape, sorted by role priority.
- *   4. For any returned person missing a LinkedIn URL, call /people/match to
- *      unlock their email (per user preference: LinkedIn-first, email fallback).
+ *   4. For every returned person missing an unlocked email, call /people/match
+ *      to unlock it (LinkedIn + email outreach both run, so we want both).
  */
 
 const APOLLO_BASE = "https://api.apollo.io/api/v1";
@@ -185,6 +185,16 @@ export async function apolloSearchOrg(
         edtech: ["edu", "education", "learning", "school", "tutoring"],
         "dtc-genz": ["beauty", "wellness", "skincare", "lifestyle"],
         enterprise: ["enterprise"],
+        // MTRNM categories
+        spirits: ["spirits", "tequila", "vodka", "whiskey", "champagne", "liquor", "alcohol", "distillery", "wine"],
+        "luxury-fashion": ["luxury", "fashion", "apparel", "couture", "designer"],
+        streetwear: ["streetwear", "apparel", "clothing", "fashion", "sneaker"],
+        fragrance: ["fragrance", "perfume", "scent", "beauty"],
+        hospitality: ["hotel", "hospitality", "resort", "restaurant", "club"],
+        travel: ["travel", "airline", "hotel", "tourism", "hospitality"],
+        fintech: ["fintech", "financial", "payments", "credit card", "banking"],
+        "tech-audio": ["audio", "headphones", "speakers", "electronics", "technology"],
+        "jewelry-watches": ["jewelry", "jewellery", "watch", "watches", "accessories"],
       };
       const hints = categoryHints[brandCategory.toLowerCase()] ?? [brandCategory.toLowerCase()];
       // Limit enrich to top 5 candidates to cap API calls
@@ -269,16 +279,18 @@ async function apolloMatchPerson(person: ApolloPerson): Promise<ApolloPerson | n
 }
 
 /**
- * Find FLAIR-relevant contacts at a brand using Apollo.
+ * Find ICP-relevant contacts at a brand using Apollo.
  * Returns up to `maxResults` contacts in priority order (college-or-next-gen first).
  *
  * @param brandName e.g. "Bubble Skincare"
  * @param maxResults default 5
+ * @param titleKeywords business-specific person_titles filter (defaults to FLAIR's ICP)
  */
 export async function apolloFindContactsForBrand(
   brandName: string,
   maxResults = 5,
-  brandCategory?: string | null
+  brandCategory?: string | null,
+  titleKeywords?: string[]
 ): Promise<CandidateContact[]> {
   const org = await apolloSearchOrg(brandName, brandCategory);
   if (!org) return [];
@@ -293,7 +305,7 @@ export async function apolloFindContactsForBrand(
       "/mixed_people/api_search",
       {
         organization_ids: [org.id],
-        person_titles: ICP_TITLE_KEYWORDS,
+        person_titles: titleKeywords && titleKeywords.length > 0 ? titleKeywords : ICP_TITLE_KEYWORDS,
         person_seniorities: ["c_suite", "founder", "owner", "vp", "head", "director", "manager", "senior"],
         page: 1,
         per_page: 25,
@@ -320,12 +332,13 @@ export async function apolloFindContactsForBrand(
     .sort((a, b) => CATEGORY_PRIORITY[a.cat] - CATEGORY_PRIORITY[b.cat])
     .slice(0, maxResults);
 
-  // For any contact missing a LinkedIn URL, unlock email via /people/match.
+  // Unlock emails for ALL contacts via /people/match (1 credit each) —
+  // both LinkedIn and email outreach run, so we want both channels populated.
   const enriched = await Promise.all(
     ranked.map(async ({ p, name, title, cat }) => {
       let linkedin_url = p.linkedin_url ?? null;
       let email = isUnlockedEmail(p.email) ? p.email! : null;
-      if (!linkedin_url) {
+      if (!linkedin_url || !email) {
         const matched = await apolloMatchPerson(p);
         if (matched) {
           if (matched.linkedin_url) linkedin_url = matched.linkedin_url;

@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { canAccessBusiness } from "@/lib/server-auth";
 
 type ActionBody =
-  | { action: "mark-sent"; text: string; template: "A" | "B" }
+  | { action: "mark-sent"; text: string; template: "A" | "B" | "Email" }
   | { action: "mark-followup-sent"; text: string }
   | { action: "mark-replied" }
   | { action: "reset-cadence" };

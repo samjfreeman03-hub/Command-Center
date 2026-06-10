@@ -4,16 +4,13 @@ import { db } from "@/lib/db";
 import { canAccessBusiness } from "@/lib/server-auth";
 import { extractJSON } from "@/lib/extract-json";
 import { apolloFindContactsForBrand, apolloIsConfigured } from "@/lib/apollo";
+import { getOutreachConfig, type OutreachConfig } from "@/lib/outreach-config";
 import type { CandidateContact } from "@/lib/types";
 
-const WEB_SEARCH_SYSTEM = `You are FLAIR's outbound research analyst. Given a single brand, use the web_search tool to find 2-4 specific named decision-makers whose roles make them the right recipient of FLAIR's college / next-gen marketing pitch.
+const buildWebSearchSystem = (cfg: OutreachConfig) => `You are ${cfg.name}'s outbound research analyst. Given a single brand, use the web_search tool to find 2-4 specific named decision-makers whose roles make them the right recipient of ${cfg.pitch}.
 
 PRIORITY ORDER (return contacts roughly in this order):
-1. College / next-gen / campus marketing roles (exact ICP fit)
-2. Influencer marketing, creator partnerships, brand partnerships
-3. Social media, community management
-4. Experiential / brand activations / field marketing
-5. Brand marketing execs (CMO, VP Marketing, Head of Brand) — only if 1-4 turn up nothing
+${cfg.contactPriority}
 
 ANTI-HALLUCINATION RULES (critical):
 1. Only include a contact if you found them via search results — never invent.
@@ -38,6 +35,7 @@ OUTPUT (strict JSON only, no prose, no markdown fences):
 }`;
 
 async function webSearchFallback(
+  cfg: OutreachConfig,
   brandName: string,
   brandCategory: string | null,
   brandSize: string | null
@@ -55,7 +53,7 @@ async function webSearchFallback(
         max_uses: 6,
       },
     ],
-    system: WEB_SEARCH_SYSTEM,
+    system: buildWebSearchSystem(cfg),
     messages: [
       {
         role: "user",
@@ -91,6 +89,10 @@ export async function POST(
   if (!bizId || !(await canAccessBusiness(bizId))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const cfg = getOutreachConfig(bizId);
+  if (!cfg) {
+    return NextResponse.json({ error: `Outreach is not configured for business "${bizId}"` }, { status: 400 });
+  }
   const target = db.getOutreach(targetId);
   if (!target) return NextResponse.json({ error: "Target not found" }, { status: 404 });
 
@@ -99,7 +101,9 @@ export async function POST(
   let used: "apollo" | "web_search" | "apollo+web_search" = "apollo";
   if (apolloIsConfigured()) {
     try {
-      contacts = await apolloFindContactsForBrand(target.brand_name, 5, target.brand_category);
+      contacts = await apolloFindContactsForBrand(
+        target.brand_name, 5, target.brand_category, cfg.icpTitleKeywords
+      );
     } catch (err) {
       console.warn("[find-contacts] Apollo failed:", err);
       contacts = [];
@@ -109,6 +113,7 @@ export async function POST(
   // Step 2: fall back to web search if Apollo returned nothing
   if (contacts.length === 0) {
     contacts = await webSearchFallback(
+      cfg,
       target.brand_name,
       target.brand_category,
       target.brand_size

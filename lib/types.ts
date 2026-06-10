@@ -147,6 +147,8 @@ export const OUTREACH_STATUSES = [
 export type OutreachDrafts = {
   templateA: { connectionNote: string; firstDM: string };
   templateB: { connectionNote: string; firstDM: string };
+  /** Cold email variant (subject + plain-text body). */
+  email?: { subject: string; body: string };
   reasoning?: string;
   generated_at: number;
 };
@@ -178,6 +180,8 @@ export type CandidateContact = {
 export type OutreachSignals = {
   signals: OutreachSignal[];
   summary_for_drafter: string;
+  /** Why this brand × this business makes sense — drafters weave this into messages. */
+  fit_rationale?: string;
   fetched_at: number;
 };
 

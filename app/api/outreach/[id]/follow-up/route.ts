@@ -6,33 +6,40 @@ import { db } from "@/lib/db";
 import { canAccessBusiness } from "@/lib/server-auth";
 import { extractJSON } from "@/lib/extract-json";
 
-const POSITIONING_PATH = path.join(process.cwd(), "lib", "prompts", "flair-positioning-brief.md");
-const VOICE_PATH = path.join(process.cwd(), "lib", "prompts", "flair-voice-samples.md");
+import { getOutreachConfig, type OutreachConfig } from "@/lib/outreach-config";
 
-function loadPrefix(): string {
-  const positioning = fs.existsSync(POSITIONING_PATH) ? fs.readFileSync(POSITIONING_PATH, "utf-8") : "";
-  const voice = fs.existsSync(VOICE_PATH) ? fs.readFileSync(VOICE_PATH, "utf-8") : "";
-  return `You are the FLAIR follow-up drafter. You write LinkedIn follow-up messages for Sam Freeman or Tyler Rong. A previous touch has already been sent. Your job is to produce ONE short, low-pressure bump.
+const PROMPTS_DIR = path.join(process.cwd(), "lib", "prompts");
+
+function readPrompt(file: string): string {
+  const full = path.join(PROMPTS_DIR, file);
+  return fs.existsSync(full) ? fs.readFileSync(full, "utf-8") : "";
+}
+
+function loadPrefix(cfg: OutreachConfig): string {
+  const positioning = readPrompt(cfg.positioningFile);
+  const voice = readPrompt(cfg.voiceFile);
+  return `You are the ${cfg.name} follow-up drafter. ${cfg.drafterIdentity} A previous touch has already been sent. Your job is to produce ONE short, low-pressure bump.
 
 CADENCE:
-- Follow-up #1 (Day 3): friendly bump, no new pitch. ~40-90 chars. Example tone: "Hey Shai!! Just bumping this up — let me know if you'd like to chat!!"
-- Follow-up #2 (Day 7): try a slightly different angle. Reference a specific tactic or proof point not used in the first touch. ~80-150 chars.
+- Follow-up #1 (Day 3): friendly bump, no new pitch. ~40-90 chars.
+- Follow-up #2 (Day 7): try a slightly different angle. Reference a specific hook or proof point not used in the first touch. ~80-150 chars.
 - Follow-up #3 (Day 14): final attempt. Soft value-add or "happy to circle back later" tone. ~80-150 chars.
 
 UNIVERSAL RULES:
-- First name only, casual greeting.
+- First name only, casual greeting matching the voice samples below.
 - NEVER repeat the original pitch verbatim.
 - NEVER include calendar links or "looking forward to your response".
 - For Sam: double-bang punctuation, no sign-off.
 - For Tyler: single-bang, may sign off "—Tyler".
+- If enriched signals or a fit rationale are present, follow-up #2 is the place to use ONE specific beat from them.
 
 ================================================================================
-FLAIR POSITIONING BRIEF (proof points + vocabulary you may pull from)
+${cfg.name} POSITIONING BRIEF (proof points + vocabulary you may pull from)
 ================================================================================
 ${positioning}
 
 ================================================================================
-FLAIR VOICE SAMPLES (first-touch reference — match this tone but make follow-up SHORTER)
+${cfg.name} VOICE SAMPLES (first-touch reference — match this tone but make follow-up SHORTER)
 ================================================================================
 ${voice}
 
@@ -59,6 +66,10 @@ export async function POST(
   if (!bizId || !(await canAccessBusiness(bizId))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const cfg = getOutreachConfig(bizId);
+  if (!cfg) {
+    return NextResponse.json({ error: `Outreach is not configured for business "${bizId}"` }, { status: 400 });
+  }
   const target = db.getOutreach(targetId);
   if (!target) return NextResponse.json({ error: "Target not found" }, { status: 404 });
   if (!target.sent_at) {
@@ -66,7 +77,8 @@ export async function POST(
   }
 
   const body = await req.json().catch(() => ({}));
-  const sender: "Sam" | "Tyler" = body.sender === "Tyler" ? "Tyler" : "Sam";
+  const sender: "Sam" | "Tyler" =
+    body.sender === "Tyler" && cfg.senders.includes("Tyler") ? "Tyler" : "Sam";
   const nextFollowupN = (target.followup_count + 1) as 1 | 2 | 3;
   if (nextFollowupN > 3) {
     return NextResponse.json({ error: "Cadence complete — no more follow-ups" }, { status: 400 });
@@ -109,7 +121,7 @@ Write follow-up #${nextFollowupN}. Return ONLY the JSON object.`;
       system: [
         {
           type: "text",
-          text: loadPrefix(),
+          text: loadPrefix(cfg),
           cache_control: { type: "ephemeral" },
         },
       ],

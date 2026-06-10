@@ -3,29 +3,32 @@ import Anthropic from "@anthropic-ai/sdk";
 import { db } from "@/lib/db";
 import { canAccessBusiness } from "@/lib/server-auth";
 import { extractJSON } from "@/lib/extract-json";
+import { getOutreachConfig, type OutreachConfig } from "@/lib/outreach-config";
 
 const CACHE_TTL_MS = 14 * 86400_000; // 14 days
 
-const SYSTEM_PROMPT = `You are a research analyst for FLAIR, a next-gen college marketing agency. Given a brand and a contact at that brand, search the web for the 3–5 most useful signals to ground a personalized outreach DM. Useful signals include:
+function buildSystemPrompt(cfg: OutreachConfig): string {
+  return `You are a research analyst for ${cfg.name}. ${cfg.aboutForFit}
 
-- Recent campaigns or activations (especially Gen-Z / campus / influencer)
-- New marketing/brand hires (CMO, Head of Brand, VP Marketing, Director of Influencer, College Marketing Manager)
-- Funding rounds, expansions, new product launches in last 12 months
-- Partnerships, sponsorships, athlete/creator deals
-- Any sorority / fraternity / Greek-life / festival / campus activity
-- Public statements about Gen-Z or college audiences
+Given a target brand and a contact at that brand, search the web for the 3–5 most useful signals to ground a personalized outreach message. Useful signals include:
 
-Skip generic info (founder bio, company size, history). We want *recent and specific* signals an outreach DM can hook into.
+${cfg.enrichFocus}
+
+Skip generic info (founder bio, company size, history). We want *recent and specific* signals an outreach message can hook into.
+
+After gathering signals, write a FIT RATIONALE: 2-3 sentences on why this specific brand × ${cfg.name} is a natural partnership — grounded in what you found (or, if nothing was found, in the brand's category and audience). This rationale is fed to the message drafter so it can argue the collaboration convincingly.
 
 Output strict JSON ONLY (no prose, no markdown fences):
 {
   "signals": [
     { "type": "campaign|hire|funding|launch|partnership|other", "summary": "1-2 sentence specific signal", "source": "https://url" }
   ],
-  "summary_for_drafter": "2-3 sentence summary of the most pitchable hook"
+  "summary_for_drafter": "2-3 sentence summary of the most pitchable hook",
+  "fit_rationale": "2-3 sentences: why ${cfg.name} × this brand makes obvious sense"
 }
 
-If no signals found after searching, return { "signals": [], "summary_for_drafter": "No recent public signals found." }`;
+If no signals found after searching, return signals: [] and summary_for_drafter: "No recent public signals found." — but ALWAYS still write the fit_rationale from category knowledge.`;
+}
 
 export async function POST(
   _req: Request,
@@ -39,14 +42,22 @@ export async function POST(
   if (!bizId || !(await canAccessBusiness(bizId))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const cfg = getOutreachConfig(bizId);
+  if (!cfg) {
+    return NextResponse.json({ error: `Outreach is not configured for business "${bizId}"` }, { status: 400 });
+  }
   const target = db.getOutreach(targetId);
   if (!target) return NextResponse.json({ error: "Target not found" }, { status: 404 });
 
-  // Cache check — skip if signals fresh
+  // Cache check — skip if signals fresh (and already carry a fit rationale)
   if (target.signals_json) {
     try {
       const existing = JSON.parse(target.signals_json);
-      if (existing.fetched_at && Date.now() - existing.fetched_at < CACHE_TTL_MS) {
+      if (
+        existing.fetched_at &&
+        Date.now() - existing.fetched_at < CACHE_TTL_MS &&
+        existing.fit_rationale
+      ) {
         return NextResponse.json({
           target,
           signals: existing,
@@ -63,7 +74,7 @@ export async function POST(
 - Category: ${target.brand_category ?? "(unknown)"}
 - Contact: ${target.person_name} (${target.person_title ?? "unknown title"})
 
-Search the web (multiple queries if useful), then return the JSON object.`;
+Search the web (multiple queries if useful), then return the JSON object including the fit_rationale.`;
 
   const client = new Anthropic({ apiKey });
   try {
@@ -77,7 +88,7 @@ Search the web (multiple queries if useful), then return the JSON object.`;
           max_uses: 4,
         },
       ],
-      system: SYSTEM_PROMPT,
+      system: buildSystemPrompt(cfg),
       messages: [{ role: "user", content: userPrompt }],
     });
 
@@ -87,7 +98,7 @@ Search the web (multiple queries if useful), then return the JSON object.`;
     );
     const raw = textBlocks.map((b) => b.text).join("").trim();
 
-    let parsed: { signals: unknown[]; summary_for_drafter: string };
+    let parsed: { signals: unknown[]; summary_for_drafter: string; fit_rationale?: string };
     try {
       parsed = extractJSON(raw);
     } catch {

@@ -5,9 +5,10 @@ import fs from "node:fs";
 import { canAccessBusiness } from "@/lib/server-auth";
 import { extractJSON } from "@/lib/extract-json";
 import { apolloFindContactsForBrand, apolloIsConfigured } from "@/lib/apollo";
+import { getOutreachConfig, type OutreachConfig } from "@/lib/outreach-config";
 import type { CandidateContact } from "@/lib/types";
 
-const POSITIONING_PATH = path.join(process.cwd(), "lib", "prompts", "flair-positioning-brief.md");
+const PROMPTS_DIR = path.join(process.cwd(), "lib", "prompts");
 
 /**
  * Two-step candidate generator:
@@ -18,22 +19,20 @@ const POSITIONING_PATH = path.join(process.cwd(), "lib", "prompts", "flair-posit
  *   { candidates: [{ brand_name, category, size, why_fit, seasonality_hook, contacts: [...] }] }
  */
 
-function loadBrandSystemPrompt(): string {
-  const positioning = fs.existsSync(POSITIONING_PATH) ? fs.readFileSync(POSITIONING_PATH, "utf-8") : "";
-  return `You are FLAIR's outbound research analyst. Propose specific real brands for FLAIR to pitch its college / next-gen marketing services to. Output JSON only — DO NOT search the web or find people. Another system will discover contacts for each brand you propose.
+function loadBrandSystemPrompt(cfg: OutreachConfig): string {
+  const positioningPath = path.join(PROMPTS_DIR, cfg.positioningFile);
+  const positioning = fs.existsSync(positioningPath) ? fs.readFileSync(positioningPath, "utf-8") : "";
+  return `You are ${cfg.name}'s outbound research analyst. Propose specific real brands for ${cfg.name} to pitch ${cfg.pitch} to. Output JSON only — DO NOT search the web or find people. Another system will discover contacts for each brand you propose.
 
 ================================================================================
-FLAIR POSITIONING BRIEF (this tells you what FLAIR does — match brands to this)
+${cfg.name} POSITIONING BRIEF (this tells you what ${cfg.name} does — match brands to this)
 ================================================================================
 ${positioning}
 
 ================================================================================
 BRAND CRITERIA
 ================================================================================
-- Sell to or want to sell to Gen-Z / college-age consumers
-- Mid-tier in marketing maturity — too small to have a big-agency lock-in, too established to be lifestyle-only
-- NOT already FLAIR clients (Coca-Cola, method/SC Johnson, Monster Energy, Real American Beer, WOW Media, Vacation, ULTA Beauty — skip these and obvious adjacents)
-- Have a back-to-school 2026 story angle (apparel for fall, beauty for rush, beverage for tailgates, EdTech for semester start)
+${cfg.candidateCriteria}
 
 ================================================================================
 OUTPUT FORMAT (strict JSON only, no prose, no markdown fences)
@@ -42,20 +41,21 @@ OUTPUT FORMAT (strict JSON only, no prose, no markdown fences)
   "candidates": [
     {
       "brand_name": "string",
-      "category": "string (one of: beauty, wellness, lifestyle, fashion, apparel, CPG, beverage, EdTech, DTC-genz, enterprise)",
+      "category": "string (one of: ${cfg.categories.join(", ")})",
       "size": "enterprise | midsize | emerging",
-      "why_fit": "1-2 sentence specific reason this brand is a strong FLAIR target",
-      "seasonality_hook": "string — back-to-school angle for this brand"
+      "why_fit": "1-2 sentence specific reason this brand is a strong ${cfg.name} target",
+      "seasonality_hook": "string — the timeliest angle for pitching this brand right now"
     }
   ]
 }
 
-Quality bar: every brand must pass the sniff test of "would Sam actually want to pitch this brand?" Skip generic enterprise names; favor specific, emerging-to-midsize Gen-Z-relevant brands.`;
+Quality bar: every brand must pass the sniff test of "would Sam actually want to pitch this brand?" Skip generic enterprise names; favor specific, well-matched brands.`;
 }
 
-const WEB_SEARCH_CONTACT_SYSTEM = `You are FLAIR's outbound research analyst. Given a single brand, use the web_search tool to find 2-4 specific named decision-makers whose roles make them the right recipient of FLAIR's college / next-gen marketing pitch.
+const buildWebSearchContactSystem = (cfg: OutreachConfig) => `You are ${cfg.name}'s outbound research analyst. Given a single brand, use the web_search tool to find 2-4 specific named decision-makers whose roles make them the right recipient of ${cfg.pitch}.
 
-PRIORITY: college/next-gen roles first, then influencer/partnerships, social/community, experiential, brand execs.
+PRIORITY ORDER:
+${cfg.contactPriority}
 
 ANTI-HALLUCINATION:
 - Only include contacts you found via search results — never invent.
@@ -71,6 +71,7 @@ OUTPUT (strict JSON):
 
 async function webSearchContacts(
   client: Anthropic,
+  cfg: OutreachConfig,
   brandName: string,
   brandCategory: string
 ): Promise<CandidateContact[]> {
@@ -80,7 +81,7 @@ async function webSearchContacts(
     tools: [
       { type: "web_search_20250305" as const, name: "web_search", max_uses: 5 },
     ],
-    system: WEB_SEARCH_CONTACT_SYSTEM,
+    system: buildWebSearchContactSystem(cfg),
     messages: [
       {
         role: "user",
@@ -111,6 +112,10 @@ export async function POST(req: Request) {
   if (!(await canAccessBusiness(body.business_id))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const cfg = getOutreachConfig(body.business_id);
+  if (!cfg) {
+    return NextResponse.json({ error: `Outreach is not configured for business "${body.business_id}"` }, { status: 400 });
+  }
 
   const category: string = body.category ?? "";
   const size: string = body.size ?? "";
@@ -126,17 +131,17 @@ export async function POST(req: Request) {
     system: [
       {
         type: "text",
-        text: loadBrandSystemPrompt(),
+        text: loadBrandSystemPrompt(cfg),
         cache_control: { type: "ephemeral" },
       },
     ],
     messages: [
       {
         role: "user",
-        content: `Propose ${count} brand candidates for FLAIR to target.
+        content: `Propose ${count} brand candidates for ${cfg.name} to target.
 
 ICP filters:
-- Category focus: ${category || "any of FLAIR's core categories (beauty, wellness, lifestyle, fashion, apparel, CPG, beverage, EdTech, DTC-genz)"}
+- Category focus: ${category || `any of ${cfg.name}'s core categories (${cfg.categories.join(", ")})`}
 - Size: ${size || "any (mix of enterprise, midsize, emerging)"}
 - Additional focus: ${focus || "(none)"}
 
@@ -176,14 +181,14 @@ Return ONLY the JSON object.`,
       let contacts: CandidateContact[] = [];
       if (apolloOK) {
         try {
-          contacts = await apolloFindContactsForBrand(b.brand_name, 5, b.category);
+          contacts = await apolloFindContactsForBrand(b.brand_name, 5, b.category, cfg.icpTitleKeywords);
           if (contacts.length > 0) apolloHits++;
         } catch {
           contacts = [];
         }
       }
       if (contacts.length === 0) {
-        contacts = await webSearchContacts(client, b.brand_name, b.category);
+        contacts = await webSearchContacts(client, cfg, b.brand_name, b.category);
         if (contacts.length > 0) webSearchHits++;
       }
       return { ...b, contacts };

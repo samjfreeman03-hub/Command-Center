@@ -7,6 +7,7 @@ import {
   Plus, Sparkles, Copy, Check, ExternalLink, Trash2, Loader2, Clock, Send, RotateCcw, Search, Wand2, UserSearch, Users, Mail, ShieldCheck, Download,
 } from "lucide-react";
 import { useShareHeaders } from "@/lib/share-context";
+import { getOutreachConfig } from "@/lib/outreach-config";
 
 const EMPTY_FORM = {
   brand_name: "",
@@ -17,11 +18,6 @@ const EMPTY_FORM = {
   linkedin_url: "",
   notes: "",
 };
-
-const CATEGORY_SUGGESTIONS = [
-  "beauty", "wellness", "lifestyle", "fashion", "apparel",
-  "CPG", "beverage", "EdTech", "DTC-genz", "enterprise",
-];
 
 type ViewMode = "today" | "all";
 
@@ -59,6 +55,11 @@ export function OutreachPanel({
   businessId: string;
   initial: OutreachTarget[];
 }) {
+  const cfg = getOutreachConfig(businessId);
+  const categorySuggestions = cfg?.categories ?? [];
+  const templateALabel = cfg?.templateALabel ?? "Template A";
+  const templateBLabel = cfg?.templateBLabel ?? "Template B";
+  const senders = cfg?.senders ?? ["Sam"];
   const [view, setView] = useState<ViewMode>("today");
   const [targets, setTargets] = useState<OutreachTarget[]>(initial);
   const [showAdd, setShowAdd] = useState(false);
@@ -70,16 +71,20 @@ export function OutreachPanel({
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [followupDrafts, setFollowupDrafts] = useState<Record<number, { followup_n: number; text: string; reasoning?: string }>>({});
   const [followupSender, setFollowupSender] = useState<"Sam" | "Tyler">("Sam");
-  // Persist sender choice across page loads
+  // Persist sender choice across page loads (per business)
+  const senderStorageKey = `${businessId}-outreach-sender`;
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem("flair-outreach-sender");
-    if (stored === "Sam" || stored === "Tyler") setFollowupSender(stored);
-  }, []);
+    const stored = window.localStorage.getItem(senderStorageKey);
+    if ((stored === "Sam" || stored === "Tyler") && senders.includes(stored)) {
+      setFollowupSender(stored);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [senderStorageKey]);
   useEffect(() => {
     if (typeof window === "undefined") return;
-    window.localStorage.setItem("flair-outreach-sender", followupSender);
-  }, [followupSender]);
+    window.localStorage.setItem(senderStorageKey, followupSender);
+  }, [followupSender, senderStorageKey]);
   const [showCandidates, setShowCandidates] = useState(false);
   const [candidatesForm, setCandidatesForm] = useState({ category: "", size: "" as "" | "enterprise" | "midsize" | "emerging", count: 10, focus: "" });
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -193,7 +198,7 @@ export function OutreachPanel({
     }
   }
 
-  async function markSent(target: OutreachTarget, template: "A" | "B", text: string) {
+  async function markSent(target: OutreachTarget, template: "A" | "B" | "Email", text: string) {
     if (!text || !text.trim()) return;
     const res = await fetch(`/api/outreach/${target.id}/action`, {
       method: "POST",
@@ -339,7 +344,7 @@ export function OutreachPanel({
             linkedin_url,
             person_email,
             source: "auto-generated",
-            notes: `${c.why_fit}\n\nBack-to-school hook: ${c.seasonality_hook}${confidence_note}`,
+            notes: `${c.why_fit}\n\nTiming hook: ${c.seasonality_hook}${confidence_note}`,
           }),
         });
         if (res.status === 409) { skipped++; continue; }
@@ -615,7 +620,7 @@ export function OutreachPanel({
       </div>
 
       {/* Add form */}
-      {showAdd && <AddTargetForm form={form} setField={setField} onSubmit={add} onCancel={() => { setShowAdd(false); setForm(EMPTY_FORM); }} />}
+      {showAdd && <AddTargetForm form={form} setField={setField} categories={categorySuggestions} onSubmit={add} onCancel={() => { setShowAdd(false); setForm(EMPTY_FORM); }} />}
 
       {/* Candidate generator */}
       {showCandidates && (
@@ -664,6 +669,8 @@ export function OutreachPanel({
                   selectedFound={selectedFound[t.id]}
                   copiedKey={copiedKey}
                   isPlaceholder={t.person_name === PLACEHOLDER_NAME}
+                  templateALabel={templateALabel}
+                  templateBLabel={templateBLabel}
                   onToggle={() => setExpandedId((cur) => (cur === t.id ? null : t.id))}
                   onDraft={() => draft(t)}
                   onEnrich={() => enrich(t)}
@@ -687,17 +694,18 @@ export function OutreachPanel({
                 count={followupsDue.length}
                 hint="Day 3 / 7 / 14 cadence — generate a bump and send."
                 rightSlot={
-                  <div className="inline-flex items-center gap-1 text-xs text-zinc-500">
-                    <span>Sign as:</span>
-                    <select
-                      value={followupSender}
-                      onChange={(e) => setFollowupSender(e.target.value as "Sam" | "Tyler")}
-                      className="px-1.5 py-0.5 rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-xs"
-                    >
-                      <option value="Sam">Sam</option>
-                      <option value="Tyler">Tyler</option>
-                    </select>
-                  </div>
+                  senders.length > 1 ? (
+                    <div className="inline-flex items-center gap-1 text-xs text-zinc-500">
+                      <span>Sign as:</span>
+                      <select
+                        value={followupSender}
+                        onChange={(e) => setFollowupSender(e.target.value as "Sam" | "Tyler")}
+                        className="px-1.5 py-0.5 rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-xs"
+                      >
+                        {senders.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                  ) : undefined
                 }
               />
               {followupsDue.map((t) => (
@@ -805,6 +813,8 @@ export function OutreachPanel({
                   selectedFound={selectedFound[t.id]}
                   copiedKey={copiedKey}
                   isPlaceholder={t.person_name === PLACEHOLDER_NAME}
+                  templateALabel={templateALabel}
+                  templateBLabel={templateBLabel}
                   onToggle={() => setExpandedId((cur) => (cur === t.id ? null : t.id))}
                   onDraft={() => draft(t)}
                   onEnrich={() => enrich(t)}
@@ -882,10 +892,11 @@ function FilterChip({
 }
 
 function AddTargetForm({
-  form, setField, onSubmit, onCancel,
+  form, setField, categories, onSubmit, onCancel,
 }: {
   form: typeof EMPTY_FORM;
   setField: <K extends keyof typeof EMPTY_FORM>(k: K, v: (typeof EMPTY_FORM)[K]) => void;
+  categories: string[];
   onSubmit: (e: React.FormEvent) => void;
   onCancel: () => void;
 }) {
@@ -902,11 +913,11 @@ function AddTargetForm({
             list="category-list"
             value={form.brand_category}
             onChange={(e) => setField("brand_category", e.target.value)}
-            placeholder="beauty"
+            placeholder={categories[0] ?? "category"}
             className="w-full px-2.5 py-1.5 text-sm rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100"
           />
           <datalist id="category-list">
-            {CATEGORY_SUGGESTIONS.map((c) => <option key={c} value={c} />)}
+            {categories.map((c) => <option key={c} value={c} />)}
           </datalist>
         </div>
         <div>
@@ -1171,6 +1182,7 @@ function Input({
 
 function TargetCard({
   target, expanded, drafting, enriching, findingContacts, foundContacts, selectedFound, copiedKey, isPlaceholder,
+  templateALabel, templateBLabel,
   onToggle, onDraft, onEnrich, onFindContacts, onToggleFoundContact, onAddFoundContacts,
   onMarkSent, onMarkReplied, onMarkStatus, onCopy, onDelete,
 }: {
@@ -1183,13 +1195,15 @@ function TargetCard({
   selectedFound?: Set<number>;
   copiedKey: string | null;
   isPlaceholder: boolean;
+  templateALabel: string;
+  templateBLabel: string;
   onToggle: () => void;
   onDraft: () => void;
   onEnrich: () => void;
   onFindContacts: () => void;
   onToggleFoundContact: (idx: number) => void;
   onAddFoundContacts: () => void;
-  onMarkSent: (template: "A" | "B", firstDMText: string) => void;
+  onMarkSent: (template: "A" | "B" | "Email", firstDMText: string) => void;
   onMarkReplied: () => void;
   onMarkStatus: (s: OutreachStatus) => void;
   onCopy: (text: string, key: string) => void;
@@ -1357,6 +1371,11 @@ function TargetCard({
                     Drafter hook: {signals.summary_for_drafter}
                   </p>
                 )}
+                {signals.fit_rationale && (
+                  <p className="mt-2 pt-2 border-t border-emerald-200 dark:border-emerald-900/40 text-zinc-600 dark:text-zinc-400">
+                    <span className="font-semibold">Why it&apos;s a fit:</span> {signals.fit_rationale}
+                  </p>
+                )}
               </div>
             </details>
           )}
@@ -1364,13 +1383,13 @@ function TargetCard({
             <div className="text-sm text-zinc-500">
               No drafts yet — {signals ? "" : "click "}
               {!signals && <><span className="inline-flex items-center gap-1 font-medium"><Search size={11} /> Enrich</span> to ground in real signals (optional), then </>}
-              click <span className="inline-flex items-center gap-1 font-medium"><Sparkles size={11} /> Draft</span> to generate Template A + B.
+              click <span className="inline-flex items-center gap-1 font-medium"><Sparkles size={11} /> Draft</span> to generate Template A + B and a cold email.
             </div>
           )}
           {drafts && (
             <>
               <DraftBlock
-                label="Template A — Identity + proof (Sam-style)"
+                label={templateALabel}
                 connectionNote={drafts.templateA.connectionNote}
                 firstDM={drafts.templateA.firstDM}
                 keyPrefix={`a-${target.id}`}
@@ -1379,7 +1398,7 @@ function TargetCard({
                 onMarkSent={target.status !== "sent" && target.status !== "replied" ? (text) => onMarkSent("A", text) : undefined}
               />
               <DraftBlock
-                label="Template B — Specific question (Tyler-style)"
+                label={templateBLabel}
                 connectionNote={drafts.templateB.connectionNote}
                 firstDM={drafts.templateB.firstDM}
                 keyPrefix={`b-${target.id}`}
@@ -1387,6 +1406,17 @@ function TargetCard({
                 onCopy={onCopy}
                 onMarkSent={target.status !== "sent" && target.status !== "replied" ? (text) => onMarkSent("B", text) : undefined}
               />
+              {drafts.email && (
+                <EmailDraftBlock
+                  subject={drafts.email.subject}
+                  body={drafts.email.body}
+                  toEmail={target.person_email}
+                  keyPrefix={`e-${target.id}`}
+                  copiedKey={copiedKey}
+                  onCopy={onCopy}
+                  onMarkSent={target.status !== "sent" && target.status !== "replied" ? (text) => onMarkSent("Email", text) : undefined}
+                />
+              )}
               {drafts.reasoning && (
                 <p className="text-xs text-zinc-500 italic">Why: {drafts.reasoning}</p>
               )}
@@ -1612,6 +1642,82 @@ function DraftBlock({
         onCopy={onCopy}
         maxRows={6}
       />
+    </div>
+  );
+}
+
+function EmailDraftBlock({
+  subject, body, toEmail, keyPrefix, copiedKey, onCopy, onMarkSent,
+}: {
+  subject: string;
+  body: string;
+  toEmail: string | null;
+  keyPrefix: string;
+  copiedKey: string | null;
+  onCopy: (text: string, key: string) => void;
+  /** Receives the (possibly edited) body so sent_history reflects what was actually sent. */
+  onMarkSent?: (bodyText: string) => void;
+}) {
+  const [subjectText, setSubjectText] = useState(subject);
+  const [bodyText, setBodyText] = useState(body);
+  // Reset edits if the underlying drafts change (e.g. user clicks Redraft)
+  useEffect(() => { setSubjectText(subject); }, [subject]);
+  useEffect(() => { setBodyText(body); }, [body]);
+
+  const subjectEdited = subjectText !== subject;
+  const bodyEdited = bodyText !== body;
+  const mailtoHref = toEmail
+    ? `mailto:${toEmail}?subject=${encodeURIComponent(subjectText)}&body=${encodeURIComponent(bodyText)}`
+    : null;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 inline-flex items-center gap-1.5">
+          <Mail size={11} /> Email — Cold email variant
+        </div>
+        <div className="flex items-center gap-1.5">
+          {mailtoHref && (
+            <a
+              href={mailtoHref}
+              className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded bg-sky-600 text-white hover:bg-sky-700"
+            >
+              <Mail size={10} /> Open in mail
+            </a>
+          )}
+          {onMarkSent && (
+            <button
+              onClick={() => onMarkSent(bodyText)}
+              className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded bg-emerald-600 text-white hover:bg-emerald-700"
+            >
+              <Send size={10} /> Sent this{bodyEdited && " (edited)"}
+            </button>
+          )}
+        </div>
+      </div>
+      <DraftLine
+        sublabel={`Subject (${subjectText.length}/70)${subjectEdited ? " · edited" : ""}`}
+        text={subjectText}
+        onChange={setSubjectText}
+        keyId={`${keyPrefix}-subject`}
+        copiedKey={copiedKey}
+        onCopy={onCopy}
+        maxRows={1}
+      />
+      <DraftLine
+        sublabel={`Body (${bodyText.length}/900)${bodyEdited ? " · edited" : ""}`}
+        text={bodyText}
+        onChange={setBodyText}
+        keyId={`${keyPrefix}-body`}
+        copiedKey={copiedKey}
+        onCopy={onCopy}
+        maxRows={8}
+      />
+      {!toEmail && (
+        <p className="text-[11px] text-zinc-400 italic">
+          No email on file for this contact — run Find Contacts to pull one, or copy the draft manually.
+        </p>
+      )}
     </div>
   );
 }

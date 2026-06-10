@@ -12,6 +12,7 @@ import { TeamPanel } from "@/components/team-panel";
 import { BrandsPanel } from "@/components/brands-panel";
 import { OutreachPanel } from "@/components/outreach-panel";
 import { ShareTokenContext } from "@/lib/share-context";
+import { OUTREACH_BUSINESS_IDS } from "@/lib/outreach-config";
 
 const TABS = [
   { id: "todos",     label: "Todos" },
@@ -25,6 +26,11 @@ const TABS = [
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
+
+/** Outreach is only enabled for businesses with an outreach config (FLAIR + MTRNM). */
+function tabsForBusiness(businessId: string) {
+  return TABS.filter((t) => t.id !== "outreach" || OUTREACH_BUSINESS_IDS.includes(businessId));
+}
 
 export function SharedView({
   business,
@@ -51,6 +57,7 @@ export function SharedView({
   initialBrands: BrandContact[];
   initialOutreach: OutreachTarget[];
 }) {
+  const tabs = tabsForBusiness(business.id);
   const [tab, setTab] = useState<TabId>("todos");
   const [members, setMembers] = useState<TeamMember[]>(initialMembers);
 
@@ -75,7 +82,7 @@ export function SharedView({
         {/* Tabs */}
         <div className="w-full px-4 sm:px-8 lg:px-10 pt-5 pb-1">
           <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1 pb-0.5">
-            {TABS.map((t) => (
+            {tabs.map((t) => (
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}

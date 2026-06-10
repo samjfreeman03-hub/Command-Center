@@ -933,7 +933,7 @@ export const db = {
   },
 
   /** Mark first send. Sets sent_at, schedules follow-up #1 at +3d, appends to history. */
-  markOutreachSent(id: number, payload: { text: string; template: "A" | "B" }): OutreachTarget {
+  markOutreachSent(id: number, payload: { text: string; template: "A" | "B" | "Email" }): OutreachTarget {
     const target = getDb().prepare("SELECT * FROM outreach_targets WHERE id = ?").get(id) as OutreachTarget | undefined;
     if (!target) throw new Error("Target not found");
     const now = Date.now();

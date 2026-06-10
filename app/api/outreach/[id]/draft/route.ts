@@ -5,27 +5,32 @@ import fs from "node:fs";
 import { db } from "@/lib/db";
 import { canAccessBusiness } from "@/lib/server-auth";
 import { extractJSON } from "@/lib/extract-json";
+import { getOutreachConfig, type OutreachConfig } from "@/lib/outreach-config";
 import type { OutreachDrafts } from "@/lib/types";
 
-const POSITIONING_PATH = path.join(process.cwd(), "lib", "prompts", "flair-positioning-brief.md");
-const VOICE_PATH = path.join(process.cwd(), "lib", "prompts", "flair-voice-samples.md");
+const PROMPTS_DIR = path.join(process.cwd(), "lib", "prompts");
 
-function loadPrefix(): string {
-  const positioning = fs.existsSync(POSITIONING_PATH) ? fs.readFileSync(POSITIONING_PATH, "utf-8") : "";
-  const voice = fs.existsSync(VOICE_PATH) ? fs.readFileSync(VOICE_PATH, "utf-8") : "";
-  return `You are the FLAIR outreach drafter. You write LinkedIn outreach messages for Sam Freeman (Founder) and Tyler Rong (Head of Operations) targeting brand-side decision-makers for FLAIR's college / next-gen marketing services.
+function readPrompt(file: string): string {
+  const full = path.join(PROMPTS_DIR, file);
+  return fs.existsSync(full) ? fs.readFileSync(full, "utf-8") : "";
+}
 
-Your job: given a single target brand + contact, produce TWO message variants — Template A (identity + proof + soft close, Sam-style) and Template B (specific question, no pitch, Tyler-style). Output strict JSON only.
+function loadPrefix(cfg: OutreachConfig): string {
+  const positioning = readPrompt(cfg.positioningFile);
+  const voice = readPrompt(cfg.voiceFile);
+  return `You are the ${cfg.name} outreach drafter. ${cfg.drafterIdentity}
 
-You MUST follow the voice samples and positioning brief below verbatim in tone, structure, vocabulary, and length. Use real proof-points only — never invent stats. Pick proof brands matched to the target's category.
+Your job: given a single target brand + contact, produce TWO LinkedIn message variants (Template A and Template B per the voice samples below) plus ONE cold email variant. Output strict JSON only.
+
+You MUST follow the voice samples and positioning brief below verbatim in tone, structure, vocabulary, and length. Use real proof-points only — never invent stats.
 
 ================================================================================
-FLAIR POSITIONING BRIEF
+${cfg.name} POSITIONING BRIEF
 ================================================================================
 ${positioning}
 
 ================================================================================
-FLAIR VOICE SAMPLES
+${cfg.name} VOICE SAMPLES
 ================================================================================
 ${voice}
 
@@ -35,19 +40,23 @@ OUTPUT FORMAT (strict JSON, no prose, no markdown fences)
 {
   "templateA": { "connectionNote": "string ≤300 chars", "firstDM": "string ≤600 chars" },
   "templateB": { "connectionNote": "string ≤300 chars", "firstDM": "string ≤600 chars" },
-  "reasoning": "one short sentence: why these proof points + tactic match this target"
+  "email": { "subject": "string ≤70 chars", "body": "string ≤900 chars, plain text" },
+  "reasoning": "one short sentence: why these hooks + proof points match this target"
 }
 
 Rules:
 - connectionNote = the message attached to the LinkedIn connection request (under 300 chars LinkedIn limit).
 - firstDM = the follow-up direct message sent right after they accept the connection.
-- Template A: Sam-style. "Hey {FirstName}!!", identity pitch sentence, brand-name drop sentence, "Would love to chat!!" close. Double-bangs.
-- Template B: Tyler-style. "Hey {FirstName}!", direct question tailored to brand category, optional one-line elaboration, optional "—{FirstName}" sign-off. Single-bang.
-- Use ONLY the target's FIRST NAME in the greeting.
-- Pick proof brands relevant to target category from the positioning brief — NEVER invent.
-- NEVER include links, calendar references, or "looking forward to your response".
-- For Template B, do NOT mention FLAIR or list clients — keep it pure ask.
-- Use seasonality (Fall '26, back-to-school, rush week) when it fits.
+- email = a standalone cold email in the same voice (see email rules in the voice samples). Greeting through sign-off, no subject line inside the body.
+- Use ONLY the target's FIRST NAME in greetings.
+- NEVER include links or calendar references in any variant.
+
+SIGNALS & FIT (critical):
+- When enriched signals and/or a fit rationale are provided for the target, weave the SINGLE strongest hook naturally into the drafts — one specific reference that shows why {brand} × ${cfg.name} makes obvious sense.
+- The fit must read like an insider observation, never like scraped research. One specific beat per message, maximum.
+- If no signals are provided, write from category knowledge only — do not invent specifics about the brand.
+
+${cfg.draftRules}
 `;
 }
 
@@ -66,12 +75,18 @@ export async function POST(
   if (!bizId || !(await canAccessBusiness(bizId))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const cfg = getOutreachConfig(bizId);
+  if (!cfg) {
+    return NextResponse.json({ error: `Outreach is not configured for business "${bizId}"` }, { status: 400 });
+  }
   const target = db.getOutreach(targetId);
   if (!target) return NextResponse.json({ error: "Target not found" }, { status: 404 });
 
   const signals = target.signals_json ? JSON.parse(target.signals_json) : null;
   const signalsBlock = signals
-    ? `\nRecent signals about ${target.brand_name}:\n${JSON.stringify(signals, null, 2)}`
+    ? `\nRecent signals about ${target.brand_name}:\n${JSON.stringify(signals, null, 2)}${
+        signals.fit_rationale ? `\n\nFIT RATIONALE (weave this in): ${signals.fit_rationale}` : ""
+      }`
     : `\n(No signals enriched yet — write from category knowledge only, do not invent specifics about this brand.)`;
 
   const userPrompt = `TARGET:
@@ -82,17 +97,17 @@ export async function POST(
 - Title: ${target.person_title ?? "(unknown)"}
 ${signalsBlock}
 
-Produce both templates now. Return ONLY the JSON object.`;
+Produce both LinkedIn templates and the email variant now. Return ONLY the JSON object.`;
 
   const client = new Anthropic({ apiKey });
   try {
     const response = await client.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 1500,
+      max_tokens: 2000,
       system: [
         {
           type: "text",
-          text: loadPrefix(),
+          text: loadPrefix(cfg),
           cache_control: { type: "ephemeral" },
         },
       ],
@@ -107,10 +122,16 @@ Produce both templates now. Return ONLY the JSON object.`;
 
     let parsed: OutreachDrafts;
     try {
-      const obj = extractJSON<{ templateA: OutreachDrafts["templateA"]; templateB: OutreachDrafts["templateB"]; reasoning?: string }>(text);
+      const obj = extractJSON<{
+        templateA: OutreachDrafts["templateA"];
+        templateB: OutreachDrafts["templateB"];
+        email?: OutreachDrafts["email"];
+        reasoning?: string;
+      }>(text);
       parsed = {
         templateA: obj.templateA,
         templateB: obj.templateB,
+        email: obj.email,
         reasoning: obj.reasoning,
         generated_at: Date.now(),
       };
