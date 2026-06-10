@@ -62,6 +62,7 @@ export function ResourcesPanel({
   }
 
   async function remove(id: number) {
+    if (!confirm("Delete this resource?")) return;
     setResources((prev) => prev.filter((r) => r.id !== id));
     await fetch(`/api/resources/${id}`, { method: "DELETE", headers: shareHeaders });
   }

@@ -36,10 +36,13 @@ export default async function SharePage({
     Promise.resolve(db.listOutreach({ businessId })),
   ]);
 
+  const customTagline = db.getBusinessTagline(businessId);
+
   return (
     <SharedView
       business={business}
       shareToken={token}
+      tagline={customTagline ?? business.tagline}
       initialTodos={todos}
       initialLeads={leads}
       initialResources={resources}

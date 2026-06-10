@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { BrandContact, BrandStatus, BrandAttachment } from "@/lib/types";
 import { BRAND_STATUSES } from "@/lib/types";
 import {
@@ -60,6 +60,7 @@ export function BrandsPanel({
   }
 
   async function remove(id: number) {
+    if (!confirm("Delete this contact and its attachments?")) return;
     setBrands((prev) => prev.filter((b) => b.id !== id));
     setSelectedBrand(null);
     await fetch(`/api/brands/${id}`, { method: "DELETE", headers: shareHeaders });
@@ -264,7 +265,7 @@ function BrandRow({ brand, onClick }: { brand: BrandContact; onClick: () => void
           <p className="text-xs text-zinc-400 dark:text-zinc-600 mt-0.5 line-clamp-1">{brand.notes}</p>
         )}
       </div>
-      <ChevronDown size={14} className="text-zinc-400 shrink-0 mt-1 -rotate-90 opacity-0 group-hover:opacity-100 transition-opacity" />
+      <ChevronDown size={14} className="text-zinc-400 shrink-0 mt-1 -rotate-90 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity" />
     </button>
   );
 }
@@ -294,11 +295,12 @@ function BrandModal({
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Load attachments on first open
-  useState(() => {
+  useEffect(() => {
     fetch(`/api/brands/${brand.id}/attachments`, { headers: shareHeaders })
-      .then((r) => r.json())
+      .then((r) => (r.ok ? r.json() : []))
       .then((data: BrandAttachment[]) => { setAttachments(data); setAttachmentsLoaded(true); });
-  });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brand.id]);
 
   function startEdit() {
     setDraft({
@@ -575,7 +577,7 @@ function BrandModal({
                       </a>
                     )}
                     <button onClick={() => deleteAttachment(a.id)}
-                      className="text-zinc-300 dark:text-zinc-700 hover:text-red-500 dark:hover:text-red-400 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                      className="text-zinc-300 dark:text-zinc-700 hover:text-red-500 dark:hover:text-red-400 shrink-0 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                       <X size={12} />
                     </button>
                   </div>

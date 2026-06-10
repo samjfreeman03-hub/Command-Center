@@ -64,7 +64,7 @@ export function Sidebar({ onLogout, onClose }: { onLogout?: () => void; onClose?
         >
           <Mail size={15} className="shrink-0" />
           <span className="truncate flex-1">Email</span>
-          <ExternalLink size={12} className="shrink-0 opacity-0 group-hover:opacity-60 transition-opacity" />
+          <ExternalLink size={12} className="shrink-0 opacity-40 md:opacity-0 md:group-hover:opacity-60 transition-opacity" />
         </a>
         <a
           href="https://calendar.google.com/"
@@ -74,7 +74,7 @@ export function Sidebar({ onLogout, onClose }: { onLogout?: () => void; onClose?
         >
           <Calendar size={15} className="shrink-0" />
           <span className="truncate flex-1">Calendar</span>
-          <ExternalLink size={12} className="shrink-0 opacity-0 group-hover:opacity-60 transition-opacity" />
+          <ExternalLink size={12} className="shrink-0 opacity-40 md:opacity-0 md:group-hover:opacity-60 transition-opacity" />
         </a>
       </div>
 

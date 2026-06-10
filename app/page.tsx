@@ -126,6 +126,3 @@ function Panel({
   );
 }
 
-function Empty({ text }: { text: string }) {
-  return <div className="text-sm text-zinc-400 py-6 text-center">{text}</div>;
-}

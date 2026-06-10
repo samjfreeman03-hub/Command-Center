@@ -29,6 +29,7 @@ type TabId = (typeof TABS)[number]["id"];
 export function SharedView({
   business,
   shareToken,
+  tagline,
   initialTodos,
   initialLeads,
   initialResources,
@@ -40,6 +41,7 @@ export function SharedView({
 }: {
   business: Business;
   shareToken: string;
+  tagline: string;
   initialTodos: Todo[];
   initialLeads: Lead[];
   initialResources: BusinessResource[];
@@ -66,7 +68,7 @@ export function SharedView({
             <h1 className={`text-2xl sm:text-3xl font-bold tracking-tight mb-1 ${business.accent}`}>
               {business.name}
             </h1>
-            <p className="text-sm text-zinc-500 leading-snug">{business.tagline}</p>
+            <p className="text-sm text-zinc-500 leading-snug">{tagline}</p>
           </div>
         </header>
 
@@ -90,7 +92,7 @@ export function SharedView({
         </div>
 
         {/* Panels */}
-        <div className="w-full px-4 sm:px-8 lg:px-10 pt-5 pb-10 flex-1">
+        <div className="w-full px-4 sm:px-8 lg:px-10 pt-5 pb-10 safe-bottom flex-1">
           {tab === "todos"     && <TodosPanel businessId={business.id} initial={initialTodos} members={members} />}
           {tab === "pipeline"  && <PipelinePanel businessId={business.id} initial={initialLeads} />}
           {tab === "outreach"  && <OutreachPanel businessId={business.id} initial={initialOutreach} />}

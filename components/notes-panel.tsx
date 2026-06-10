@@ -14,9 +14,7 @@ export function NotesPanel({ businessId, initial }: { businessId: string; initia
   const [isNew, setIsNew] = useState(false);
   const [saving, setSaving] = useState(false);
   // Mobile: "list" | "editor"
-  const [mobileView, setMobileView] = useState<"list" | "editor">(
-    initial.length > 0 ? "list" : "list"
-  );
+  const [mobileView, setMobileView] = useState<"list" | "editor">("list");
   const shareHeaders = useShareHeaders();
 
   function pick(n: Note) {

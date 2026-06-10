@@ -53,9 +53,15 @@ export function BusinessView({
   shareToken: string;
   initialTagline: string;
 }) {
-  const [tab, setTab] = useState<TabId>(
+  const [tab, setTabState] = useState<TabId>(
     (TABS.find((t) => t.id === initialTab)?.id ?? "todos") as TabId
   );
+
+  // Keep ?tab= in the URL so refresh/back keeps the active tab
+  function setTab(next: TabId) {
+    setTabState(next);
+    window.history.replaceState(null, "", `/b/${business.id}?tab=${next}`);
+  }
   const [copied, setCopied] = useState(false);
   const [members, setMembers] = useState<TeamMember[]>(initialMembers);
   const [tagline, setTagline] = useState(initialTagline);
@@ -119,7 +125,7 @@ export function BusinessView({
                   className="group flex items-center gap-1.5 text-left"
                 >
                   <p className="text-sm text-zinc-500 leading-snug">{tagline}</p>
-                  <Pencil size={11} className="text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                  <Pencil size={11} className="text-zinc-400 opacity-60 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0" />
                 </button>
               )}
             </div>

@@ -59,6 +59,7 @@ export function PipelinePanel({
   }
 
   async function remove(id: number) {
+    if (!confirm("Delete this lead?")) return;
     setLeads((prev) => prev.filter((l) => l.id !== id));
     setEditingId(null);
     await fetch(`/api/leads/${id}`, { method: "DELETE", headers: shareHeaders });

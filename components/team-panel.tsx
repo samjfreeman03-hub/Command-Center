@@ -70,6 +70,7 @@ export function TeamPanel({
   }
 
   async function removeMember(id: number) {
+    if (!confirm("Remove this team member? Their task assignments will be cleared.")) return;
     await fetch(`/api/team/${id}`, { method: "DELETE", headers: shareHeaders });
     updateMembers(members.filter((m) => m.id !== id));
   }
