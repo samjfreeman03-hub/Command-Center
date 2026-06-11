@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import type { OutreachTarget, OutreachStatus, OutreachDrafts, OutreachSignals, CandidateContact } from "@/lib/types";
 import { OUTREACH_STATUSES } from "@/lib/types";
 import {
-  Plus, Sparkles, Copy, Check, ExternalLink, Trash2, Loader2, Clock, Send, RotateCcw, Search, Wand2, UserSearch, Users, Mail, ShieldCheck, Download,
+  Plus, Sparkles, Copy, Check, ExternalLink, Trash2, Loader2, Clock, Send, RotateCcw, Search, Wand2, UserSearch, Users, Mail, ShieldCheck, Download, PenLine,
 } from "lucide-react";
 import { useShareHeaders } from "@/lib/share-context";
 import { getOutreachConfig } from "@/lib/outreach-config";
@@ -85,6 +85,19 @@ export function OutreachPanel({
     if (typeof window === "undefined") return;
     window.localStorage.setItem(senderStorageKey, followupSender);
   }, [followupSender, senderStorageKey]);
+  // Per-business email signature, appended to Gmail compose links (plain text).
+  // Stored in localStorage so it stays out of the DB/repo and survives reloads.
+  const signatureStorageKey = `${businessId}-email-signature`;
+  const [emailSignature, setEmailSignature] = useState("");
+  const [showSignature, setShowSignature] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setEmailSignature(window.localStorage.getItem(signatureStorageKey) ?? "");
+  }, [signatureStorageKey]);
+  function saveSignature(next: string) {
+    setEmailSignature(next);
+    if (typeof window !== "undefined") window.localStorage.setItem(signatureStorageKey, next);
+  }
   const [showCandidates, setShowCandidates] = useState(false);
   const [candidatesForm, setCandidatesForm] = useState({ category: "", size: "" as "" | "enterprise" | "midsize" | "emerging", count: 10, focus: "" });
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -603,6 +616,18 @@ export function OutreachPanel({
         </div>
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setShowSignature((v) => !v)}
+            className={`text-sm font-medium px-3 py-1.5 rounded-md border inline-flex items-center gap-1.5 transition-colors ${
+              showSignature
+                ? "border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
+                : "border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            }`}
+            title="Email signature appended to Gmail drafts"
+          >
+            <PenLine size={14} />
+            Signature{emailSignature.trim() ? "" : " · off"}
+          </button>
+          <button
             onClick={() => { setShowCandidates((v) => !v); setShowAdd(false); }}
             className="text-sm font-medium px-3 py-1.5 rounded-md border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 inline-flex items-center gap-1.5"
           >
@@ -618,6 +643,30 @@ export function OutreachPanel({
           </button>
         </div>
       </div>
+
+      {/* Email signature editor */}
+      {showSignature && (
+        <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 bg-zinc-50 dark:bg-zinc-900/50 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-sm font-medium text-zinc-700 dark:text-zinc-300 inline-flex items-center gap-1.5">
+              <PenLine size={13} /> Email signature
+            </div>
+            <button onClick={() => setShowSignature(false)} className="text-xs text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200">Done</button>
+          </div>
+          <p className="text-xs text-zinc-500 leading-relaxed">
+            Appended to the bottom of every <span className="font-medium">Open in Gmail</span> draft for {cfg?.name ?? "this business"}.
+            Gmail can&apos;t auto-add your saved signature when a draft is pre-filled, so this fills the gap. Plain text only (no logos/formatting).
+          </p>
+          <textarea
+            value={emailSignature}
+            onChange={(e) => saveSignature(e.target.value)}
+            placeholder={"Sam Freeman\nCo-Founder & Managing Partner, MTRNM\nmtrnm.co · @mtrnm_"}
+            rows={4}
+            className="w-full px-2.5 py-2 text-sm rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 resize-y font-mono"
+          />
+          <p className="text-[11px] text-zinc-400">Saves automatically on this device. {emailSignature.trim() ? "Signature is on." : "Leave empty to turn off."}</p>
+        </div>
+      )}
 
       {/* Add form */}
       {showAdd && <AddTargetForm form={form} setField={setField} categories={categorySuggestions} onSubmit={add} onCancel={() => { setShowAdd(false); setForm(EMPTY_FORM); }} />}
@@ -671,6 +720,7 @@ export function OutreachPanel({
                   isPlaceholder={t.person_name === PLACEHOLDER_NAME}
                   templateALabel={templateALabel}
                   templateBLabel={templateBLabel}
+                  emailSignature={emailSignature}
                   onToggle={() => setExpandedId((cur) => (cur === t.id ? null : t.id))}
                   onDraft={() => draft(t)}
                   onEnrich={() => enrich(t)}
@@ -815,6 +865,7 @@ export function OutreachPanel({
                   isPlaceholder={t.person_name === PLACEHOLDER_NAME}
                   templateALabel={templateALabel}
                   templateBLabel={templateBLabel}
+                  emailSignature={emailSignature}
                   onToggle={() => setExpandedId((cur) => (cur === t.id ? null : t.id))}
                   onDraft={() => draft(t)}
                   onEnrich={() => enrich(t)}
@@ -1182,7 +1233,7 @@ function Input({
 
 function TargetCard({
   target, expanded, drafting, enriching, findingContacts, foundContacts, selectedFound, copiedKey, isPlaceholder,
-  templateALabel, templateBLabel,
+  templateALabel, templateBLabel, emailSignature,
   onToggle, onDraft, onEnrich, onFindContacts, onToggleFoundContact, onAddFoundContacts,
   onMarkSent, onMarkReplied, onMarkStatus, onCopy, onDelete,
 }: {
@@ -1197,6 +1248,7 @@ function TargetCard({
   isPlaceholder: boolean;
   templateALabel: string;
   templateBLabel: string;
+  emailSignature: string;
   onToggle: () => void;
   onDraft: () => void;
   onEnrich: () => void;
@@ -1411,6 +1463,7 @@ function TargetCard({
                   subject={drafts.email.subject}
                   body={drafts.email.body}
                   toEmail={target.person_email}
+                  signature={emailSignature}
                   keyPrefix={`e-${target.id}`}
                   copiedKey={copiedKey}
                   onCopy={onCopy}
@@ -1651,11 +1704,13 @@ function DraftBlock({
 }
 
 function EmailDraftBlock({
-  subject, body, toEmail, keyPrefix, copiedKey, onCopy, onMarkSent,
+  subject, body, toEmail, signature, keyPrefix, copiedKey, onCopy, onMarkSent,
 }: {
   subject: string;
   body: string;
   toEmail: string | null;
+  /** Plain-text signature appended to the Gmail compose link (Gmail won't add the saved one to a pre-filled draft). */
+  signature: string;
   keyPrefix: string;
   copiedKey: string | null;
   onCopy: (text: string, key: string) => void;
@@ -1671,9 +1726,12 @@ function EmailDraftBlock({
   const subjectEdited = subjectText !== subject;
   const bodyEdited = bodyText !== body;
   // Gmail compose deep-link: opens a pre-filled draft in whichever Google
-  // account is active in the browser (to + subject + body).
+  // account is active in the browser (to + subject + body). Gmail does NOT add
+  // your saved signature when body is pre-filled, so we append it ourselves.
+  const sig = signature.trim();
+  const gmailBody = sig ? `${bodyText}\n\n${sig}` : bodyText;
   const gmailHref = toEmail
-    ? `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(toEmail)}&su=${encodeURIComponent(subjectText)}&body=${encodeURIComponent(bodyText)}`
+    ? `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(toEmail)}&su=${encodeURIComponent(subjectText)}&body=${encodeURIComponent(gmailBody)}`
     : null;
   const emailCopied = copiedKey === `${keyPrefix}-addr`;
 
@@ -1732,6 +1790,11 @@ function EmailDraftBlock({
         onCopy={onCopy}
         maxRows={8}
       />
+      {sig && (
+        <p className="text-[11px] text-zinc-400 inline-flex items-center gap-1">
+          <PenLine size={10} /> Your signature is appended to the Gmail draft.
+        </p>
+      )}
       {!toEmail && (
         <p className="text-[11px] text-zinc-400 italic">
           No email on file for this contact — run Find Contacts to pull one, or copy the draft manually.
