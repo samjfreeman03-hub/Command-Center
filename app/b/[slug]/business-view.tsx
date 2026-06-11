@@ -11,7 +11,7 @@ import { ChatPanel } from "@/components/chat-panel";
 import { TeamPanel } from "@/components/team-panel";
 import { BrandsPanel } from "@/components/brands-panel";
 import { OutreachPanel } from "@/components/outreach-panel";
-import { Link2, Check, Pencil } from "lucide-react";
+import { Link2, Check, Pencil, Send } from "lucide-react";
 import { OUTREACH_BUSINESS_IDS } from "@/lib/outreach-config";
 
 const TABS = [
@@ -70,6 +70,7 @@ export function BusinessView({
     window.history.replaceState(null, "", `/b/${business.id}?tab=${next}`);
   }
   const [copied, setCopied] = useState(false);
+  const [copiedOutreach, setCopiedOutreach] = useState(false);
   const [members, setMembers] = useState<TeamMember[]>(initialMembers);
   const [tagline, setTagline] = useState(initialTagline);
   const [editingTagline, setEditingTagline] = useState(false);
@@ -93,6 +94,13 @@ export function BusinessView({
     navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  function copyOutreachShareLink() {
+    const url = `${window.location.origin}/s/${shareToken}/outreach`;
+    navigator.clipboard.writeText(url);
+    setCopiedOutreach(true);
+    setTimeout(() => setCopiedOutreach(false), 2000);
   }
 
   return (
@@ -137,14 +145,27 @@ export function BusinessView({
               )}
             </div>
 
-            {/* Share button */}
-            <button
-              onClick={copyShareLink}
-              className="shrink-0 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/70 hover:bg-white dark:hover:bg-zinc-900 backdrop-blur-sm transition-colors"
-            >
-              {copied ? <Check size={12} className="text-emerald-600" /> : <Link2 size={12} />}
-              <span className="hidden sm:inline">{copied ? "Copied!" : "Share"}</span>
-            </button>
+            {/* Share buttons */}
+            <div className="shrink-0 flex items-center gap-1.5">
+              {OUTREACH_BUSINESS_IDS.includes(business.id) && (
+                <button
+                  onClick={copyOutreachShareLink}
+                  title="Copy a link to just the Outreach tab (same team password)"
+                  className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/70 hover:bg-white dark:hover:bg-zinc-900 backdrop-blur-sm transition-colors"
+                >
+                  {copiedOutreach ? <Check size={12} className="text-emerald-600" /> : <Send size={12} />}
+                  <span className="hidden sm:inline">{copiedOutreach ? "Copied!" : "Share Outreach"}</span>
+                </button>
+              )}
+              <button
+                onClick={copyShareLink}
+                title="Copy the full team share link"
+                className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/70 hover:bg-white dark:hover:bg-zinc-900 backdrop-blur-sm transition-colors"
+              >
+                {copied ? <Check size={12} className="text-emerald-600" /> : <Link2 size={12} />}
+                <span className="hidden sm:inline">{copied ? "Copied!" : "Share"}</span>
+              </button>
+            </div>
           </div>
         </div>
       </header>
