@@ -113,9 +113,55 @@ export function OutreachPanel({
   // Bulk backfill state
   const [bulkBackfilling, setBulkBackfilling] = useState(false);
   const [backfillProgress, setBackfillProgress] = useState<{ done: number; total: number; added: number } | null>(null);
+  // Email backfill state
+  const [backfillingEmails, setBackfillingEmails] = useState(false);
   const shareHeaders = useShareHeaders();
 
   const PLACEHOLDER_NAME = "(to research)";
+
+  // Targets with a real name but no email yet — candidates for the email backfill.
+  const missingEmailCount = targets.filter(
+    (t) => !t.person_email && t.person_name && t.person_name !== PLACEHOLDER_NAME
+  ).length;
+
+  async function backfillEmails() {
+    if (missingEmailCount === 0 || backfillingEmails) return;
+    if (!confirm(
+      `Look up emails for ${missingEmailCount} contact${missingEmailCount === 1 ? "" : "s"} that don't have one yet?\n\n` +
+      `This uses Apollo (about ${missingEmailCount} credit${missingEmailCount === 1 ? "" : "s"}, up to 60 per run). ` +
+      `It only fills in contacts that are currently missing an email — nothing else changes.`
+    )) return;
+    setBackfillingEmails(true);
+    try {
+      const res = await fetch("/api/outreach/backfill-emails", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...shareHeaders },
+        body: JSON.stringify({ business_id: businessId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(`Email backfill failed: ${err.error ?? res.statusText}`);
+        return;
+      }
+      const data: { attempted: number; updated: number; failed: number; remaining: number; targets: OutreachTarget[] } = await res.json();
+      if (data.targets.length > 0) {
+        const byId = new Map(data.targets.map((t) => [t.id, t]));
+        setTargets((prev) => prev.map((t) => byId.get(t.id) ?? t));
+      }
+      const remainingNote = data.remaining > 0
+        ? `\n\n${data.remaining} more still need emails — run it again to continue.`
+        : "";
+      alert(
+        `Email backfill done.\n\n` +
+        `✓ ${data.updated} email${data.updated === 1 ? "" : "s"} found and filled in\n` +
+        `– ${data.failed} not found in Apollo (you can add these manually)${remainingNote}`
+      );
+    } catch {
+      alert("Email backfill failed — network error. Please try again.");
+    } finally {
+      setBackfillingEmails(false);
+    }
+  }
 
   function setField<K extends keyof typeof EMPTY_FORM>(key: K, val: (typeof EMPTY_FORM)[K]) {
     setForm((f) => ({ ...f, [key]: val }));
@@ -615,6 +661,17 @@ export function OutreachPanel({
           </ViewBtn>
         </div>
         <div className="flex items-center gap-2">
+          {missingEmailCount > 0 && (
+            <button
+              onClick={backfillEmails}
+              disabled={backfillingEmails}
+              className="text-sm font-medium px-3 py-1.5 rounded-md border border-sky-200 dark:border-sky-900/60 bg-sky-50 dark:bg-sky-950/30 text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-950/50 disabled:opacity-50 inline-flex items-center gap-1.5"
+              title="Look up emails for contacts that don't have one yet"
+            >
+              {backfillingEmails ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
+              {backfillingEmails ? "Finding emails…" : `Find ${missingEmailCount} missing email${missingEmailCount === 1 ? "" : "s"}`}
+            </button>
+          )}
           <button
             onClick={() => setShowSignature((v) => !v)}
             className={`text-sm font-medium px-3 py-1.5 rounded-md border inline-flex items-center gap-1.5 transition-colors ${

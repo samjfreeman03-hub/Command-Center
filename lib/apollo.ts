@@ -258,6 +258,39 @@ function isUnlockedEmail(email: string | null | undefined): boolean {
 }
 
 /**
+ * Match a single KNOWN person (by name + company, ideally with their LinkedIn
+ * URL) and unlock their email. Used to retroactively backfill emails on
+ * outreach targets that were added before email-unlock was the default.
+ * Costs ~1 Apollo credit per call. A LinkedIn URL makes the match near-exact.
+ */
+export async function apolloMatchEmailForPerson(opts: {
+  name: string;
+  organizationName?: string | null;
+  linkedinUrl?: string | null;
+}): Promise<{ email: string | null; linkedin_url: string | null } | null> {
+  const trimmed = opts.name.trim();
+  if (!trimmed) return null;
+  const [first_name, ...rest] = trimmed.split(/\s+/);
+  const last_name = rest.join(" ");
+  const body: Record<string, unknown> = { reveal_personal_emails: true };
+  if (opts.linkedinUrl) body.linkedin_url = opts.linkedinUrl;
+  if (first_name) body.first_name = first_name;
+  if (last_name) body.last_name = last_name;
+  if (opts.organizationName) body.organization_name = opts.organizationName;
+  try {
+    const res = await apolloPost<{ person?: ApolloPerson }>("/people/match", body);
+    const p = res.person;
+    if (!p) return null;
+    return {
+      email: isUnlockedEmail(p.email) ? p.email! : null,
+      linkedin_url: p.linkedin_url ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Enrich a single person by Apollo ID — unlocks their email (costs 1 credit).
  * Only used when the search-result person lacks a LinkedIn URL, per user pref.
  */
