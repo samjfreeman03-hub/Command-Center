@@ -143,7 +143,11 @@ export async function POST(req: Request) {
 ICP filters:
 - Category focus: ${category || `any of ${cfg.name}'s core categories (${cfg.categories.join(", ")})`}
 - Size: ${size || "any (mix of enterprise, midsize, emerging)"}
-- Additional focus: ${focus || "(none)"}
+${focus ? `
+WHAT THE USER IS LOOKING FOR (their own words — this is the PRIMARY steering signal, weigh it above the category filter; every proposed brand must clearly match this brief):
+"""
+${focus}
+"""` : "- Additional focus: (none)"}
 
 Return ONLY the JSON object.`,
       },

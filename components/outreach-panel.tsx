@@ -113,55 +113,9 @@ export function OutreachPanel({
   // Bulk backfill state
   const [bulkBackfilling, setBulkBackfilling] = useState(false);
   const [backfillProgress, setBackfillProgress] = useState<{ done: number; total: number; added: number } | null>(null);
-  // Email backfill state
-  const [backfillingEmails, setBackfillingEmails] = useState(false);
   const shareHeaders = useShareHeaders();
 
   const PLACEHOLDER_NAME = "(to research)";
-
-  // Targets with a real name but no email yet — candidates for the email backfill.
-  const missingEmailCount = targets.filter(
-    (t) => !t.person_email && t.person_name && t.person_name !== PLACEHOLDER_NAME
-  ).length;
-
-  async function backfillEmails() {
-    if (missingEmailCount === 0 || backfillingEmails) return;
-    if (!confirm(
-      `Look up emails for ${missingEmailCount} contact${missingEmailCount === 1 ? "" : "s"} that don't have one yet?\n\n` +
-      `This uses Apollo (about ${missingEmailCount} credit${missingEmailCount === 1 ? "" : "s"}, up to 60 per run). ` +
-      `It only fills in contacts that are currently missing an email — nothing else changes.`
-    )) return;
-    setBackfillingEmails(true);
-    try {
-      const res = await fetch("/api/outreach/backfill-emails", {
-        method: "POST",
-        headers: { "content-type": "application/json", ...shareHeaders },
-        body: JSON.stringify({ business_id: businessId }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        alert(`Email backfill failed: ${err.error ?? res.statusText}`);
-        return;
-      }
-      const data: { attempted: number; updated: number; failed: number; remaining: number; targets: OutreachTarget[] } = await res.json();
-      if (data.targets.length > 0) {
-        const byId = new Map(data.targets.map((t) => [t.id, t]));
-        setTargets((prev) => prev.map((t) => byId.get(t.id) ?? t));
-      }
-      const remainingNote = data.remaining > 0
-        ? `\n\n${data.remaining} more still need emails — run it again to continue.`
-        : "";
-      alert(
-        `Email backfill done.\n\n` +
-        `✓ ${data.updated} email${data.updated === 1 ? "" : "s"} found and filled in\n` +
-        `– ${data.failed} not found in Apollo (you can add these manually)${remainingNote}`
-      );
-    } catch {
-      alert("Email backfill failed — network error. Please try again.");
-    } finally {
-      setBackfillingEmails(false);
-    }
-  }
 
   function setField<K extends keyof typeof EMPTY_FORM>(key: K, val: (typeof EMPTY_FORM)[K]) {
     setForm((f) => ({ ...f, [key]: val }));
@@ -308,6 +262,35 @@ export function OutreachPanel({
     if (res.ok) {
       const updated: OutreachTarget = await res.json();
       setTargets((prev) => prev.map((t) => (t.id === id ? updated : t)));
+    }
+  }
+
+  /**
+   * Undo an accidental Replied/Declined/Dead click: revert to the prior
+   * logical status and restore the follow-up cadence if it was mid-flight.
+   */
+  async function unsetStatus(target: OutreachTarget) {
+    const CADENCE_DAYS: Record<number, number> = { 1: 3, 2: 7, 3: 14 };
+    let patch: Record<string, unknown>;
+    if (target.sent_at) {
+      const nextN = target.followup_count + 1;
+      patch = {
+        status: "sent",
+        replied_at: null,
+        next_followup_at:
+          nextN <= 3 ? target.sent_at + CADENCE_DAYS[nextN] * 86400_000 : null,
+      };
+    } else {
+      patch = { status: target.drafts_json ? "drafted" : "queued", replied_at: null };
+    }
+    const res = await fetch(`/api/outreach/${target.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", ...shareHeaders },
+      body: JSON.stringify(patch),
+    });
+    if (res.ok) {
+      const updated: OutreachTarget = await res.json();
+      setTargets((prev) => prev.map((t) => (t.id === target.id ? updated : t)));
     }
   }
 
@@ -661,17 +644,6 @@ export function OutreachPanel({
           </ViewBtn>
         </div>
         <div className="flex items-center gap-2">
-          {missingEmailCount > 0 && (
-            <button
-              onClick={backfillEmails}
-              disabled={backfillingEmails}
-              className="text-sm font-medium px-3 py-1.5 rounded-md border border-sky-200 dark:border-sky-900/60 bg-sky-50 dark:bg-sky-950/30 text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-950/50 disabled:opacity-50 inline-flex items-center gap-1.5"
-              title="Look up emails for contacts that don't have one yet"
-            >
-              {backfillingEmails ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
-              {backfillingEmails ? "Finding emails…" : `Find ${missingEmailCount} missing email${missingEmailCount === 1 ? "" : "s"}`}
-            </button>
-          )}
           <button
             onClick={() => setShowSignature((v) => !v)}
             className={`text-sm font-medium px-3 py-1.5 rounded-md border inline-flex items-center gap-1.5 transition-colors ${
@@ -787,6 +759,7 @@ export function OutreachPanel({
                   onMarkSent={(template, text) => markSent(t, template, text)}
                   onMarkReplied={() => markReplied(t.id)}
                   onMarkStatus={(s) => markStatusGeneric(t.id, s)}
+                  onUnsetStatus={() => unsetStatus(t)}
                   onCopy={copy}
                   onDelete={() => remove(t.id)}
                 />
@@ -932,6 +905,7 @@ export function OutreachPanel({
                   onMarkSent={(template, text) => markSent(t, template, text)}
                   onMarkReplied={() => markReplied(t.id)}
                   onMarkStatus={(s) => markStatusGeneric(t.id, s)}
+                  onUnsetStatus={() => unsetStatus(t)}
                   onCopy={copy}
                   onDelete={() => remove(t.id)}
                 />
@@ -1087,9 +1061,9 @@ function CandidateGenerator({
         Generates brands AND web-searches for 2–4 specific LinkedIn contacts per brand (college / influencer / social / experiential / brand exec). Takes ~30–90 seconds.
       </p>
       <form onSubmit={onGenerate} className="space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <label className="text-xs text-zinc-500 mb-1 block">Category</label>
+            <label className="text-xs text-zinc-500 mb-1 block">Category (optional)</label>
             <input
               list="category-list"
               value={form.category}
@@ -1122,15 +1096,16 @@ function CandidateGenerator({
               className="w-full px-2.5 py-1.5 text-sm rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900"
             />
           </div>
-          <div className="sm:col-span-1">
-            <label className="text-xs text-zinc-500 mb-1 block">Extra focus (optional)</label>
-            <input
-              value={form.focus}
-              onChange={(e) => setForm((f) => ({ ...f, focus: e.target.value }))}
-              placeholder="e.g. clean beauty, athleisure"
-              className="w-full px-2.5 py-1.5 text-sm rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900"
-            />
-          </div>
+        </div>
+        <div>
+          <label className="text-xs text-zinc-500 mb-1 block">Describe what you&apos;re looking for (optional)</label>
+          <textarea
+            value={form.focus}
+            onChange={(e) => setForm((f) => ({ ...f, focus: e.target.value }))}
+            placeholder={'Not sure of the exact category? Describe it in your own words, e.g. "brands that sponsor music festivals and would want to reach a wealthy international crowd in their 20s, ideally ones expanding into Europe" — the more context, the better the matches.'}
+            rows={3}
+            className="w-full px-2.5 py-2 text-sm rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 resize-y placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
+          />
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -1292,7 +1267,7 @@ function TargetCard({
   target, expanded, drafting, enriching, findingContacts, foundContacts, selectedFound, copiedKey, isPlaceholder,
   templateALabel, templateBLabel, emailSignature,
   onToggle, onDraft, onEnrich, onFindContacts, onToggleFoundContact, onAddFoundContacts,
-  onMarkSent, onMarkReplied, onMarkStatus, onCopy, onDelete,
+  onMarkSent, onMarkReplied, onMarkStatus, onUnsetStatus, onCopy, onDelete,
 }: {
   target: OutreachTarget;
   expanded: boolean;
@@ -1315,6 +1290,7 @@ function TargetCard({
   onMarkSent: (template: "A" | "B" | "Email", firstDMText: string) => void;
   onMarkReplied: () => void;
   onMarkStatus: (s: OutreachStatus) => void;
+  onUnsetStatus: () => void;
   onCopy: (text: string, key: string) => void;
   onDelete: () => void;
 }) {
@@ -1539,9 +1515,24 @@ function TargetCard({
 
           <div className="flex items-center gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-800 flex-wrap">
             <span className="text-xs text-zinc-500 mr-1">Status:</span>
-            <StatusButton onClick={onMarkReplied} disabled={target.status === "replied"}>Replied</StatusButton>
-            <StatusButton onClick={() => onMarkStatus("declined")} disabled={target.status === "declined"}>Declined</StatusButton>
-            <StatusButton onClick={() => onMarkStatus("dead")} disabled={target.status === "dead"}>Dead</StatusButton>
+            <StatusButton
+              active={target.status === "replied"}
+              onClick={() => (target.status === "replied" ? onUnsetStatus() : onMarkReplied())}
+            >
+              Replied
+            </StatusButton>
+            <StatusButton
+              active={target.status === "declined"}
+              onClick={() => (target.status === "declined" ? onUnsetStatus() : onMarkStatus("declined"))}
+            >
+              Declined
+            </StatusButton>
+            <StatusButton
+              active={target.status === "dead"}
+              onClick={() => (target.status === "dead" ? onUnsetStatus() : onMarkStatus("dead"))}
+            >
+              Dead
+            </StatusButton>
             <button
               onClick={onDelete}
               className="ml-auto text-zinc-400 hover:text-rose-600 p-1 rounded"
@@ -1963,13 +1954,18 @@ function ContactMeta({ contact }: { contact: CandidateContact }) {
 }
 
 function StatusButton({
-  onClick, disabled, children,
-}: { onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
+  onClick, active, disabled, children,
+}: { onClick: () => void; active?: boolean; disabled?: boolean; children: React.ReactNode }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className="px-2.5 py-1 text-xs rounded-md border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed"
+      title={active ? "Click again to undo" : undefined}
+      className={`px-2.5 py-1 text-xs rounded-md border transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+        active
+          ? "border-zinc-900 dark:border-zinc-100 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300"
+          : "border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+      }`}
     >
       {children}
     </button>
