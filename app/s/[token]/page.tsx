@@ -7,6 +7,25 @@ import { SharePasswordGate } from "./share-password-gate";
 
 export const dynamic = "force-dynamic";
 
+/** Link-preview + tab title: "MTRNM Team" / "FLAIR Team". */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ token: string }>;
+}) {
+  const { token } = await params;
+  const businessId = db.getBusinessByShareToken(token);
+  const business = businessId ? BUSINESSES.find((b) => b.id === businessId) : null;
+  if (!business) return { title: "Shared workspace" };
+  const title = `${business.name} Team`;
+  const description = `Team workspace for ${business.name} — todos, pipeline, outreach, CRM`;
+  return {
+    title,
+    description,
+    openGraph: { title, description, siteName: business.name },
+  };
+}
+
 export default async function SharePage({
   params,
 }: {

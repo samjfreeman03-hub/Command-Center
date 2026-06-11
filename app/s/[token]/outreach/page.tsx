@@ -8,6 +8,25 @@ import { OutreachSharedView } from "./outreach-shared-view";
 
 export const dynamic = "force-dynamic";
 
+/** Link-preview + tab title: "MTRNM Outreach" / "FLAIR Outreach". */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ token: string }>;
+}) {
+  const { token } = await params;
+  const businessId = db.getBusinessByShareToken(token);
+  const business = businessId ? BUSINESSES.find((b) => b.id === businessId) : null;
+  if (!business) return { title: "Outreach" };
+  const title = `${business.name} Outreach`;
+  const description = `Team outreach workspace for ${business.name}`;
+  return {
+    title,
+    description,
+    openGraph: { title, description, siteName: business.name },
+  };
+}
+
 /**
  * Outreach-only share page: /s/[token]/outreach
  *
