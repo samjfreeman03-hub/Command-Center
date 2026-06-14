@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     next_action: body.next_action,
     next_action_date: body.next_action_date,
     notes: body.notes,
-    category: body.category,
+    categories: Array.isArray(body.categories) ? body.categories : undefined,
   });
   return NextResponse.json(lead);
 }

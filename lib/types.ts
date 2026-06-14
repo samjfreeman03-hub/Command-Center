@@ -23,8 +23,8 @@ export type Lead = {
   next_action: string | null;
   next_action_date: string | null;
   notes: string | null;
-  /** Custom user-defined category name (stored as the category's name). */
-  category: string | null;
+  /** Custom user-defined category names (a lead can belong to several). */
+  categories: string[];
   created_at: number;
   updated_at: number;
 };

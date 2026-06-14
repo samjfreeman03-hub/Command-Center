@@ -243,6 +243,20 @@ function migrateAlter(db: Database.Database) {
   try { db.exec("ALTER TABLE brand_contacts ADD COLUMN website TEXT"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE outreach_targets ADD COLUMN person_email TEXT"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE leads ADD COLUMN category TEXT"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE leads ADD COLUMN categories TEXT"); } catch { /* already exists */ }
+  // One-time backfill: seed the multi-category array from the legacy single
+  // `category` column. Only touches rows not yet initialized (categories IS NULL),
+  // so it's idempotent and never clobbers a user's later edits.
+  try {
+    db.exec(
+      `UPDATE leads
+         SET categories = CASE
+           WHEN category IS NOT NULL AND TRIM(category) != '' THEN json_array(category)
+           ELSE '[]'
+         END
+       WHERE categories IS NULL`
+    );
+  } catch { /* json1 unavailable or already migrated */ }
 }
 
 function seed(db: Database.Database) {
@@ -261,6 +275,18 @@ function parseTodo(row: Record<string, unknown>): Todo {
       ? raw.assignee_ids_str.split(",").map(Number)
       : [],
   };
+}
+
+function parseLead(row: Record<string, unknown>): Lead {
+  let categories: string[] = [];
+  const raw = row.categories;
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) categories = parsed.filter((c): c is string => typeof c === "string");
+    } catch { /* malformed — leave empty */ }
+  }
+  return { ...(row as unknown as Lead), categories };
 }
 
 function todoWithAssignees(id: number | bigint): Todo {
@@ -384,7 +410,11 @@ export const db = {
         WHEN 'lost' THEN 5
       END,
       updated_at DESC`;
-    return getDb().prepare(sql).all(...args) as Lead[];
+    return (getDb().prepare(sql).all(...args) as Record<string, unknown>[]).map(parseLead);
+  },
+
+  getLead(id: number): Lead {
+    return parseLead(getDb().prepare("SELECT * FROM leads WHERE id = ?").get(id) as Record<string, unknown>);
   },
 
   createLead(input: {
@@ -397,12 +427,12 @@ export const db = {
     next_action?: string;
     next_action_date?: string;
     notes?: string;
-    category?: string | null;
+    categories?: string[];
   }): Lead {
     const now = Date.now();
     const result = getDb()
       .prepare(
-        `INSERT INTO leads (business_id, name, company, contact_email, stage, value_cents, next_action, next_action_date, notes, category, created_at, updated_at)
+        `INSERT INTO leads (business_id, name, company, contact_email, stage, value_cents, next_action, next_action_date, notes, categories, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
@@ -415,11 +445,11 @@ export const db = {
         input.next_action ?? null,
         input.next_action_date ?? null,
         input.notes ?? null,
-        input.category ?? null,
+        JSON.stringify(input.categories ?? []),
         now,
         now
       );
-    return getDb().prepare("SELECT * FROM leads WHERE id = ?").get(result.lastInsertRowid) as Lead;
+    return this.getLead(Number(result.lastInsertRowid));
   },
 
   updateLead(id: number, patch: Partial<Lead>): Lead {
@@ -432,7 +462,6 @@ export const db = {
       "next_action",
       "next_action_date",
       "notes",
-      "category",
     ] as const;
     const sets: string[] = [];
     const args: unknown[] = [];
@@ -442,14 +471,19 @@ export const db = {
         args.push((patch as Record<string, unknown>)[key] ?? null);
       }
     }
+    // categories is a JSON-array column — serialize when present.
+    if ("categories" in patch) {
+      sets.push("categories = ?");
+      args.push(JSON.stringify((patch as { categories?: string[] }).categories ?? []));
+    }
     if (sets.length === 0) {
-      return getDb().prepare("SELECT * FROM leads WHERE id = ?").get(id) as Lead;
+      return this.getLead(id);
     }
     sets.push("updated_at = ?");
     args.push(Date.now());
     args.push(id);
     getDb().prepare(`UPDATE leads SET ${sets.join(", ")} WHERE id = ?`).run(...args);
-    return getDb().prepare("SELECT * FROM leads WHERE id = ?").get(id) as Lead;
+    return this.getLead(id);
   },
 
   deleteLead(id: number) {
@@ -489,8 +523,12 @@ export const db = {
   deleteLeadCategory(id: number) {
     const cat = getDb().prepare("SELECT * FROM lead_categories WHERE id = ?").get(id) as LeadCategory | undefined;
     if (cat) {
-      // Un-tag any leads using this category so they don't point at a dead id.
-      getDb().prepare("UPDATE leads SET category = NULL WHERE business_id = ? AND category = ?").run(cat.business_id, cat.name);
+      // Un-tag any leads carrying this category name.
+      for (const lead of this.listLeads({ businessId: cat.business_id })) {
+        if (lead.categories.includes(cat.name)) {
+          this.updateLead(lead.id, { categories: lead.categories.filter((c) => c !== cat.name) });
+        }
+      }
     }
     getDb().prepare("DELETE FROM lead_categories WHERE id = ?").run(id);
   },

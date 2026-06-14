@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import type { Lead, LeadAttachment, LeadCategory } from "@/lib/types";
 import { LEAD_STAGES } from "@/lib/types";
-import { Plus, Trash2, Link2, Paperclip, X, Upload, ExternalLink, Download, TrendingUp, Tag, Settings2 } from "lucide-react";
+import { Plus, Trash2, Link2, Paperclip, X, Upload, ExternalLink, Download, TrendingUp, Tag, Settings2, Check } from "lucide-react";
 import { useShareHeaders } from "@/lib/share-context";
 
 const STAGE_LABELS: Record<Lead["stage"], string> = {
@@ -82,7 +82,7 @@ export function PipelinePanel({
   async function deleteCategory(cat: LeadCategory) {
     if (!confirm(`Delete the "${cat.name}" category? Leads tagged with it will become uncategorized.`)) return;
     setCats((prev) => prev.filter((c) => c.id !== cat.id));
-    setLeads((prev) => prev.map((l) => (l.category === cat.name ? { ...l, category: null } : l)));
+    setLeads((prev) => prev.map((l) => (l.categories.includes(cat.name) ? { ...l, categories: l.categories.filter((c) => c !== cat.name) } : l)));
     if (categoryFilter === cat.name) setCategoryFilter("all");
     await fetch(`/api/lead-categories/${cat.id}`, { method: "DELETE", headers: shareHeaders });
   }
@@ -158,7 +158,7 @@ export function PipelinePanel({
               All <span className="opacity-50">{leads.length}</span>
             </CatPill>
             {cats.map((c) => {
-              const count = leads.filter((l) => l.category === c.name).length;
+              const count = leads.filter((l) => l.categories.includes(c.name)).length;
               return (
                 <CatPill
                   key={c.id}
@@ -170,9 +170,9 @@ export function PipelinePanel({
                 </CatPill>
               );
             })}
-            {leads.some((l) => !l.category) && (
+            {leads.some((l) => l.categories.length === 0) && (
               <CatPill active={categoryFilter === UNCATEGORIZED} onClick={() => setCategoryFilter(UNCATEGORIZED)}>
-                Uncategorized <span className="opacity-50">{leads.filter((l) => !l.category).length}</span>
+                Uncategorized <span className="opacity-50">{leads.filter((l) => l.categories.length === 0).length}</span>
               </CatPill>
             )}
             <button
@@ -231,7 +231,7 @@ export function PipelinePanel({
             (l) =>
               l.stage === stage &&
               (categoryFilter === "all" ||
-                (categoryFilter === UNCATEGORIZED ? !l.category : l.category === categoryFilter))
+                (categoryFilter === UNCATEGORIZED ? l.categories.length === 0 : l.categories.includes(categoryFilter)))
           );
           if (stageLeads.length === 0) return null;
           return (
@@ -247,7 +247,7 @@ export function PipelinePanel({
                     lead={l}
                     isEditing={editingId === l.id}
                     categories={categoriesEnabled ? catNames : undefined}
-                    categoryColor={catColor(l.category)}
+                    catColor={catColor}
                     onStartEdit={() => setEditingId(l.id)}
                     onCancelEdit={() => setEditingId(null)}
                     onUpdate={(patch) => update(l.id, patch)}
@@ -282,7 +282,7 @@ type NewLeadForm = {
   value_cents?: number;
   next_action?: string;
   next_action_date?: string;
-  category?: string | null;
+  categories?: string[];
 };
 
 function NewLeadCard({
@@ -301,7 +301,7 @@ function NewLeadCard({
   const [value, setValue] = useState("");
   const [nextAction, setNextAction] = useState("");
   const [nextDate, setNextDate] = useState("");
-  const [category, setCategory] = useState("");
+  const [selectedCats, setSelectedCats] = useState<string[]>([]);
 
   return (
     <form
@@ -316,7 +316,7 @@ function NewLeadCard({
           value_cents: value ? Math.round(parseFloat(value) * 100) : undefined,
           next_action: nextAction.trim() || undefined,
           next_action_date: nextDate || undefined,
-          category: categories ? (category || null) : undefined,
+          categories: categories ? selectedCats : undefined,
         });
       }}
       className="rounded-lg border border-zinc-300 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/40 p-4 grid grid-cols-2 gap-3"
@@ -346,13 +346,8 @@ function NewLeadCard({
         <input type="date" value={nextDate} onChange={(e) => setNextDate(e.target.value)} className={inputCls} />
       </Field>
       {categories && (
-        <Field label="Category" full>
-          <select value={category} onChange={(e) => setCategory(e.target.value)} className={inputCls}>
-            <option value="">— Uncategorized —</option>
-            {categories.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
+        <Field label="Categories" full>
+          <CategoryMultiSelect all={categories} selected={selectedCats} onChange={setSelectedCats} />
         </Field>
       )}
       <Field label="Next action" full>
@@ -374,7 +369,7 @@ function LeadCard({
   lead,
   isEditing,
   categories,
-  categoryColor,
+  catColor,
   onStartEdit,
   onCancelEdit,
   onUpdate,
@@ -383,7 +378,7 @@ function LeadCard({
   lead: Lead;
   isEditing: boolean;
   categories?: string[];
-  categoryColor?: string;
+  catColor?: (name: string) => string;
   onStartEdit: () => void;
   onCancelEdit: () => void;
   onUpdate: (patch: Partial<Lead>) => void;
@@ -413,10 +408,14 @@ function LeadCard({
           <div className="min-w-0 flex-1">
             <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{lead.company || lead.name}</div>
             {lead.company && <div className="text-xs text-zinc-500 mt-0.5">{lead.name}</div>}
-            {categories && lead.category && (
-              <span className={`inline-flex items-center gap-1 mt-1.5 px-1.5 py-0.5 rounded-md text-[11px] font-medium ${categoryColor}`}>
-                <Tag size={9} /> {lead.category}
-              </span>
+            {categories && lead.categories.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {lead.categories.map((cat) => (
+                  <span key={cat} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] font-medium ${catColor?.(cat) ?? ""}`}>
+                    <Tag size={9} /> {cat}
+                  </span>
+                ))}
+              </div>
             )}
           </div>
           <div className="flex flex-col items-end gap-1 shrink-0">
@@ -454,7 +453,7 @@ function EditLeadCard({
   const [nextAction, setNextAction] = useState(lead.next_action ?? "");
   const [nextDate, setNextDate] = useState(lead.next_action_date ?? "");
   const [notes, setNotes] = useState(lead.notes ?? "");
-  const [category, setCategory] = useState(lead.category ?? "");
+  const [selectedCats, setSelectedCats] = useState<string[]>(lead.categories);
 
   const [attachments, setAttachments] = useState<LeadAttachment[]>([]);
   const [linkUrl, setLinkUrl] = useState("");
@@ -526,7 +525,7 @@ function EditLeadCard({
           next_action: nextAction || null,
           next_action_date: nextDate || null,
           notes: notes || null,
-          ...(categories ? { category: category || null } : {}),
+          ...(categories ? { categories: selectedCats } : {}),
         });
       }}
       className="bg-white dark:bg-zinc-950 p-5 space-y-3"
@@ -543,17 +542,14 @@ function EditLeadCard({
       </select>
       {categories && (
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1 flex items-center gap-1">
-            <Tag size={10} /> Category
+          <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5 flex items-center gap-1">
+            <Tag size={10} /> Categories
           </div>
-          <select value={category} onChange={(e) => setCategory(e.target.value)} className={inputCls}>
-            <option value="">— Uncategorized —</option>
-            {categories.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-            {/* Preserve a category that exists on this lead but was since deleted */}
-            {category && !categories.includes(category) && <option value={category}>{category}</option>}
-          </select>
+          <CategoryMultiSelect
+            all={Array.from(new Set([...categories, ...selectedCats]))}
+            selected={selectedCats}
+            onChange={setSelectedCats}
+          />
         </div>
       )}
       <input value={value} onChange={(e) => setValue(e.target.value)} className={inputCls} placeholder="Value ($)" />
@@ -685,6 +681,43 @@ function Field({ label, full, children }: { label: string; full?: boolean; child
       <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">{label}</div>
       {children}
     </label>
+  );
+}
+
+function CategoryMultiSelect({
+  all, selected, onChange,
+}: { all: string[]; selected: string[]; onChange: (next: string[]) => void }) {
+  if (all.length === 0) {
+    return (
+      <p className="text-xs text-zinc-400">
+        No categories yet — add some via <span className="font-medium">Manage</span> at the top of the pipeline.
+      </p>
+    );
+  }
+  function toggle(name: string) {
+    onChange(selected.includes(name) ? selected.filter((c) => c !== name) : [...selected, name]);
+  }
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {all.map((name) => {
+        const on = selected.includes(name);
+        return (
+          <button
+            key={name}
+            type="button"
+            onClick={() => toggle(name)}
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border transition-colors ${
+              on
+                ? "border-zinc-900 dark:border-zinc-100 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900"
+                : "border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            }`}
+          >
+            {on ? <Check size={11} /> : <Plus size={11} />}
+            {name}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
