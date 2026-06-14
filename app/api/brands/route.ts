@@ -28,6 +28,7 @@ export async function POST(req: Request) {
     website: body.website,
     status: body.status,
     notes: body.notes,
+    categories: Array.isArray(body.categories) ? body.categories : undefined,
   });
   return NextResponse.json(brand);
 }

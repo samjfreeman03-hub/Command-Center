@@ -244,6 +244,8 @@ function migrateAlter(db: Database.Database) {
   try { db.exec("ALTER TABLE outreach_targets ADD COLUMN person_email TEXT"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE leads ADD COLUMN category TEXT"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE leads ADD COLUMN categories TEXT"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE brand_contacts ADD COLUMN categories TEXT"); } catch { /* already exists */ }
+  try { db.exec("UPDATE brand_contacts SET categories = '[]' WHERE categories IS NULL"); } catch { /* already migrated */ }
   // One-time backfill: seed the multi-category array from the legacy single
   // `category` column. Only touches rows not yet initialized (categories IS NULL),
   // so it's idempotent and never clobbers a user's later edits.
@@ -277,16 +279,22 @@ function parseTodo(row: Record<string, unknown>): Todo {
   };
 }
 
-function parseLead(row: Record<string, unknown>): Lead {
-  let categories: string[] = [];
-  const raw = row.categories;
+function parseCategories(raw: unknown): string[] {
   if (typeof raw === "string" && raw.trim()) {
     try {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) categories = parsed.filter((c): c is string => typeof c === "string");
+      if (Array.isArray(parsed)) return parsed.filter((c): c is string => typeof c === "string");
     } catch { /* malformed — leave empty */ }
   }
-  return { ...(row as unknown as Lead), categories };
+  return [];
+}
+
+function parseLead(row: Record<string, unknown>): Lead {
+  return { ...(row as unknown as Lead), categories: parseCategories(row.categories) };
+}
+
+function parseBrandContact(row: Record<string, unknown>): BrandContact {
+  return { ...(row as unknown as BrandContact), categories: parseCategories(row.categories) };
 }
 
 function todoWithAssignees(id: number | bigint): Todo {
@@ -771,11 +779,15 @@ export const db = {
 
   // ---- Brand contacts ----
   listBrandContacts(businessId: string): BrandContact[] {
-    return getDb()
+    return (getDb()
       .prepare(`SELECT * FROM brand_contacts WHERE business_id = ? ORDER BY
         CASE status WHEN 'active_partner' THEN 0 WHEN 'in_network' THEN 1 WHEN 'prospect' THEN 2 ELSE 3 END,
         brand_name ASC`)
-      .all(businessId) as BrandContact[];
+      .all(businessId) as Record<string, unknown>[]).map(parseBrandContact);
+  },
+
+  getBrandContact(id: number): BrandContact {
+    return parseBrandContact(getDb().prepare("SELECT * FROM brand_contacts WHERE id = ?").get(id) as Record<string, unknown>);
   },
 
   createBrandContact(input: {
@@ -788,11 +800,12 @@ export const db = {
     website?: string;
     status?: BrandContact["status"];
     notes?: string;
+    categories?: string[];
   }): BrandContact {
     const now = Date.now();
     const result = getDb()
-      .prepare(`INSERT INTO brand_contacts (business_id, brand_name, contact_name, contact_title, email, phone, website, status, notes, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .prepare(`INSERT INTO brand_contacts (business_id, brand_name, contact_name, contact_title, email, phone, website, status, notes, categories, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(
         input.business_id,
         input.brand_name.trim(),
@@ -803,14 +816,15 @@ export const db = {
         input.website?.trim() ?? null,
         input.status ?? "prospect",
         input.notes?.trim() ?? null,
+        JSON.stringify(input.categories ?? []),
         now,
         now
       );
-    return getDb().prepare("SELECT * FROM brand_contacts WHERE id = ?").get(result.lastInsertRowid) as BrandContact;
+    return this.getBrandContact(Number(result.lastInsertRowid));
   },
 
   updateBrandContact(id: number, patch: Partial<BrandContact>): BrandContact {
-    const allowed = ["brand_name", "contact_name", "contact_title", "email", "phone", "status", "notes"] as const;
+    const allowed = ["brand_name", "contact_name", "contact_title", "email", "phone", "website", "status", "notes"] as const;
     const sets: string[] = [];
     const args: unknown[] = [];
     for (const key of allowed) {
@@ -819,11 +833,15 @@ export const db = {
         args.push((patch as Record<string, unknown>)[key] ?? null);
       }
     }
-    if (sets.length === 0) return getDb().prepare("SELECT * FROM brand_contacts WHERE id = ?").get(id) as BrandContact;
+    if ("categories" in patch) {
+      sets.push("categories = ?");
+      args.push(JSON.stringify((patch as { categories?: string[] }).categories ?? []));
+    }
+    if (sets.length === 0) return this.getBrandContact(id);
     sets.push("updated_at = ?");
     args.push(Date.now(), id);
     getDb().prepare(`UPDATE brand_contacts SET ${sets.join(", ")} WHERE id = ?`).run(...args);
-    return getDb().prepare("SELECT * FROM brand_contacts WHERE id = ?").get(id) as BrandContact;
+    return this.getBrandContact(id);
   },
 
   deleteBrandContact(id: number) {

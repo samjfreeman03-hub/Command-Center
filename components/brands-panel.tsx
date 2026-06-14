@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import type { BrandContact, BrandStatus, BrandAttachment } from "@/lib/types";
+import type { BrandContact, BrandStatus, BrandAttachment, LeadCategory } from "@/lib/types";
 import { BRAND_STATUSES } from "@/lib/types";
 import {
   Plus, Trash2, Pencil, X, Mail, Phone, Globe, ChevronDown,
-  Link2, Paperclip, ExternalLink, Download, Upload, FileText,
+  Link2, Paperclip, ExternalLink, Download, Upload, FileText, Tag,
 } from "lucide-react";
 import { useShareHeaders } from "@/lib/share-context";
+import { categoryColor, CategoryMultiSelect, CategoryBadges, CatPill } from "@/components/category-ui";
 
 const EMPTY_FORM = {
   brand_name: "",
@@ -18,21 +19,31 @@ const EMPTY_FORM = {
   website: "",
   status: "prospect" as BrandStatus,
   notes: "",
+  categories: [] as string[],
 };
+
+const UNCATEGORIZED = "__uncategorized__";
 
 export function BrandsPanel({
   businessId,
   initial,
+  categories = [],
+  categoriesEnabled = false,
 }: {
   businessId: string;
   initial: BrandContact[];
+  categories?: LeadCategory[];
+  categoriesEnabled?: boolean;
 }) {
   const [brands, setBrands] = useState(initial);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [selectedBrand, setSelectedBrand] = useState<BrandContact | null>(null);
   const [filter, setFilter] = useState<BrandStatus | "all">("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const shareHeaders = useShareHeaders();
+
+  const catNames = categories.map((c) => c.name);
 
   function setField<K extends keyof typeof EMPTY_FORM>(key: K, val: (typeof EMPTY_FORM)[K]) {
     setForm((f) => ({ ...f, [key]: val }));
@@ -66,7 +77,12 @@ export function BrandsPanel({
     await fetch(`/api/brands/${id}`, { method: "DELETE", headers: shareHeaders });
   }
 
-  const filtered = filter === "all" ? brands : brands.filter((b) => b.status === filter);
+  const filtered = brands
+    .filter((b) => filter === "all" || b.status === filter)
+    .filter((b) =>
+      categoryFilter === "all" ||
+      (categoryFilter === UNCATEGORIZED ? b.categories.length === 0 : b.categories.includes(categoryFilter))
+    );
   const counts = Object.fromEntries(BRAND_STATUSES.map((s) => [s.value, brands.filter((b) => b.status === s.value).length]));
 
   return (
@@ -105,6 +121,25 @@ export function BrandsPanel({
           <Plus size={14} /> Add contact
         </button>
       </div>
+
+      {/* Category filter (shared tag pool, feature-flagged per business) */}
+      {categoriesEnabled && catNames.length > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[11px] uppercase tracking-wider text-zinc-400 mr-0.5 inline-flex items-center gap-1"><Tag size={11} /> Industry</span>
+          <CatPill active={categoryFilter === "all"} onClick={() => setCategoryFilter("all")}>All</CatPill>
+          {categories.map((c) => {
+            const count = brands.filter((b) => b.categories.includes(c.name)).length;
+            return (
+              <CatPill key={c.id} active={categoryFilter === c.name} color={categoryColor(catNames, c.name)} onClick={() => setCategoryFilter(c.name)}>
+                {c.name} <span className="opacity-60">{count}</span>
+              </CatPill>
+            );
+          })}
+          {brands.some((b) => b.categories.length === 0) && (
+            <CatPill active={categoryFilter === UNCATEGORIZED} onClick={() => setCategoryFilter(UNCATEGORIZED)}>Untagged</CatPill>
+          )}
+        </div>
+      )}
 
       {/* Add form */}
       {showAdd && (
@@ -185,6 +220,12 @@ export function BrandsPanel({
               className="w-full bg-zinc-50 dark:bg-zinc-900 text-sm px-3 py-2 rounded-md text-zinc-900 dark:text-zinc-100 outline-none border border-zinc-200 dark:border-zinc-800 focus:border-zinc-400 dark:focus:border-zinc-600 resize-none"
             />
           </div>
+          {categoriesEnabled && (
+            <div>
+              <label className="block text-xs text-zinc-500 mb-1.5 flex items-center gap-1"><Tag size={11} /> Industries / categories</label>
+              <CategoryMultiSelect all={catNames} selected={form.categories} onChange={(next) => setField("categories", next)} />
+            </div>
+          )}
           <div className="flex justify-end gap-2">
             <button
               type="button"
@@ -215,6 +256,7 @@ export function BrandsPanel({
             <BrandRow
               key={b.id}
               brand={b}
+              catNames={categoriesEnabled ? catNames : undefined}
               onClick={() => setSelectedBrand(b)}
             />
           ))}
@@ -226,6 +268,7 @@ export function BrandsPanel({
         <BrandModal
           brand={selectedBrand}
           shareHeaders={shareHeaders}
+          catNames={categoriesEnabled ? catNames : undefined}
           onUpdated={handleUpdated}
           onDelete={remove}
           onClose={() => setSelectedBrand(null)}
@@ -237,7 +280,7 @@ export function BrandsPanel({
 
 // ── Compact list row ──────────────────────────────────────────────────────────
 
-function BrandRow({ brand, onClick }: { brand: BrandContact; onClick: () => void }) {
+function BrandRow({ brand, catNames, onClick }: { brand: BrandContact; catNames?: string[]; onClick: () => void }) {
   const status = BRAND_STATUSES.find((s) => s.value === brand.status)!;
   return (
     <button
@@ -249,6 +292,11 @@ function BrandRow({ brand, onClick }: { brand: BrandContact; onClick: () => void
           <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{brand.brand_name}</span>
           <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${status.color}`}>{status.label}</span>
         </div>
+        {catNames && brand.categories.length > 0 && (
+          <div className="mt-1.5">
+            <CategoryBadges names={brand.categories} allNames={catNames} />
+          </div>
+        )}
         {(brand.contact_name || brand.contact_title) && (
           <div className="text-xs text-zinc-500 mt-0.5">
             {brand.contact_name}{brand.contact_name && brand.contact_title && " · "}{brand.contact_title}
@@ -275,12 +323,14 @@ function BrandRow({ brand, onClick }: { brand: BrandContact; onClick: () => void
 function BrandModal({
   brand: initialBrand,
   shareHeaders,
+  catNames,
   onUpdated,
   onDelete,
   onClose,
 }: {
   brand: BrandContact;
   shareHeaders: Record<string, string>;
+  catNames?: string[];
   onUpdated: (b: BrandContact) => void;
   onDelete: (id: number) => void;
   onClose: () => void;
@@ -312,6 +362,7 @@ function BrandModal({
       website: brand.website ?? "",
       status: brand.status,
       notes: brand.notes ?? "",
+      categories: brand.categories,
     });
     setEditing(true);
   }
@@ -329,6 +380,7 @@ function BrandModal({
         website: draft.website.trim() || null,
         status: draft.status,
         notes: draft.notes.trim() || null,
+        categories: draft.categories,
       }),
     });
     if (res.ok) {
@@ -475,6 +527,12 @@ function BrandModal({
                   rows={4}
                   className="w-full bg-zinc-50 dark:bg-zinc-900 text-sm px-3 py-2 rounded-md text-zinc-900 dark:text-zinc-100 outline-none border border-zinc-200 dark:border-zinc-800 focus:border-zinc-400 dark:focus:border-zinc-600 resize-none" />
               </div>
+              {catNames && (
+                <div>
+                  <label className="block text-xs text-zinc-500 mb-1.5 flex items-center gap-1"><Tag size={11} /> Industries / categories</label>
+                  <CategoryMultiSelect all={catNames} selected={draft.categories} onChange={(next) => setDraft((d) => ({ ...d, categories: next }))} />
+                </div>
+              )}
               <div className="flex justify-end gap-2">
                 <button onClick={() => setEditing(false)} className="text-sm px-3 py-1.5 rounded-md text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">Cancel</button>
                 <button onClick={saveEdit} disabled={!draft.brand_name.trim()}
@@ -504,6 +562,14 @@ function BrandModal({
                       <Globe size={13} className="text-zinc-400 shrink-0" />{brand.website.replace(/^https?:\/\//, "")}
                     </a>
                   )}
+                </div>
+              )}
+
+              {/* Categories */}
+              {catNames && brand.categories.length > 0 && (
+                <div>
+                  <div className="text-xs uppercase tracking-wider text-zinc-400 mb-1.5">Industries</div>
+                  <CategoryBadges names={brand.categories} allNames={catNames} />
                 </div>
               )}
 

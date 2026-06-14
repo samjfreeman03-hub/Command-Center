@@ -97,6 +97,8 @@ export type BrandContact = {
   website: string | null;
   status: "prospect" | "in_network" | "active_partner" | "past_partner";
   notes: string | null;
+  /** Custom user-defined category names (shared tag pool with the pipeline). */
+  categories: string[];
   created_at: number;
   updated_at: number;
 };

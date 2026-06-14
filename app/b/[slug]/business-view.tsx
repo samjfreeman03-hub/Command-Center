@@ -198,7 +198,7 @@ export function BusinessView({
         {tab === "todos"     && <TodosPanel businessId={business.id} initial={initialTodos} members={members} />}
         {tab === "pipeline"  && <PipelinePanel businessId={business.id} initial={initialLeads} categories={leadCategories} categoriesEnabled={leadCategoriesEnabled} />}
         {tab === "outreach"  && <OutreachPanel businessId={business.id} initial={initialOutreach} />}
-        {tab === "brands"    && <BrandsPanel businessId={business.id} initial={initialBrands} />}
+        {tab === "brands"    && <BrandsPanel businessId={business.id} initial={initialBrands} categories={leadCategories} categoriesEnabled={leadCategoriesEnabled} />}
         {tab === "resources" && <ResourcesPanel businessId={business.id} initial={initialResources} />}
         {tab === "notes"     && <NotesPanel businessId={business.id} initial={initialNotes} />}
         {tab === "chat"      && <ChatPanel business={business} initialMessages={initialChat} />}
