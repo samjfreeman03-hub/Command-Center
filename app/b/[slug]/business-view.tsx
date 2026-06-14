@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import type { Business } from "@/lib/businesses";
-import type { Todo, Lead, Note, ChatMessage, BusinessResource, TeamMember, BrandContact, OutreachTarget } from "@/lib/types";
+import type { Todo, Lead, LeadCategory, Note, ChatMessage, BusinessResource, TeamMember, BrandContact, OutreachTarget } from "@/lib/types";
 import { TodosPanel } from "@/components/todos-panel";
 import { PipelinePanel } from "@/components/pipeline-panel";
 import { ResourcesPanel } from "@/components/resources-panel";
@@ -45,6 +45,8 @@ export function BusinessView({
   initialOutreach,
   shareToken,
   initialTagline,
+  leadCategories,
+  leadCategoriesEnabled,
 }: {
   business: Business;
   initialTab: string;
@@ -58,6 +60,8 @@ export function BusinessView({
   initialOutreach: OutreachTarget[];
   shareToken: string;
   initialTagline: string;
+  leadCategories: LeadCategory[];
+  leadCategoriesEnabled: boolean;
 }) {
   const tabs = tabsForBusiness(business.id);
   const [tab, setTabState] = useState<TabId>(
@@ -192,7 +196,7 @@ export function BusinessView({
       {/* ── Tab panels ── */}
       <div className="w-full px-4 sm:px-8 lg:px-10 pt-5 pb-10 safe-bottom flex-1">
         {tab === "todos"     && <TodosPanel businessId={business.id} initial={initialTodos} members={members} />}
-        {tab === "pipeline"  && <PipelinePanel businessId={business.id} initial={initialLeads} />}
+        {tab === "pipeline"  && <PipelinePanel businessId={business.id} initial={initialLeads} categories={leadCategories} categoriesEnabled={leadCategoriesEnabled} />}
         {tab === "outreach"  && <OutreachPanel businessId={business.id} initial={initialOutreach} />}
         {tab === "brands"    && <BrandsPanel businessId={business.id} initial={initialBrands} />}
         {tab === "resources" && <ResourcesPanel businessId={business.id} initial={initialResources} />}

@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
 import { BUSINESSES } from "./businesses";
-import type { Todo, Lead, Note, ChatMessage, LeadAttachment, BusinessResource, TeamMember, BrandContact, BrandAttachment, OutreachTarget, OutreachStatus } from "./types";
+import type { Todo, Lead, LeadCategory, Note, ChatMessage, LeadAttachment, BusinessResource, TeamMember, BrandContact, BrandAttachment, OutreachTarget, OutreachStatus } from "./types";
 
 // Email row types (internal to db.ts)
 type RawEmailRow = {
@@ -78,6 +78,17 @@ function migrate(db: Database.Database) {
       updated_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_leads_business ON leads(business_id);
+
+    CREATE TABLE IF NOT EXISTS lead_categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      business_id TEXT NOT NULL REFERENCES businesses(id),
+      name TEXT NOT NULL,
+      color_index INTEGER NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      UNIQUE(business_id, name)
+    );
+    CREATE INDEX IF NOT EXISTS idx_lead_categories_business ON lead_categories(business_id);
 
     CREATE TABLE IF NOT EXISTS notes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -231,6 +242,7 @@ function migrateAlter(db: Database.Database) {
   try { db.exec("ALTER TABLE businesses ADD COLUMN tagline TEXT"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE brand_contacts ADD COLUMN website TEXT"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE outreach_targets ADD COLUMN person_email TEXT"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE leads ADD COLUMN category TEXT"); } catch { /* already exists */ }
 }
 
 function seed(db: Database.Database) {
@@ -385,12 +397,13 @@ export const db = {
     next_action?: string;
     next_action_date?: string;
     notes?: string;
+    category?: string | null;
   }): Lead {
     const now = Date.now();
     const result = getDb()
       .prepare(
-        `INSERT INTO leads (business_id, name, company, contact_email, stage, value_cents, next_action, next_action_date, notes, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO leads (business_id, name, company, contact_email, stage, value_cents, next_action, next_action_date, notes, category, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         input.business_id,
@@ -402,6 +415,7 @@ export const db = {
         input.next_action ?? null,
         input.next_action_date ?? null,
         input.notes ?? null,
+        input.category ?? null,
         now,
         now
       );
@@ -418,6 +432,7 @@ export const db = {
       "next_action",
       "next_action_date",
       "notes",
+      "category",
     ] as const;
     const sets: string[] = [];
     const args: unknown[] = [];
@@ -439,6 +454,45 @@ export const db = {
 
   deleteLead(id: number) {
     getDb().prepare("DELETE FROM leads WHERE id = ?").run(id);
+  },
+
+  // ---- Lead categories (custom, per-business) ----
+  listLeadCategories(businessId: string): LeadCategory[] {
+    return getDb()
+      .prepare("SELECT * FROM lead_categories WHERE business_id = ? ORDER BY sort_order, name")
+      .all(businessId) as LeadCategory[];
+  },
+
+  createLeadCategory(businessId: string, name: string, colorIndex = 0): LeadCategory {
+    const now = Date.now();
+    const maxOrder = (getDb()
+      .prepare("SELECT COALESCE(MAX(sort_order), -1) AS m FROM lead_categories WHERE business_id = ?")
+      .get(businessId) as { m: number }).m;
+    const result = getDb()
+      .prepare(
+        `INSERT INTO lead_categories (business_id, name, color_index, sort_order, created_at)
+         VALUES (?, ?, ?, ?, ?)`
+      )
+      .run(businessId, name, colorIndex, maxOrder + 1, now);
+    return getDb()
+      .prepare("SELECT * FROM lead_categories WHERE id = ?")
+      .get(result.lastInsertRowid) as LeadCategory;
+  },
+
+  getLeadCategoryBizId(id: number): string | null {
+    const row = getDb()
+      .prepare("SELECT business_id FROM lead_categories WHERE id = ?")
+      .get(id) as { business_id: string } | undefined;
+    return row?.business_id ?? null;
+  },
+
+  deleteLeadCategory(id: number) {
+    const cat = getDb().prepare("SELECT * FROM lead_categories WHERE id = ?").get(id) as LeadCategory | undefined;
+    if (cat) {
+      // Un-tag any leads using this category so they don't point at a dead id.
+      getDb().prepare("UPDATE leads SET category = NULL WHERE business_id = ? AND category = ?").run(cat.business_id, cat.name);
+    }
+    getDb().prepare("DELETE FROM lead_categories WHERE id = ?").run(id);
   },
 
   // ---- Notes ----

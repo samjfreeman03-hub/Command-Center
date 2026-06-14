@@ -23,8 +23,19 @@ export type Lead = {
   next_action: string | null;
   next_action_date: string | null;
   notes: string | null;
+  /** Custom user-defined category name (stored as the category's name). */
+  category: string | null;
   created_at: number;
   updated_at: number;
+};
+
+export type LeadCategory = {
+  id: number;
+  business_id: string;
+  name: string;
+  color_index: number;
+  sort_order: number;
+  created_at: number;
 };
 
 export const LEAD_STAGES: Lead["stage"][] = [

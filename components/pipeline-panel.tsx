@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import type { Lead, LeadAttachment } from "@/lib/types";
+import type { Lead, LeadAttachment, LeadCategory } from "@/lib/types";
 import { LEAD_STAGES } from "@/lib/types";
-import { Plus, Trash2, Link2, Paperclip, X, Upload, ExternalLink, Download, TrendingUp } from "lucide-react";
+import { Plus, Trash2, Link2, Paperclip, X, Upload, ExternalLink, Download, TrendingUp, Tag, Settings2 } from "lucide-react";
 import { useShareHeaders } from "@/lib/share-context";
 
 const STAGE_LABELS: Record<Lead["stage"], string> = {
@@ -15,6 +15,19 @@ const STAGE_LABELS: Record<Lead["stage"], string> = {
   lost: "Lost",
 };
 
+// Distinct, readable badge colors assigned to categories by their position.
+const CATEGORY_COLORS = [
+  "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
+  "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+  "bg-violet-100 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300",
+  "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
+  "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300",
+  "bg-cyan-100 text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-300",
+  "bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300",
+  "bg-pink-100 text-pink-700 dark:bg-pink-950/40 dark:text-pink-300",
+];
+const UNCATEGORIZED = "__uncategorized__";
+
 function money(cents: number | null) {
   if (!cents) return "";
   return `$${(cents / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
@@ -23,14 +36,56 @@ function money(cents: number | null) {
 export function PipelinePanel({
   businessId,
   initial,
+  categories: initialCategories = [],
+  categoriesEnabled = false,
 }: {
   businessId: string;
   initial: Lead[];
+  categories?: LeadCategory[];
+  categoriesEnabled?: boolean;
 }) {
   const [leads, setLeads] = useState(initial);
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [cats, setCats] = useState<LeadCategory[]>(initialCategories);
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [showManageCats, setShowManageCats] = useState(false);
+  const [newCatName, setNewCatName] = useState("");
   const shareHeaders = useShareHeaders();
+
+  const catNames = cats.map((c) => c.name);
+  // Map category name → badge color class (by position, stable per list order).
+  const catColor = (name: string | null) => {
+    if (!name) return "";
+    const idx = catNames.indexOf(name);
+    return idx >= 0 ? CATEGORY_COLORS[idx % CATEGORY_COLORS.length] : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300";
+  };
+
+  async function addCategory(e: React.FormEvent) {
+    e.preventDefault();
+    const name = newCatName.trim();
+    if (!name) return;
+    const res = await fetch("/api/lead-categories", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...shareHeaders },
+      body: JSON.stringify({ business_id: businessId, name }),
+    });
+    if (res.ok) {
+      const created: LeadCategory = await res.json();
+      setCats((prev) => [...prev, created]);
+      setNewCatName("");
+    } else if (res.status === 409) {
+      alert("A category with that name already exists.");
+    }
+  }
+
+  async function deleteCategory(cat: LeadCategory) {
+    if (!confirm(`Delete the "${cat.name}" category? Leads tagged with it will become uncategorized.`)) return;
+    setCats((prev) => prev.filter((c) => c.id !== cat.id));
+    setLeads((prev) => prev.map((l) => (l.category === cat.name ? { ...l, category: null } : l)));
+    if (categoryFilter === cat.name) setCategoryFilter("all");
+    await fetch(`/api/lead-categories/${cat.id}`, { method: "DELETE", headers: shareHeaders });
+  }
 
   async function add(form: NewLeadForm) {
     const res = await fetch("/api/leads", {
@@ -95,11 +150,89 @@ export function PipelinePanel({
         </button>
       </div>
 
-      {showAdd && <NewLeadCard onCreate={add} onCancel={() => setShowAdd(false)} />}
+      {/* Category filter + management (feature-flagged per business) */}
+      {categoriesEnabled && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <CatPill active={categoryFilter === "all"} onClick={() => setCategoryFilter("all")}>
+              All <span className="opacity-50">{leads.length}</span>
+            </CatPill>
+            {cats.map((c) => {
+              const count = leads.filter((l) => l.category === c.name).length;
+              return (
+                <CatPill
+                  key={c.id}
+                  active={categoryFilter === c.name}
+                  color={catColor(c.name)}
+                  onClick={() => setCategoryFilter(c.name)}
+                >
+                  {c.name} <span className="opacity-60">{count}</span>
+                </CatPill>
+              );
+            })}
+            {leads.some((l) => !l.category) && (
+              <CatPill active={categoryFilter === UNCATEGORIZED} onClick={() => setCategoryFilter(UNCATEGORIZED)}>
+                Uncategorized <span className="opacity-50">{leads.filter((l) => !l.category).length}</span>
+              </CatPill>
+            )}
+            <button
+              onClick={() => setShowManageCats((v) => !v)}
+              className={`ml-1 inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                showManageCats
+                  ? "border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
+                  : "border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              }`}
+            >
+              <Settings2 size={12} /> Manage
+            </button>
+          </div>
+
+          {showManageCats && (
+            <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 p-3 space-y-2.5">
+              <form onSubmit={addCategory} className="flex gap-2">
+                <input
+                  value={newCatName}
+                  onChange={(e) => setNewCatName(e.target.value)}
+                  placeholder="New category name (e.g. Healthcare, Logistics)"
+                  className="flex-1 px-2.5 py-1.5 text-sm rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 outline-none focus:border-zinc-400 dark:focus:border-zinc-600"
+                />
+                <button
+                  type="submit"
+                  disabled={!newCatName.trim()}
+                  className="shrink-0 inline-flex items-center gap-1.5 bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 text-sm font-medium px-3 py-1.5 rounded-md hover:bg-zinc-800 dark:hover:bg-white disabled:opacity-40"
+                >
+                  <Plus size={14} /> Add
+                </button>
+              </form>
+              {cats.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {cats.map((c) => (
+                    <span key={c.id} className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ${catColor(c.name)}`}>
+                      {c.name}
+                      <button onClick={() => deleteCategory(c)} className="hover:text-rose-600 dark:hover:text-rose-400" title="Delete category">
+                        <X size={11} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-zinc-400">No categories yet. Add one above, then tag leads when you create or edit them.</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {showAdd && <NewLeadCard onCreate={add} onCancel={() => setShowAdd(false)} categories={categoriesEnabled ? catNames : undefined} />}
 
       <div className="space-y-5">
         {LEAD_STAGES.map((stage) => {
-          const stageLeads = leads.filter((l) => l.stage === stage);
+          const stageLeads = leads.filter(
+            (l) =>
+              l.stage === stage &&
+              (categoryFilter === "all" ||
+                (categoryFilter === UNCATEGORIZED ? !l.category : l.category === categoryFilter))
+          );
           if (stageLeads.length === 0) return null;
           return (
             <div key={stage}>
@@ -113,6 +246,8 @@ export function PipelinePanel({
                     key={l.id}
                     lead={l}
                     isEditing={editingId === l.id}
+                    categories={categoriesEnabled ? catNames : undefined}
+                    categoryColor={catColor(l.category)}
                     onStartEdit={() => setEditingId(l.id)}
                     onCancelEdit={() => setEditingId(null)}
                     onUpdate={(patch) => update(l.id, patch)}
@@ -147,14 +282,17 @@ type NewLeadForm = {
   value_cents?: number;
   next_action?: string;
   next_action_date?: string;
+  category?: string | null;
 };
 
 function NewLeadCard({
   onCreate,
   onCancel,
+  categories,
 }: {
   onCreate: (form: NewLeadForm) => void;
   onCancel: () => void;
+  categories?: string[];
 }) {
   const [name, setName] = useState("");
   const [company, setCompany] = useState("");
@@ -163,6 +301,7 @@ function NewLeadCard({
   const [value, setValue] = useState("");
   const [nextAction, setNextAction] = useState("");
   const [nextDate, setNextDate] = useState("");
+  const [category, setCategory] = useState("");
 
   return (
     <form
@@ -177,6 +316,7 @@ function NewLeadCard({
           value_cents: value ? Math.round(parseFloat(value) * 100) : undefined,
           next_action: nextAction.trim() || undefined,
           next_action_date: nextDate || undefined,
+          category: categories ? (category || null) : undefined,
         });
       }}
       className="rounded-lg border border-zinc-300 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/40 p-4 grid grid-cols-2 gap-3"
@@ -205,6 +345,16 @@ function NewLeadCard({
       <Field label="Next action date">
         <input type="date" value={nextDate} onChange={(e) => setNextDate(e.target.value)} className={inputCls} />
       </Field>
+      {categories && (
+        <Field label="Category" full>
+          <select value={category} onChange={(e) => setCategory(e.target.value)} className={inputCls}>
+            <option value="">— Uncategorized —</option>
+            {categories.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </Field>
+      )}
       <Field label="Next action" full>
         <input value={nextAction} onChange={(e) => setNextAction(e.target.value)} className={inputCls} placeholder="e.g. Send proposal" />
       </Field>
@@ -223,6 +373,8 @@ function NewLeadCard({
 function LeadCard({
   lead,
   isEditing,
+  categories,
+  categoryColor,
   onStartEdit,
   onCancelEdit,
   onUpdate,
@@ -230,6 +382,8 @@ function LeadCard({
 }: {
   lead: Lead;
   isEditing: boolean;
+  categories?: string[];
+  categoryColor?: string;
   onStartEdit: () => void;
   onCancelEdit: () => void;
   onUpdate: (patch: Partial<Lead>) => void;
@@ -243,6 +397,7 @@ function LeadCard({
           <div className="relative w-full sm:max-w-md max-h-[90vh] overflow-y-auto rounded-t-xl sm:rounded-xl bg-white dark:bg-zinc-950 shadow-xl">
             <EditLeadCard
               lead={lead}
+              categories={categories}
               onSave={(patch) => { onUpdate(patch); onCancelEdit(); }}
               onCancel={onCancelEdit}
               onDelete={onDelete}
@@ -258,6 +413,11 @@ function LeadCard({
           <div className="min-w-0 flex-1">
             <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{lead.company || lead.name}</div>
             {lead.company && <div className="text-xs text-zinc-500 mt-0.5">{lead.name}</div>}
+            {categories && lead.category && (
+              <span className={`inline-flex items-center gap-1 mt-1.5 px-1.5 py-0.5 rounded-md text-[11px] font-medium ${categoryColor}`}>
+                <Tag size={9} /> {lead.category}
+              </span>
+            )}
           </div>
           <div className="flex flex-col items-end gap-1 shrink-0">
             {lead.value_cents ? (
@@ -275,11 +435,13 @@ function LeadCard({
 
 function EditLeadCard({
   lead,
+  categories,
   onSave,
   onCancel,
   onDelete,
 }: {
   lead: Lead;
+  categories?: string[];
   onSave: (patch: Partial<Lead>) => void;
   onCancel: () => void;
   onDelete: () => void;
@@ -292,6 +454,7 @@ function EditLeadCard({
   const [nextAction, setNextAction] = useState(lead.next_action ?? "");
   const [nextDate, setNextDate] = useState(lead.next_action_date ?? "");
   const [notes, setNotes] = useState(lead.notes ?? "");
+  const [category, setCategory] = useState(lead.category ?? "");
 
   const [attachments, setAttachments] = useState<LeadAttachment[]>([]);
   const [linkUrl, setLinkUrl] = useState("");
@@ -363,6 +526,7 @@ function EditLeadCard({
           next_action: nextAction || null,
           next_action_date: nextDate || null,
           notes: notes || null,
+          ...(categories ? { category: category || null } : {}),
         });
       }}
       className="bg-white dark:bg-zinc-950 p-5 space-y-3"
@@ -377,6 +541,21 @@ function EditLeadCard({
           </option>
         ))}
       </select>
+      {categories && (
+        <div>
+          <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1 flex items-center gap-1">
+            <Tag size={10} /> Category
+          </div>
+          <select value={category} onChange={(e) => setCategory(e.target.value)} className={inputCls}>
+            <option value="">— Uncategorized —</option>
+            {categories.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+            {/* Preserve a category that exists on this lead but was since deleted */}
+            {category && !categories.includes(category) && <option value={category}>{category}</option>}
+          </select>
+        </div>
+      )}
       <input value={value} onChange={(e) => setValue(e.target.value)} className={inputCls} placeholder="Value ($)" />
       <input value={nextAction} onChange={(e) => setNextAction(e.target.value)} className={inputCls} placeholder="Next action" />
       <input type="date" value={nextDate} onChange={(e) => setNextDate(e.target.value)} className={inputCls} />
@@ -506,5 +685,24 @@ function Field({ label, full, children }: { label: string; full?: boolean; child
       <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">{label}</div>
       {children}
     </label>
+  );
+}
+
+function CatPill({
+  active, color, onClick, children,
+}: { active: boolean; color?: string; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full border transition-colors ${
+        active
+          ? "border-zinc-900 dark:border-zinc-100 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900"
+          : color
+            ? `border-transparent ${color} hover:opacity-80`
+            : "border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
