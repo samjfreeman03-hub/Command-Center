@@ -97,7 +97,7 @@ export function Sidebar({ onLogout, onClose }: { onLogout?: () => void; onClose?
       </div>
 
       {/* Bottom bar */}
-      <div className="px-3 py-3 mt-4 border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-between safe-bottom">
+      <div className="px-3 pt-3 pb-safe-3 mt-4 border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
         <button
           onClick={toggleTheme}
           className="w-10 h-10 flex items-center justify-center rounded-xl text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"

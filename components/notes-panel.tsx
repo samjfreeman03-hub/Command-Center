@@ -156,7 +156,7 @@ export function NotesPanel({ businessId, initial }: { businessId: string; initia
             placeholder="Start writing…"
             className="flex-1 px-4 py-4 bg-transparent text-sm leading-7 outline-none resize-none placeholder:text-zinc-400 dark:placeholder:text-zinc-600 text-zinc-800 dark:text-zinc-200 min-h-[200px] scroll-touch"
           />
-          <div className="flex items-center justify-between px-4 py-3 border-t border-zinc-100 dark:border-zinc-900 bg-zinc-50/50 dark:bg-zinc-900/20 shrink-0 safe-bottom">
+          <div className="flex items-center justify-between px-4 pt-3 pb-safe-3 border-t border-zinc-100 dark:border-zinc-900 bg-zinc-50/50 dark:bg-zinc-900/20 shrink-0">
             <div className="text-xs text-zinc-400">
               {selected
                 ? `Saved ${format(new Date(selected.updated_at), "MMM d 'at' h:mm a")}`

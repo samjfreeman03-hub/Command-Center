@@ -223,7 +223,7 @@ export function ChatPanel({
       )}
 
       {/* Input */}
-      <form onSubmit={send} className="border-t border-zinc-100 dark:border-zinc-900 p-4 flex gap-2 items-center safe-bottom shrink-0">
+      <form onSubmit={send} className="border-t border-zinc-100 dark:border-zinc-900 p-4 pb-safe-4 flex gap-2 items-center shrink-0">
         <input
           ref={fileInputRef}
           type="file"

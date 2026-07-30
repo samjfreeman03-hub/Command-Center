@@ -41,7 +41,7 @@ export function OutreachSharedView({
         </header>
 
         {/* Panel */}
-        <div className="w-full px-4 sm:px-8 lg:px-10 pt-5 pb-10 safe-bottom flex-1">
+        <div className="w-full px-4 sm:px-8 lg:px-10 pt-5 pb-safe-10 flex-1">
           <OutreachPanel businessId={business.id} initial={initialOutreach} />
         </div>
       </div>
