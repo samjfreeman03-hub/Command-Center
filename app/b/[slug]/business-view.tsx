@@ -202,8 +202,8 @@ export function BusinessView({
         </div>
       </div>
 
-      {/* ── Tab panels ── */}
-      <div className="w-full px-4 sm:px-8 lg:px-10 pt-5 pb-10 safe-bottom flex-1">
+      {/* ── Tab panels (key remounts + animates on tab switch) ── */}
+      <div key={tab} className="panel-in w-full px-4 sm:px-8 lg:px-10 pt-5 pb-10 safe-bottom flex-1">
         {tab === "todos"     && <TodosPanel businessId={business.id} initial={initialTodos} members={members} />}
         {tab === "pipeline"  && <PipelinePanel businessId={business.id} initial={initialLeads} categories={leadCategories} categoriesEnabled={leadCategoriesEnabled} />}
         {tab === "events"    && <EventsPanel businessId={business.id} initial={initialEvents} />}

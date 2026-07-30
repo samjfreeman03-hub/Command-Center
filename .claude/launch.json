@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "command-center-dev",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["ADMIN_PASSWORD=cc-ui-preview-2026", "npm", "run", "dev"],
+      "port": 3000
+    }
+  ]
+}

@@ -107,8 +107,8 @@ export function SharedView({
           </div>
         </div>
 
-        {/* Panels */}
-        <div className="w-full px-4 sm:px-8 lg:px-10 pt-5 pb-10 safe-bottom flex-1">
+        {/* Panels (key remounts + animates on tab switch) */}
+        <div key={tab} className="panel-in w-full px-4 sm:px-8 lg:px-10 pt-5 pb-10 safe-bottom flex-1">
           {tab === "todos"     && <TodosPanel businessId={business.id} initial={initialTodos} members={members} />}
           {tab === "pipeline"  && <PipelinePanel businessId={business.id} initial={initialLeads} />}
           {tab === "events"    && <EventsPanel businessId={business.id} initial={initialEvents} />}

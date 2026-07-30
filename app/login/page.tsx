@@ -28,11 +28,11 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-zinc-50 dark:bg-zinc-950">
+    <div className="min-h-screen flex items-center justify-center px-4 bg-[radial-gradient(ellipse_at_top,_#ffffff_0%,_#f4f4f5_55%,_#e4e4e7_100%)] dark:bg-[radial-gradient(ellipse_at_top,_#18181b_0%,_#0a0a0a_60%)]">
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-12 h-12 rounded-2xl bg-zinc-900 dark:bg-zinc-100 flex items-center justify-center shadow-lg mb-4">
+          <div className="w-12 h-12 rounded-2xl bg-zinc-900 dark:bg-zinc-100 flex items-center justify-center shadow-lg shadow-zinc-900/20 dark:shadow-zinc-100/10 mb-4">
             <span className="text-sm font-bold text-zinc-50 dark:text-zinc-900 tracking-tight">CC</span>
           </div>
           <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight">Command Center</h1>
@@ -40,7 +40,7 @@ export default function LoginPage() {
         </div>
 
         {/* Form */}
-        <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-6 shadow-sm">
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 p-6 shadow-xl shadow-zinc-200/50 dark:shadow-black/40">
           <form onSubmit={submit} className="space-y-3">
             <div>
               <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1.5">Password</label>

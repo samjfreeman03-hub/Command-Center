@@ -65,28 +65,32 @@ export default function Dashboard() {
             <Link
               key={b.id}
               href={`/b/${b.id}`}
-              className="group relative rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 hover:border-zinc-300 dark:hover:border-zinc-700 hover:shadow-lg hover:shadow-zinc-200/60 dark:hover:shadow-zinc-900/60 hover:-translate-y-0.5 transition-all duration-200 p-5 overflow-hidden"
+              className="group relative rounded-2xl border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-950 shadow-sm hover:border-zinc-300 dark:hover:border-zinc-700 hover:shadow-lg hover:shadow-zinc-200/60 dark:hover:shadow-zinc-900/60 hover:-translate-y-0.5 transition-all duration-200 p-5 overflow-hidden"
             >
-              {/* Colored left stripe */}
-              <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-xl ${b.dot}`} />
-
-              <div className="pl-3">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <div className={`text-base font-bold ${b.accent} mb-0.5`}>{b.name}</div>
-                    <p className="text-xs text-zinc-500 leading-relaxed line-clamp-2 max-w-[180px]">{b.tagline}</p>
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-start gap-3 min-w-0">
+                  {/* Brand monogram */}
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-white text-sm font-bold shadow-sm"
+                    style={{ backgroundColor: b.hex }}
+                  >
+                    {b.name.charAt(0)}
                   </div>
-                  <ArrowUpRight
-                    size={16}
-                    className="text-zinc-300 dark:text-zinc-700 group-hover:text-zinc-500 dark:group-hover:text-zinc-400 transition-colors shrink-0 mt-0.5"
-                  />
+                  <div className="min-w-0">
+                    <div className={`text-base font-bold ${b.accent} mb-0.5 truncate`}>{b.name}</div>
+                    <p className="text-xs text-zinc-500 leading-relaxed line-clamp-2">{b.tagline}</p>
+                  </div>
                 </div>
+                <ArrowUpRight
+                  size={16}
+                  className="text-zinc-300 dark:text-zinc-700 group-hover:text-zinc-500 dark:group-hover:text-zinc-400 transition-colors shrink-0 mt-0.5"
+                />
+              </div>
 
-                <div className="grid grid-cols-3 gap-2">
-                  <Stat label="Todos" value={open.toString()} />
-                  <Stat label="Leads" value={(pipe?.open_count ?? 0).toString()} />
-                  <Stat label="Pipeline" value={money(pipe?.pipeline_cents ?? 0)} />
-                </div>
+              <div className="grid grid-cols-3 gap-2">
+                <Stat label="Todos" value={open.toString()} />
+                <Stat label="Leads" value={(pipe?.open_count ?? 0).toString()} />
+                <Stat label="Pipeline" value={money(pipe?.pipeline_cents ?? 0)} />
               </div>
             </Link>
           );
@@ -144,7 +148,7 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-5">
+    <div className="rounded-2xl border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-950 shadow-sm p-5">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           {icon}

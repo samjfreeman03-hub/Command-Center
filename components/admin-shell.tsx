@@ -22,7 +22,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   return (
     <>
       {/* Mobile top bar — sits behind status bar, uses safe-area padding */}
-      <header className="mobile-header md:hidden fixed top-0 inset-x-0 z-30 bg-zinc-50/95 dark:bg-zinc-950/95 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800">
+      <header className="mobile-header md:hidden fixed top-0 inset-x-0 z-30 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800">
         <div className="h-13 flex items-center px-4 gap-3">
           <button
             onClick={() => setDrawerOpen(true)}

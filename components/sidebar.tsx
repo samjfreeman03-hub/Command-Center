@@ -25,7 +25,7 @@ export function Sidebar({ onLogout, onClose }: { onLogout?: () => void; onClose?
   }
 
   return (
-    <aside className="w-full h-full shrink-0 border-r border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 flex flex-col overflow-y-auto safe-bottom">
+    <aside className="w-full h-full shrink-0 border-r border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 flex flex-col overflow-y-auto safe-bottom">
 
       {/* Logo — pushes down by safe-area-inset-top when drawer on mobile */}
       <div className="mobile-header md:pt-0 px-4 pt-5">
@@ -136,8 +136,8 @@ function NavItem({
       href={href}
       className={`flex items-center gap-2.5 px-3 py-2.5 md:py-2 rounded-lg text-sm transition-colors ${
         active
-          ? "bg-zinc-200 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 font-medium"
-          : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-100"
+          ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 font-medium shadow-sm ring-1 ring-zinc-200/70 dark:ring-zinc-700/50"
+          : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100/70 dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-100"
       }`}
     >
       {icon}

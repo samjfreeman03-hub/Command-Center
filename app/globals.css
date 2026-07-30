@@ -8,7 +8,8 @@
 }
 
 html, body {
-  background: #ffffff;
+  /* Tinted app background so white cards/headers read as elevated surfaces */
+  background: #f4f4f5;
   color: #18181b;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -80,6 +81,23 @@ body {
   outline: 2px solid rgb(113 113 122 / 0.55);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+/* ── Motion ────────────────────────────────────────────────────────── */
+
+/* Tab panels fade + rise in when switching tabs */
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.panel-in { animation: panel-in 0.18s ease-out; }
+
+/* Subtle press feedback on all enabled buttons */
+button:not(:disabled):active { transform: scale(0.98); }
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-in { animation: none; }
+  button:not(:disabled):active { transform: none; }
 }
 
 /* Left padding for sidebar in landscape with notch */

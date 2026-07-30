@@ -40,10 +40,10 @@ export function SharePasswordGate({ business }: { business: Business }) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-white">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-[radial-gradient(ellipse_at_top,_#ffffff_0%,_#f4f4f5_55%,_#e4e4e7_100%)]">
       <form
         onSubmit={submit}
-        className="w-full max-w-md bg-white border border-zinc-200 rounded-2xl p-7 space-y-5 shadow-sm"
+        className="w-full max-w-md bg-white border border-zinc-200/80 rounded-2xl p-7 space-y-5 shadow-xl shadow-zinc-200/50"
       >
         <div className="space-y-2.5">
           <div
