@@ -3,8 +3,12 @@ import Anthropic from "@anthropic-ai/sdk";
 import { db, UPLOADS_DIR } from "@/lib/db";
 import { getBusiness } from "@/lib/businesses";
 import { canAccessBusiness } from "@/lib/server-auth";
+import { CHAT_TOOLS, executeChatTool } from "@/lib/chat-tools";
+import { leadCategoriesEnabled } from "@/lib/pipeline-config";
 import path from "node:path";
 import fs from "node:fs";
+
+export const maxDuration = 60; // seconds — tool loops on bulk imports take longer than plain chat
 
 const CONTENT_CHAR_LIMIT = 6000;
 const TOTAL_ATTACH_LIMIT = 60000;
@@ -126,9 +130,12 @@ export async function POST(req: Request) {
   const notes = db.listNotes({ businessId: business_id });
   const leads = db.listLeads({ businessId: business_id });
   const todos = db.listTodos({ businessId: business_id, status: "open" });
+  const brands = db.listBrandContacts(business_id);
   const resources = db.listBusinessResources(business_id);
   const attachments = db.listLeadAttachmentsForBusiness(business_id);
   const history = db.listChat(business_id).slice(-20);
+  const catsEnabled = leadCategoriesEnabled(business_id);
+  const categoryNames = catsEnabled ? db.listLeadCategories(business_id).map((c) => c.name) : [];
 
   const notesBlock = notes.length
     ? notes.map((n) => `# ${n.title}\n${n.content}`).join("\n\n---\n\n")
@@ -138,16 +145,27 @@ export async function POST(req: Request) {
     ? leads
         .map(
           (l) =>
-            `- ${l.name}${l.company ? ` (${l.company})` : ""} — stage: ${l.stage}${
+            `- [id:${l.id}] ${l.name}${l.company ? ` (${l.company})` : ""} — stage: ${l.stage}${
               l.value_cents ? `, $${(l.value_cents / 100).toLocaleString()}` : ""
-            }${l.next_action ? `, next: ${l.next_action}` : ""}${l.notes ? `, notes: ${l.notes}` : ""}`
+            }${l.categories.length ? `, categories: ${l.categories.join("/")}` : ""}${l.next_action ? `, next: ${l.next_action}` : ""}${l.notes ? `, notes: ${l.notes}` : ""}`
         )
         .join("\n")
     : "(no active leads)";
 
   const todosBlock = todos.length
-    ? todos.map((t) => `- [${t.priority}] ${t.title}${t.due_date ? ` (due ${t.due_date})` : ""}`).join("\n")
+    ? todos.map((t) => `- [id:${t.id}] [${t.priority}] ${t.title}${t.due_date ? ` (due ${t.due_date})` : ""}`).join("\n")
     : "(no open todos)";
+
+  const brandsBlock = brands.length
+    ? brands
+        .map(
+          (b) =>
+            `- [id:${b.id}] ${b.brand_name}${b.contact_name ? ` — ${b.contact_name}` : ""}${b.contact_title ? ` (${b.contact_title})` : ""} — status: ${b.status}${
+              b.email ? `, ${b.email}` : ""
+            }${b.categories.length ? `, categories: ${b.categories.join("/")}` : ""}${b.notes ? `, notes: ${b.notes}` : ""}`
+        )
+        .join("\n")
+    : "(no CRM contacts yet)";
 
   // Business resources context
   let resourcesBlock = "(no resources)";
@@ -197,14 +215,30 @@ export async function POST(req: Request) {
 
   const system = `You are the chief-of-staff AI for the user's business: ${business.fullName}.
 Tagline: ${business.tagline}
+Today's date: ${new Date().toISOString().slice(0, 10)}
 
-You have read-only access to the following information about this business. Use it to ground your answers. Cite specifics when relevant. If something is not present, say so honestly — do not invent.
+You can BOTH answer questions AND take actions in this workspace using your tools. You can add or update CRM contacts, pipeline leads, and todos, and create notes. When the user asks you to add, import, log, update, or organize data — do it with tools, don't just describe how.
+
+TOOL RULES:
+- Use the BULK array tools for lists ("add these 30 companies") — one tool call with all items, not 30 calls.
+- When the user pastes a list or file of companies/contacts, parse every entry and map fields sensibly (names, emails, titles, websites). Don't drop entries; don't invent data for missing fields — just leave them out.
+- Ids shown as [id:N] in the context below are what update/complete tools take.
+- If a request is ambiguous about WHERE data should go (CRM vs pipeline), default: companies/partners/contacts → CRM; deals with a potential dollar value or sales motion → pipeline. Say what you chose.
+- Never fabricate contact details. Only use what the user provided or what's in context.
+- You cannot delete anything. If the user asks to delete, tell them to do it in the relevant tab.
+- After acting, reply with a tight summary of what you did (counts, names, where it went) and mention anything skipped as a duplicate.
+${catsEnabled ? `\nAVAILABLE CATEGORIES for this business (usable on CRM contacts and leads): ${categoryNames.length ? categoryNames.join(", ") : "(none defined yet — user can add them in Pipeline → Manage)"}. Only apply these exact category names; never invent new ones.` : ""}
+
+You also have the following read context about this business. Use it to ground your answers. Cite specifics when relevant. If something is not present, say so honestly — do not invent.
 
 == NOTES ==
 ${notesBlock}
 
 == ACTIVE LEADS / PIPELINE ==
 ${leadsBlock}
+
+== CRM CONTACTS ==
+${brandsBlock}
 
 == OPEN TODOS ==
 ${todosBlock}
@@ -260,12 +294,39 @@ Be concise, direct, and operator-minded. The user runs multiple businesses — r
   const client = new Anthropic({ apiKey });
 
   try {
-    const response = await client.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 2048,
-      system,
-      messages: apiMessages,
-    });
+    // Agentic loop: the model may call workspace tools (add/update CRM contacts,
+    // leads, todos, notes) before producing its final text reply.
+    const MAX_TOOL_ROUNDS = 8;
+    const loopMessages: Anthropic.MessageParam[] = [...apiMessages];
+    let actionsPerformed = 0;
+    let response: Anthropic.Message;
+
+    for (let round = 0; ; round++) {
+      response = await client.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 4096,
+        system,
+        tools: CHAT_TOOLS,
+        messages: loopMessages,
+      });
+
+      const toolUses = response.content.filter(
+        (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
+      );
+      if (toolUses.length === 0 || round >= MAX_TOOL_ROUNDS) break;
+
+      loopMessages.push({ role: "assistant", content: response.content });
+      const results: Anthropic.ToolResultBlockParam[] = toolUses.map((tu) => {
+        const result = executeChatTool(business_id, tu.name, tu.input);
+        if (result.ok) actionsPerformed++;
+        return {
+          type: "tool_result",
+          tool_use_id: tu.id,
+          content: JSON.stringify(result),
+        };
+      });
+      loopMessages.push({ role: "user", content: results });
+    }
 
     const assistantText = response.content
       .filter((block): block is Anthropic.TextBlock => block.type === "text")
@@ -278,7 +339,11 @@ Be concise, direct, and operator-minded. The user runs multiple businesses — r
       content: assistantText || "(no response)",
     });
 
-    return NextResponse.json({ user: userMsg, assistant: assistantMsg });
+    return NextResponse.json({
+      user: userMsg,
+      assistant: assistantMsg,
+      actions_performed: actionsPerformed > 0,
+    });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? `Anthropic API error: ${err.message}` : "Anthropic API error" },

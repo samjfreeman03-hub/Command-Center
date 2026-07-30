@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { Business } from "@/lib/businesses";
 import type { ChatMessage } from "@/lib/types";
-import { Send, Trash2, Paperclip, X, FileText, MessageSquare } from "lucide-react";
+import { Send, Trash2, Paperclip, X, FileText, MessageSquare, CheckCircle2 } from "lucide-react";
 import { useShareHeaders } from "@/lib/share-context";
 
 type PendingFile = { id: string; file: File; preview: string | null };
@@ -20,6 +21,9 @@ export function ChatPanel({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  // Ids of assistant messages that performed workspace actions (session-local badge)
+  const [actionMsgIds, setActionMsgIds] = useState<Set<number>>(new Set());
+  const router = useRouter();
   const endRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -85,11 +89,16 @@ export function ChatPanel({
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `Request failed (${res.status})`);
       }
-      const data: { user: ChatMessage; assistant: ChatMessage } = await res.json();
+      const data: { user: ChatMessage; assistant: ChatMessage; actions_performed?: boolean } = await res.json();
       setMessages((prev) => {
         const without = prev.filter((m) => m.id !== optimisticUser.id);
         return [...without, data.user, data.assistant];
       });
+      if (data.actions_performed) {
+        setActionMsgIds((prev) => new Set(prev).add(data.assistant.id));
+        // Re-fetch server props so other tabs mount with the fresh data
+        router.refresh();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
       setMessages((prev) => prev.filter((m) => m.id !== optimisticUser.id));
@@ -114,7 +123,7 @@ export function ChatPanel({
         <div className="flex items-center gap-2">
           <MessageSquare size={15} className="text-zinc-400" />
           <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{business.name}</span>
-          <span className="text-xs text-zinc-400">— grounded in your notes, pipeline &amp; resources</span>
+          <span className="text-xs text-zinc-400">— can read &amp; update your CRM, pipeline, todos &amp; notes</span>
         </div>
         {messages.length > 0 && (
           <button
@@ -138,16 +147,17 @@ export function ChatPanel({
                 Ask anything about {business.name}
               </div>
               <div className="text-xs text-zinc-400 dark:text-zinc-600 space-y-1 max-w-sm">
+                <div className="bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 rounded-lg">&ldquo;Add these companies to the CRM: …&rdquo;</div>
+                <div className="bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 rounded-lg">&ldquo;Create a lead for [brand], $10k, proposal stage&rdquo;</div>
                 <div className="bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 rounded-lg">&ldquo;What&apos;s in our pipeline right now?&rdquo;</div>
                 <div className="bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 rounded-lg">&ldquo;Draft a follow-up from last week&apos;s sponsor meeting&rdquo;</div>
-                <div className="bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 rounded-lg">&ldquo;Summarize what I know about [client]&rdquo;</div>
               </div>
             </div>
           </div>
         )}
 
         {messages.map((m) => (
-          <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+          <div key={m.id} className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}>
             <div
               className={`max-w-[78%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap leading-relaxed ${
                 m.role === "user"
@@ -157,6 +167,11 @@ export function ChatPanel({
             >
               {m.content}
             </div>
+            {actionMsgIds.has(m.id) && (
+              <div className="mt-1 inline-flex items-center gap-1 text-[11px] text-emerald-700 dark:text-emerald-400">
+                <CheckCircle2 size={11} /> Workspace updated — switch tabs to see the changes
+              </div>
+            )}
           </div>
         ))}
 
