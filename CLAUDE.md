@@ -36,7 +36,11 @@ over docs.
 21. [Memory Files](#21-memory-files)
 22. [Outstanding Security Items](#22-outstanding-security-items)
 23. [Working Conventions](#23-working-conventions)
-24. [Pending / In-Progress Work](#24-pending--in-progress-work)
+24. [Per-Business Feature Matrix](#24-per-business-feature-matrix-source-of-truth-for-whats-enabled-where)
+25. [Events Module](#25-events-module-techspace--mtrnm--flair)
+26. [Lead Categories](#26-lead-categories-stealth-labs-test-feature)
+27. [Chat Agent (workspace tools)](#27-chat-agent-workspace-tools)
+28. [Current State / Backlog](#28-current-state--backlog)
 
 ---
 
@@ -187,6 +191,13 @@ business's data. Don't bypass it; don't reimplement it.
 | `share_tokens`       | Per-business share link tokens                    |
 | `emails`             | Cached email messages (IMAP sync)                 |
 | `outreach_targets`   | Cold outreach targets + drafts + cadence state    |
+| `lead_categories`    | User-defined tag registry (Stealth; shared pipeline+CRM) |
+| `events`             | Hosted events (TechSpace/MTRNM/FLAIR) — see §25   |
+
+JSON-array TEXT columns (decoded by parse helpers in `lib/db.ts`):
+`leads.categories`, `brand_contacts.categories`, `events.partners`,
+`events.sponsors`. A legacy `leads.category` single-value column still exists
+but is unused (was backfilled into the array).
 
 ### `outreach_targets` (the centerpiece of outreach work)
 
@@ -277,6 +288,12 @@ hairline border. Brand identity is carried by:
 
 ## 6. Email System
 
+> **STATUS (2026-06-13): the in-app Inbox is DISABLED.** The code is preserved
+> in `app/inbox/` but the sidebar link is removed — the sidebar instead has
+> static "Email" (gmail.com) and "Calendar" (calendar.google.com) quick-launch
+> links that open in a new tab. The IMAP/SMTP plumbing below still powers
+> outreach email discovery and remains accurate.
+
 - Config: `lib/email-config.ts` reads `EMAIL_1_ADDRESS`, `EMAIL_1_PASSWORD`,
   `EMAIL_1_NAME` through `EMAIL_5_*` env vars
 - All accounts are Gmail/Google Workspace using **App Passwords** (not OAuth)
@@ -360,10 +377,44 @@ target's `business_id` and return 400 for unconfigured businesses.
 ### Email outreach (added 2026-06-10)
 
 - Drafts now include `email: { subject, body }` alongside Template A/B.
-  Panel renders `EmailDraftBlock` with copy, edit, mailto deep-link (when the
-  target has `person_email`), and "Sent this" (template `"Email"`).
+  Panel renders `EmailDraftBlock` with copy, edit, and "Sent this" (template `"Email"`).
 - Apollo unlocks emails for **all** found contacts via `/people/match`
   (1 credit each) — not just contacts missing LinkedIn URLs.
+- **Gmail compose deep-link** (not mailto): "Open in Gmail" opens
+  `mail.google.com/mail/?view=cm&fs=1&to=…&su=…&body=…` in a new tab with the
+  draft pre-filled; a "Copy email" button copies the address for manual drafts.
+- **Per-business email signature** (Signature button in the toolbar): stored in
+  localStorage per business+device, appended to the Gmail compose body only
+  (Gmail won't auto-add the saved signature to pre-filled drafts; plain text only).
+- `POST /api/outreach/backfill-emails` — retroactively unlock emails for
+  targets missing one (Apollo match by name+brand+LinkedIn; ≤60/run). No UI
+  button anymore (backfill completed); endpoint retained for manual use.
+
+### Draft quality rules (added 2026-06-11)
+
+- **NO em/en dashes ever** — banned in all prompts AND stripped server-side by
+  `stripDashes()` in the draft + follow-up routes. Tyler signs "-Tyler" (hyphen).
+- **Enriched context is mandatory in drafts**: signals fed as a formatted list
+  with per-variant placement rules (A: one clause; B: build the question around
+  the signal; email: open/close with it); "mention it like a fan, never like a
+  researcher"; a draft ignoring provided signals is a failed draft.
+
+### UX behaviors
+
+- Status buttons (Replied/Declined/Dead) are TOGGLES — clicking the active one
+  reverts to the prior logical status and restores follow-up cadence.
+- Suggest-brands has a free-text "describe what you're looking for" textarea;
+  the candidates route weights that brief ABOVE the category filter.
+
+### Outreach-only share links (added 2026-06-12)
+
+- `/s/[token]/outreach` — standalone outreach page for the team; same token +
+  same per-business password as the full share page (cookie is path "/", so one
+  unlock covers both). 404s for non-outreach businesses. "Share Outreach"
+  button in the business header copies it.
+- Share links have **branded link previews**: `generateMetadata` titles
+  ("MTRNM Outreach" / "MTRNM Team") + per-business dynamic `icon.tsx` /
+  `apple-icon.tsx` under `app/s/[token]/` (white brand initial on brand hex).
 
 ### Core flow
 
@@ -684,6 +735,26 @@ next.config.ts        — serverExternalPackages, 20mb body size limit
 CLAUDE.md             — THIS FILE
 ```
 
+**Added since the tree above was drawn (2026-06-13):**
+
+```
+lib/
+  outreach-config.ts   — per-business outreach config (see §8)
+  events-config.ts     — Events feature flag (see §25)
+  pipeline-config.ts   — lead-categories feature flag (see §26)
+  chat-tools.ts        — chat agent tool defs + executor (see §27)
+  prompts/mtrnm-positioning-brief.md, mtrnm-voice-samples.md
+components/
+  events-panel.tsx     — Events tab UI
+  category-ui.tsx      — shared category pills/badges/multi-select
+app/
+  s/[token]/outreach/  — outreach-only share page (+ outreach-shared-view.tsx)
+  s/[token]/icon.tsx, apple-icon.tsx — branded share link previews
+  api/events/, api/lead-categories/, api/outreach/backfill-emails/
+```
+
+(`components/theme-toggle.tsx` was deleted as dead code.)
+
 **Critical**: `/data` is in `.gitignore`. Anything that must ship to production
 goes outside `/data` — e.g., positioning prompts moved to `lib/prompts/`.
 
@@ -915,9 +986,11 @@ Claude's persistent memory for this user:
 ```
 ~/.claude/projects/-Users-samfreeman/memory/
 ├── MEMORY.md                         # Index of all memories
-├── user_businesses.md                # Sam's four businesses
+├── user_businesses.md                # Sam's businesses
 ├── project_personal_os.md            # The dashboard itself as a project
-└── project_flair_b2s_outreach.md     # The back-to-school 2026 push
+├── project_flair_b2s_outreach.md     # The back-to-school 2026 push
+├── project_mtrnm_financials.md       # MTRNM financial tool (separate app)
+└── project_mtrnm_raise_portal.md     # raise.mtrnm.co (separate app, ~/mtrnm-raise)
 ```
 
 These files capture cross-session context. They're auto-loaded by the Claude
@@ -986,24 +1059,98 @@ Pick category/size/count → Review + select → Add as targets
 
 ---
 
-## 24. Pending / In-Progress Work
+## 24. Per-Business Feature Matrix (source of truth for what's enabled where)
 
-### Uncommitted Email Actions (as of 2026-06-08)
+Three feature flags gate tabs/features per business. Each is a one-array config
+file — enabling a feature elsewhere is a one-word change:
 
-The following files have uncommitted modifications:
+| Feature | Config file | Enabled for |
+|---|---|---|
+| Outreach tab (+ outreach share page) | `lib/outreach-config.ts` → `OUTREACH_BUSINESS_IDS` | flair, mtrnm |
+| Events tab | `lib/events-config.ts` → `EVENTS_BUSINESS_IDS` | techspace, mtrnm, flair |
+| Lead categories (pipeline + CRM tags) | `lib/pipeline-config.ts` → `LEAD_CATEGORY_BUSINESS_IDS` | stealth |
 
-- `app/api/email/[id]/route.ts` — DELETE (IMAP Trash + cache delete), PATCH
-  (star toggle via IMAP flags, label via local DB)
-- `app/inbox/inbox-client.tsx` — Full rewrite: Reply, Reply All, Forward,
-  Delete, Star, Label picker, compose modal with 4 modes (compose/reply/
-  replyAll/forward)
-- `lib/db.ts` — Added `setEmailStarred()`, `setEmailLabel()`,
-  `deleteEmailFromCache()` methods
-
-**Status:** Code is written to disk but needs type-checking (`npx tsc --noEmit`),
-then commit + push to deploy.
+Tab gating happens in `tabsForBusiness()` in BOTH `app/b/[slug]/business-view.tsx`
+and `app/s/[token]/shared-view.tsx`; API routes independently 400 on
+unconfigured businesses. Keep all three layers in sync when enabling a feature.
 
 ---
 
-*End of CLAUDE.md.* Update whenever a major architectural change ships.
-Last updated: 2026-06-08.
+## 25. Events Module (TechSpace + MTRNM + FLAIR)
+
+Plan/track hosted events (TechWeek etc.). Added 2026-06-13.
+
+- **Table:** `events` — name, date (YYYY-MM-DD), time (free text), venue, city,
+  status (`planning|confirmed|completed|cancelled`), event_link,
+  expected_attendance, `partners` + `sponsors` (JSON string arrays), notes.
+- **API:** `GET/POST /api/events` (gated by events-config), `PATCH/DELETE /api/events/[id]`.
+- **UI:** `components/events-panel.tsx` — Upcoming vs Past sections, countdown
+  chips ("In 12 days"), status badges, partner (violet) / sponsor (sky) chips
+  via a ChipsInput (Enter/comma → chip), click-to-edit modal, event-link button.
+- Partners/sponsors are plain text tags, deliberately NOT linked to CRM records
+  (user may want linking later).
+- The chat agent has `add_events` (bulk) + `update_event` tools on enabled businesses.
+
+---
+
+## 26. Lead Categories (Stealth Labs test feature)
+
+User-defined multi-select tags shared between pipeline leads and CRM contacts.
+
+- **Tables:** `lead_categories` (per-business registry, UNIQUE(business_id, name));
+  `leads.categories` + `brand_contacts.categories` are JSON string-array columns
+  (migrated from a legacy single `leads.category` column via idempotent backfill).
+- **API:** `GET/POST /api/lead-categories` (gated), `DELETE /api/lead-categories/[id]`
+  (deleting un-tags all leads/contacts carrying the name).
+- **Shared UI:** `components/category-ui.tsx` — `CATEGORY_COLORS`, `categoryColor()`,
+  `CategoryMultiSelect` (toggle pills), `CategoryBadges`, `CatPill` (filter pill).
+  Used by both `pipeline-panel.tsx` and `brands-panel.tsx`.
+- Categories are managed ONLY in Pipeline → Manage (single source of truth);
+  the CRM consumes the same pool ("Industries" filter + badges there).
+- A lead/contact can carry MULTIPLE categories; "Uncategorized" = empty array.
+
+---
+
+## 27. Chat Agent (workspace tools)
+
+The per-business AI chat (`/api/chat`) is an agent, not just Q&A. Added 2026-06-13.
+
+- **`lib/chat-tools.ts`** — tool definitions + `executeChatTool(businessId, name, input)`
+  + `chatToolsForBusiness()` (event tools only where events are enabled).
+- **Tools:** `add_crm_contacts` (bulk), `update_crm_contact`, `add_leads` (bulk),
+  `update_lead`, `add_todos` (bulk), `complete_todo`, `create_note`,
+  `add_events` (bulk), `update_event`.
+- **Safety model:** business_id injected server-side (chat can only touch its own
+  business); update tools verify row ownership; NO delete tools; duplicates
+  (same brand+contact / lead+company / event+date) skipped automatically;
+  category tags validated against the business's canonical set.
+- **Loop:** max 8 tool rounds, `maxDuration = 60`, max_tokens 4096. Context blocks
+  carry `[id:N]` markers (leads, todos, CRM, events) that update tools reference.
+- **Client:** on `actions_performed`, chat panel shows a "Workspace updated" badge
+  and calls `router.refresh()` so other tabs mount fresh data (panels re-read
+  server props on tab-switch remount).
+
+---
+
+## 28. Current State / Backlog
+
+**Everything is committed and deployed** — there is no uncommitted work parked
+on disk. `git log` is the authoritative changelog; commit messages are detailed
+by convention.
+
+Known deferred items (user-acknowledged, build when asked):
+- Inbox feature disabled (code preserved in `app/inbox/`, nav link removed;
+  sidebar has static Gmail/Calendar links instead — see §6 note)
+- Outreach for CampusLink / Stealth / TechSpace / Personal (needs user context per business)
+- Separate outreach-only share password (currently same password as company share)
+- Linking event partners/sponsors to CRM records
+- Category rename; grouping pipeline by category
+- Manage-categories entry point inside CRM tab (currently Pipeline only)
+- `middleware.ts` → `proxy.ts` migration (Next 16 deprecation warning, still works)
+
+---
+
+*End of CLAUDE.md.* Update whenever a major architectural change ships — same
+session as the change, not later. `git log --oneline` + commit bodies fill any
+gap between this doc and the code.
+Last updated: 2026-06-13.
