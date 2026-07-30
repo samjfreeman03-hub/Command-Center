@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
 import { BUSINESSES } from "./businesses";
-import type { Todo, Lead, LeadCategory, Note, ChatMessage, LeadAttachment, BusinessResource, TeamMember, BrandContact, BrandAttachment, OutreachTarget, OutreachStatus } from "./types";
+import type { Todo, Lead, LeadCategory, BizEvent, Note, ChatMessage, LeadAttachment, BusinessResource, TeamMember, BrandContact, BrandAttachment, OutreachTarget, OutreachStatus } from "./types";
 
 // Email row types (internal to db.ts)
 type RawEmailRow = {
@@ -89,6 +89,25 @@ function migrate(db: Database.Database) {
       UNIQUE(business_id, name)
     );
     CREATE INDEX IF NOT EXISTS idx_lead_categories_business ON lead_categories(business_id);
+
+    CREATE TABLE IF NOT EXISTS events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      business_id TEXT NOT NULL REFERENCES businesses(id),
+      name TEXT NOT NULL,
+      date TEXT,
+      time TEXT,
+      venue TEXT,
+      city TEXT,
+      status TEXT NOT NULL DEFAULT 'planning',
+      event_link TEXT,
+      expected_attendance INTEGER,
+      partners TEXT NOT NULL DEFAULT '[]',
+      sponsors TEXT NOT NULL DEFAULT '[]',
+      notes TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_events_business ON events(business_id);
 
     CREATE TABLE IF NOT EXISTS notes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -295,6 +314,14 @@ function parseLead(row: Record<string, unknown>): Lead {
 
 function parseBrandContact(row: Record<string, unknown>): BrandContact {
   return { ...(row as unknown as BrandContact), categories: parseCategories(row.categories) };
+}
+
+function parseEvent(row: Record<string, unknown>): BizEvent {
+  return {
+    ...(row as unknown as BizEvent),
+    partners: parseCategories(row.partners),
+    sponsors: parseCategories(row.sponsors),
+  };
 }
 
 function todoWithAssignees(id: number | bigint): Todo {
@@ -539,6 +566,92 @@ export const db = {
       }
     }
     getDb().prepare("DELETE FROM lead_categories WHERE id = ?").run(id);
+  },
+
+  // ---- Events ----
+  listEvents(businessId: string): BizEvent[] {
+    // Upcoming first (soonest date at top, undated last), then past events newest-first.
+    return (getDb()
+      .prepare(
+        `SELECT * FROM events WHERE business_id = ?
+         ORDER BY CASE WHEN date IS NULL THEN 1 ELSE 0 END, date ASC, created_at DESC`
+      )
+      .all(businessId) as Record<string, unknown>[]).map(parseEvent);
+  },
+
+  getEvent(id: number): BizEvent {
+    return parseEvent(getDb().prepare("SELECT * FROM events WHERE id = ?").get(id) as Record<string, unknown>);
+  },
+
+  getEventBizId(id: number): string | null {
+    const row = getDb().prepare("SELECT business_id FROM events WHERE id = ?").get(id) as { business_id: string } | undefined;
+    return row?.business_id ?? null;
+  },
+
+  createEvent(input: {
+    business_id: string;
+    name: string;
+    date?: string | null;
+    time?: string | null;
+    venue?: string | null;
+    city?: string | null;
+    status?: BizEvent["status"];
+    event_link?: string | null;
+    expected_attendance?: number | null;
+    partners?: string[];
+    sponsors?: string[];
+    notes?: string | null;
+  }): BizEvent {
+    const now = Date.now();
+    const result = getDb()
+      .prepare(
+        `INSERT INTO events (business_id, name, date, time, venue, city, status, event_link, expected_attendance, partners, sponsors, notes, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        input.business_id,
+        input.name.trim(),
+        input.date ?? null,
+        input.time ?? null,
+        input.venue ?? null,
+        input.city ?? null,
+        input.status ?? "planning",
+        input.event_link ?? null,
+        input.expected_attendance ?? null,
+        JSON.stringify(input.partners ?? []),
+        JSON.stringify(input.sponsors ?? []),
+        input.notes ?? null,
+        now,
+        now
+      );
+    return this.getEvent(Number(result.lastInsertRowid));
+  },
+
+  updateEvent(id: number, patch: Partial<BizEvent>): BizEvent {
+    const allowed = ["name", "date", "time", "venue", "city", "status", "event_link", "expected_attendance", "notes"] as const;
+    const sets: string[] = [];
+    const args: unknown[] = [];
+    for (const key of allowed) {
+      if (key in patch) {
+        sets.push(`${key} = ?`);
+        args.push((patch as Record<string, unknown>)[key] ?? null);
+      }
+    }
+    for (const arrKey of ["partners", "sponsors"] as const) {
+      if (arrKey in patch) {
+        sets.push(`${arrKey} = ?`);
+        args.push(JSON.stringify((patch as Record<string, unknown>)[arrKey] ?? []));
+      }
+    }
+    if (sets.length === 0) return this.getEvent(id);
+    sets.push("updated_at = ?");
+    args.push(Date.now(), id);
+    getDb().prepare(`UPDATE events SET ${sets.join(", ")} WHERE id = ?`).run(...args);
+    return this.getEvent(id);
+  },
+
+  deleteEvent(id: number) {
+    getDb().prepare("DELETE FROM events WHERE id = ?").run(id);
   },
 
   // ---- Notes ----

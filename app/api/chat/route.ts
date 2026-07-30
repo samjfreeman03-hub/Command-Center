@@ -3,8 +3,9 @@ import Anthropic from "@anthropic-ai/sdk";
 import { db, UPLOADS_DIR } from "@/lib/db";
 import { getBusiness } from "@/lib/businesses";
 import { canAccessBusiness } from "@/lib/server-auth";
-import { CHAT_TOOLS, executeChatTool } from "@/lib/chat-tools";
+import { chatToolsForBusiness, executeChatTool } from "@/lib/chat-tools";
 import { leadCategoriesEnabled } from "@/lib/pipeline-config";
+import { eventsEnabled } from "@/lib/events-config";
 import path from "node:path";
 import fs from "node:fs";
 
@@ -136,6 +137,21 @@ export async function POST(req: Request) {
   const history = db.listChat(business_id).slice(-20);
   const catsEnabled = leadCategoriesEnabled(business_id);
   const categoryNames = catsEnabled ? db.listLeadCategories(business_id).map((c) => c.name) : [];
+  const evtsEnabled = eventsEnabled(business_id);
+  const events = evtsEnabled ? db.listEvents(business_id) : [];
+
+  const eventsBlock = events.length
+    ? events
+        .map(
+          (e) =>
+            `- [id:${e.id}] ${e.name} — ${e.date ?? "date TBD"}${e.time ? ` ${e.time}` : ""}, status: ${e.status}${
+              e.venue || e.city ? `, at ${[e.venue, e.city].filter(Boolean).join(", ")}` : ""
+            }${e.expected_attendance ? `, ~${e.expected_attendance} expected` : ""}${
+              e.partners.length ? `, partners: ${e.partners.join("/")}` : ""
+            }${e.sponsors.length ? `, sponsors: ${e.sponsors.join("/")}` : ""}${e.event_link ? `, link: ${e.event_link}` : ""}${e.notes ? `, notes: ${e.notes}` : ""}`
+        )
+        .join("\n")
+    : "(no events yet)";
 
   const notesBlock = notes.length
     ? notes.map((n) => `# ${n.title}\n${n.content}`).join("\n\n---\n\n")
@@ -239,7 +255,7 @@ ${leadsBlock}
 
 == CRM CONTACTS ==
 ${brandsBlock}
-
+${evtsEnabled ? `\n== EVENTS (hosted events this business is planning/tracking) ==\n${eventsBlock}\n` : ""}
 == OPEN TODOS ==
 ${todosBlock}
 
@@ -306,7 +322,7 @@ Be concise, direct, and operator-minded. The user runs multiple businesses — r
         model: "claude-sonnet-4-6",
         max_tokens: 4096,
         system,
-        tools: CHAT_TOOLS,
+        tools: chatToolsForBusiness(business_id),
         messages: loopMessages,
       });
 

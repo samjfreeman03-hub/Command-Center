@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getBusiness } from "@/lib/businesses";
 import { db } from "@/lib/db";
 import { leadCategoriesEnabled } from "@/lib/pipeline-config";
+import { eventsEnabled } from "@/lib/events-config";
 import { BusinessView } from "./business-view";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,7 @@ export default async function BusinessPage({
   const shareToken = db.getOrCreateShareToken(slug);
   const customTagline = db.getBusinessTagline(slug);
   const leadCategories = leadCategoriesEnabled(slug) ? db.listLeadCategories(slug) : [];
+  const events = eventsEnabled(slug) ? db.listEvents(slug) : [];
 
   return (
     <BusinessView
@@ -49,6 +51,7 @@ export default async function BusinessPage({
       initialTagline={customTagline ?? business.tagline}
       leadCategories={leadCategories}
       leadCategoriesEnabled={leadCategoriesEnabled(slug)}
+      initialEvents={events}
     />
   );
 }

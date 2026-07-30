@@ -38,6 +38,33 @@ export type LeadCategory = {
   created_at: number;
 };
 
+export type BizEvent = {
+  id: number;
+  business_id: string;
+  name: string;
+  /** YYYY-MM-DD */
+  date: string | null;
+  /** Free-text time, e.g. "8pm-2am" or "18:00" */
+  time: string | null;
+  venue: string | null;
+  city: string | null;
+  status: "planning" | "confirmed" | "completed" | "cancelled";
+  event_link: string | null;
+  expected_attendance: number | null;
+  partners: string[];
+  sponsors: string[];
+  notes: string | null;
+  created_at: number;
+  updated_at: number;
+};
+
+export const EVENT_STATUSES = [
+  { value: "planning",  label: "Planning",  color: "bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300" },
+  { value: "confirmed", label: "Confirmed", color: "bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300" },
+  { value: "completed", label: "Completed", color: "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300" },
+  { value: "cancelled", label: "Cancelled", color: "bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300" },
+] as const;
+
 export const LEAD_STAGES: Lead["stage"][] = [
   "new",
   "contacted",

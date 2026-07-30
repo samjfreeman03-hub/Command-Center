@@ -1,6 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
 import { leadCategoriesEnabled } from "./pipeline-config";
+import { eventsEnabled } from "./events-config";
 
 /**
  * Action tools for the per-business AI chat. The chat can create and update
@@ -145,6 +146,59 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "add_events",
+    description:
+      "Add one or more events to this business's Events tab (only available when the business has events enabled). Use for planning hosted events — date, venue, partners, sponsors, links.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        events: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string", description: "Event name (required)" },
+              date: { type: "string", description: "YYYY-MM-DD" },
+              time: { type: "string", description: "Free text, e.g. 8pm-2am" },
+              venue: { type: "string" },
+              city: { type: "string" },
+              status: { type: "string", enum: ["planning", "confirmed", "completed", "cancelled"], description: "Default planning" },
+              event_link: { type: "string", description: "Tickets/RSVP URL" },
+              expected_attendance: { type: "number" },
+              partners: { type: "array", items: { type: "string" } },
+              sponsors: { type: "array", items: { type: "string" } },
+              notes: { type: "string" },
+            },
+            required: ["name"],
+          },
+        },
+      },
+      required: ["events"],
+    },
+  },
+  {
+    name: "update_event",
+    description: "Update fields on an existing event by its id (ids are shown in the EVENTS context). partners/sponsors arrays REPLACE the existing lists — include the full desired list.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        id: { type: "number" },
+        name: { type: "string" },
+        date: { type: "string" },
+        time: { type: "string" },
+        venue: { type: "string" },
+        city: { type: "string" },
+        status: { type: "string", enum: ["planning", "confirmed", "completed", "cancelled"] },
+        event_link: { type: "string" },
+        expected_attendance: { type: "number" },
+        partners: { type: "array", items: { type: "string" } },
+        sponsors: { type: "array", items: { type: "string" } },
+        notes: { type: "string" },
+      },
+      required: ["id"],
+    },
+  },
+  {
     name: "create_note",
     description: "Create a note for this business (meeting recaps, research, briefs — notes feed future chat context).",
     input_schema: {
@@ -157,6 +211,13 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
     },
   },
 ];
+
+/** Tools available for a given business (event tools only where events are enabled). */
+export function chatToolsForBusiness(businessId: string): Anthropic.Tool[] {
+  return eventsEnabled(businessId)
+    ? CHAT_TOOLS
+    : CHAT_TOOLS.filter((t) => t.name !== "add_events" && t.name !== "update_event");
+}
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -294,6 +355,53 @@ export function executeChatTool(businessId: string, name: string, input: any): R
         if (todo.status === "done") return { ok: true, note: "Already done" };
         const updated = db.toggleTodo(id);
         return { ok: true, completed: { id: updated.id, title: updated.title } };
+      }
+
+      case "add_events": {
+        if (!eventsEnabled(businessId)) return { ok: false, error: "Events are not enabled for this business" };
+        const items: any[] = Array.isArray(input?.events) ? input.events : [];
+        const existing = db.listEvents(businessId);
+        const seen = new Set(existing.map((e) => `${e.name.toLowerCase()}|${e.date ?? ""}`));
+        let created = 0, skipped = 0;
+        for (const ev of items) {
+          const evName = String(ev?.name ?? "").trim();
+          if (!evName) { skipped++; continue; }
+          const key = `${evName.toLowerCase()}|${ev?.date ?? ""}`;
+          if (seen.has(key)) { skipped++; continue; }
+          db.createEvent({
+            business_id: businessId,
+            name: evName,
+            date: ev?.date,
+            time: ev?.time,
+            venue: ev?.venue,
+            city: ev?.city,
+            status: ev?.status,
+            event_link: ev?.event_link,
+            expected_attendance: typeof ev?.expected_attendance === "number" ? ev.expected_attendance : null,
+            partners: Array.isArray(ev?.partners) ? ev.partners.map(String) : [],
+            sponsors: Array.isArray(ev?.sponsors) ? ev.sponsors.map(String) : [],
+            notes: ev?.notes,
+          });
+          seen.add(key);
+          created++;
+        }
+        return { ok: true, created, skipped_duplicates_or_invalid: skipped };
+      }
+
+      case "update_event": {
+        if (!eventsEnabled(businessId)) return { ok: false, error: "Events are not enabled for this business" };
+        const id = Number(input?.id);
+        if (!id || db.getEventBizId(id) !== businessId) return { ok: false, error: "No event with that id in this business" };
+        const patch: Record<string, unknown> = {};
+        for (const f of ["name", "date", "time", "venue", "city", "status", "event_link", "notes"] as const) {
+          if (f in (input ?? {})) patch[f] = input[f];
+        }
+        if (typeof input?.expected_attendance === "number") patch.expected_attendance = input.expected_attendance;
+        for (const arr of ["partners", "sponsors"] as const) {
+          if (Array.isArray(input?.[arr])) patch[arr] = input[arr].map(String);
+        }
+        const updated = db.updateEvent(id, patch);
+        return { ok: true, updated: { id: updated.id, name: updated.name, status: updated.status } };
       }
 
       case "create_note": {

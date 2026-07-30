@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { BUSINESSES } from "@/lib/businesses";
 import { hasSharePasswordAuth } from "@/lib/server-auth";
+import { eventsEnabled } from "@/lib/events-config";
 import { SharedView } from "./shared-view";
 import { SharePasswordGate } from "./share-password-gate";
 
@@ -56,12 +57,14 @@ export default async function SharePage({
   ]);
 
   const customTagline = db.getBusinessTagline(businessId);
+  const events = eventsEnabled(businessId) ? db.listEvents(businessId) : [];
 
   return (
     <SharedView
       business={business}
       shareToken={token}
       tagline={customTagline ?? business.tagline}
+      initialEvents={events}
       initialTodos={todos}
       initialLeads={leads}
       initialResources={resources}

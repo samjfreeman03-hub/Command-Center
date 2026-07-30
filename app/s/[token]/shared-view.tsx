@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import type { Business } from "@/lib/businesses";
-import type { Todo, Lead, Note, ChatMessage, BusinessResource, TeamMember, BrandContact, OutreachTarget } from "@/lib/types";
+import type { Todo, Lead, BizEvent, Note, ChatMessage, BusinessResource, TeamMember, BrandContact, OutreachTarget } from "@/lib/types";
+import { EventsPanel } from "@/components/events-panel";
+import { EVENTS_BUSINESS_IDS } from "@/lib/events-config";
 import { TodosPanel } from "@/components/todos-panel";
 import { PipelinePanel } from "@/components/pipeline-panel";
 import { ResourcesPanel } from "@/components/resources-panel";
@@ -17,6 +19,7 @@ import { OUTREACH_BUSINESS_IDS } from "@/lib/outreach-config";
 const TABS = [
   { id: "todos",     label: "Todos" },
   { id: "pipeline",  label: "Pipeline" },
+  { id: "events",    label: "Events" },
   { id: "outreach",  label: "Outreach" },
   { id: "brands",    label: "CRM" },
   { id: "resources", label: "Resources" },
@@ -27,15 +30,20 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
-/** Outreach is only enabled for businesses with an outreach config (FLAIR + MTRNM). */
+/** Feature-flagged tabs: Outreach (FLAIR + MTRNM), Events (TechSpace + MTRNM + FLAIR). */
 function tabsForBusiness(businessId: string) {
-  return TABS.filter((t) => t.id !== "outreach" || OUTREACH_BUSINESS_IDS.includes(businessId));
+  return TABS.filter(
+    (t) =>
+      (t.id !== "outreach" || OUTREACH_BUSINESS_IDS.includes(businessId)) &&
+      (t.id !== "events" || EVENTS_BUSINESS_IDS.includes(businessId))
+  );
 }
 
 export function SharedView({
   business,
   shareToken,
   tagline,
+  initialEvents,
   initialTodos,
   initialLeads,
   initialResources,
@@ -48,6 +56,7 @@ export function SharedView({
   business: Business;
   shareToken: string;
   tagline: string;
+  initialEvents: BizEvent[];
   initialTodos: Todo[];
   initialLeads: Lead[];
   initialResources: BusinessResource[];
@@ -102,6 +111,7 @@ export function SharedView({
         <div className="w-full px-4 sm:px-8 lg:px-10 pt-5 pb-10 safe-bottom flex-1">
           {tab === "todos"     && <TodosPanel businessId={business.id} initial={initialTodos} members={members} />}
           {tab === "pipeline"  && <PipelinePanel businessId={business.id} initial={initialLeads} />}
+          {tab === "events"    && <EventsPanel businessId={business.id} initial={initialEvents} />}
           {tab === "outreach"  && <OutreachPanel businessId={business.id} initial={initialOutreach} />}
           {tab === "brands"    && <BrandsPanel businessId={business.id} initial={initialBrands} />}
           {tab === "resources" && <ResourcesPanel businessId={business.id} initial={initialResources} />}
