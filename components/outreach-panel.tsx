@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useShareHeaders } from "@/lib/share-context";
 import { getOutreachConfig } from "@/lib/outreach-config";
+import { AutoTextarea } from "@/components/auto-textarea";
 
 const EMPTY_FORM = {
   brand_name: "",
@@ -1016,12 +1017,12 @@ function AddTargetForm({
           </select>
         </div>
       </div>
-      <textarea
+      <AutoTextarea
         value={form.notes}
         onChange={(e) => setField("notes", e.target.value)}
         placeholder="Notes (optional) — anything the drafter should know"
-        rows={2}
-        className="w-full px-2.5 py-1.5 text-sm rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100"
+        minRows={3}
+        className="w-full px-2.5 py-1.5 text-sm leading-relaxed rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 resize-none"
       />
       <div className="flex items-center gap-2">
         <button type="submit" className="bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 text-sm font-medium px-3 py-1.5 rounded-md">

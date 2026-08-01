@@ -7,6 +7,7 @@ import {
   Plus, Trash2, X, CalendarDays, Clock, MapPin, ExternalLink, Users, Handshake, Gem,
 } from "lucide-react";
 import { useShareHeaders } from "@/lib/share-context";
+import { AutoTextarea } from "@/components/auto-textarea";
 
 const EMPTY_FORM = {
   name: "",
@@ -236,7 +237,7 @@ function EventRow({
     <>
       {isEditing && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-start justify-center bg-black/50 sm:p-8 overflow-y-auto">
-          <div className="w-full sm:max-w-lg bg-white dark:bg-zinc-950 rounded-t-2xl sm:rounded-xl shadow-2xl sm:mt-4 sm:mb-8 safe-bottom">
+          <div className="w-full sm:max-w-xl bg-white dark:bg-zinc-950 rounded-t-2xl sm:rounded-xl shadow-2xl sm:mt-4 sm:mb-8 safe-bottom">
             <div className="flex items-center justify-between px-5 pt-4 pb-1">
               <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Edit event</h2>
               <button onClick={onCancelEdit} className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 rounded">
@@ -381,7 +382,7 @@ function EventFormCard({
           <ChipsInput values={form.sponsors} onChange={(v) => set("sponsors", v)} placeholder="Type a sponsor and press Enter" chipClass="bg-sky-100 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300" />
         </Field>
         <Field label="Notes" full>
-          <textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} className={`${inputCls} min-h-16 resize-y`} placeholder="Run of show, open items, vendor details…" />
+          <AutoTextarea value={form.notes} onChange={(e) => set("notes", e.target.value)} minRows={4} className={`${inputCls} resize-none leading-relaxed`} placeholder="Run of show, open items, vendor details…" />
         </Field>
       </div>
       <div className="flex items-center justify-between gap-2 pt-1">

@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useShareHeaders } from "@/lib/share-context";
 import { categoryColor, CategoryMultiSelect, CategoryBadges, CatPill } from "@/components/category-ui";
+import { AutoTextarea } from "@/components/auto-textarea";
 
 const EMPTY_FORM = {
   brand_name: "",
@@ -212,12 +213,12 @@ export function BrandsPanel({
           </div>
           <div>
             <label className="block text-xs text-zinc-500 mb-1">Notes</label>
-            <textarea
+            <AutoTextarea
               value={form.notes}
               onChange={(e) => setField("notes", e.target.value)}
               placeholder="Any context about this contact or relationship…"
-              rows={2}
-              className="w-full bg-zinc-50 dark:bg-zinc-900 text-sm px-3 py-2 rounded-md text-zinc-900 dark:text-zinc-100 outline-none border border-zinc-200 dark:border-zinc-800 focus:border-zinc-400 dark:focus:border-zinc-600 resize-none"
+              minRows={3}
+              className="w-full bg-zinc-50 dark:bg-zinc-900 text-sm leading-relaxed px-3 py-2 rounded-md text-zinc-900 dark:text-zinc-100 outline-none border border-zinc-200 dark:border-zinc-800 focus:border-zinc-400 dark:focus:border-zinc-600 resize-none"
             />
           </div>
           {categoriesEnabled && (
@@ -436,7 +437,7 @@ function BrandModal({
       className="fixed inset-0 z-50 flex items-end sm:items-start justify-center bg-black/40 sm:p-8 overflow-y-auto"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="w-full sm:max-w-lg bg-white dark:bg-zinc-950 rounded-t-2xl sm:rounded-xl shadow-2xl border-t sm:border border-zinc-200 dark:border-zinc-800 sm:mt-8 sm:mb-8 safe-bottom">
+      <div className="w-full sm:max-w-xl bg-white dark:bg-zinc-950 rounded-t-2xl sm:rounded-xl shadow-2xl border-t sm:border border-zinc-200 dark:border-zinc-800 sm:mt-8 sm:mb-8 safe-bottom">
 
         {/* Header */}
         <div className="flex items-start gap-3 px-5 py-4 border-b border-zinc-100 dark:border-zinc-900">
@@ -523,9 +524,9 @@ function BrandModal({
               </div>
               <div>
                 <label className="block text-xs text-zinc-500 mb-1">Notes</label>
-                <textarea value={draft.notes} onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
-                  rows={4}
-                  className="w-full bg-zinc-50 dark:bg-zinc-900 text-sm px-3 py-2 rounded-md text-zinc-900 dark:text-zinc-100 outline-none border border-zinc-200 dark:border-zinc-800 focus:border-zinc-400 dark:focus:border-zinc-600 resize-none" />
+                <AutoTextarea value={draft.notes} onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
+                  minRows={5}
+                  className="w-full bg-zinc-50 dark:bg-zinc-900 text-sm leading-relaxed px-3 py-2 rounded-md text-zinc-900 dark:text-zinc-100 outline-none border border-zinc-200 dark:border-zinc-800 focus:border-zinc-400 dark:focus:border-zinc-600 resize-none" />
               </div>
               {catNames && (
                 <div>

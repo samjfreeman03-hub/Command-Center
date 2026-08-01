@@ -6,6 +6,7 @@ import { LEAD_STAGES } from "@/lib/types";
 import { Plus, Trash2, Link2, Paperclip, X, Upload, ExternalLink, Download, TrendingUp, Tag, Settings2 } from "lucide-react";
 import { useShareHeaders } from "@/lib/share-context";
 import { categoryColor, CategoryMultiSelect, CatPill } from "@/components/category-ui";
+import { AutoTextarea } from "@/components/auto-textarea";
 
 const STAGE_LABELS: Record<Lead["stage"], string> = {
   new: "New",
@@ -374,7 +375,7 @@ function LeadCard({
       {isEditing && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="absolute inset-0 bg-black/50" onClick={onCancelEdit} />
-          <div className="relative w-full sm:max-w-md max-h-[90vh] overflow-y-auto rounded-t-xl sm:rounded-xl bg-white dark:bg-zinc-950 shadow-xl">
+          <div className="relative w-full sm:max-w-lg max-h-[90vh] overflow-y-auto rounded-t-xl sm:rounded-xl bg-white dark:bg-zinc-950 shadow-xl">
             <EditLeadCard
               lead={lead}
               categories={categories}
@@ -540,7 +541,7 @@ function EditLeadCard({
       <input value={value} onChange={(e) => setValue(e.target.value)} className={inputCls} placeholder="Value ($)" />
       <input value={nextAction} onChange={(e) => setNextAction(e.target.value)} className={inputCls} placeholder="Next action" />
       <input type="date" value={nextDate} onChange={(e) => setNextDate(e.target.value)} className={inputCls} />
-      <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className={`${inputCls} min-h-16`} placeholder="Notes" />
+      <AutoTextarea value={notes} onChange={(e) => setNotes(e.target.value)} minRows={4} className={`${inputCls} resize-none leading-relaxed`} placeholder="Notes" />
 
       {/* Attachments */}
       <div className="pt-1">
