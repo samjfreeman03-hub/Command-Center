@@ -193,6 +193,7 @@ business's data. Don't bypass it; don't reimplement it.
 | `outreach_targets`   | Cold outreach targets + drafts + cadence state    |
 | `lead_categories`    | User-defined tag registry (Stealth; shared pipeline+CRM) |
 | `events`             | Hosted events (TechSpace/MTRNM/FLAIR) — see §25   |
+| `app_state`          | Key-value store (e.g. dashboard scratchpad); GET/PUT /api/scratchpad |
 
 JSON-array TEXT columns (decoded by parse helpers in `lib/db.ts`):
 `leads.categories`, `brand_contacts.categories`, `events.partners`,

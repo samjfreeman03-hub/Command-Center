@@ -133,6 +133,12 @@ function migrate(db: Database.Database) {
       token TEXT UNIQUE NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS app_state (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS todo_assignees (
       todo_id INTEGER NOT NULL REFERENCES todos(id) ON DELETE CASCADE,
       member_id INTEGER NOT NULL REFERENCES team_members(id) ON DELETE CASCADE,
@@ -566,6 +572,21 @@ export const db = {
       }
     }
     getDb().prepare("DELETE FROM lead_categories WHERE id = ?").run(id);
+  },
+
+  // ---- App state (simple key-value, e.g. dashboard scratchpad) ----
+  getAppState(key: string): string | null {
+    const row = getDb().prepare("SELECT value FROM app_state WHERE key = ?").get(key) as { value: string } | undefined;
+    return row?.value ?? null;
+  },
+
+  setAppState(key: string, value: string) {
+    getDb()
+      .prepare(
+        `INSERT INTO app_state (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+      )
+      .run(key, value, Date.now());
   },
 
   // ---- Events ----

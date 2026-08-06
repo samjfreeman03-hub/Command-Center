@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { BUSINESSES } from "@/lib/businesses";
 import { ArrowUpRight, CheckCircle2, TrendingUp, Users, ListTodo } from "lucide-react";
 import { DashboardTodos } from "@/components/dashboard-todos";
+import { ScratchpadPanel } from "@/components/scratchpad-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,7 @@ export default function Dashboard() {
   const openTodos = db.listTodos({ status: "open" });
   const pipelineSummary = db.pipelineSummary();
   const todoCounts = db.todoCounts();
+  const scratchpad = db.getAppState("scratchpad") ?? "";
 
   const todosByBusiness = new Map(todoCounts.map((t) => [t.business_id, t.open_count]));
   const pipelineByBusiness = new Map(pipelineSummary.map((p) => [p.business_id, p]));
@@ -98,7 +100,10 @@ export default function Dashboard() {
       </section>
 
       {/* Lower panels */}
-      <section className="space-y-5">
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+
+        {/* ── Scratchpad (persisted quick notes) ── */}
+        <ScratchpadPanel initialValue={scratchpad} />
 
         {/* ── All todos, grouped by company ── */}
         <Panel
@@ -108,7 +113,6 @@ export default function Dashboard() {
         >
           <DashboardTodos initialTodos={openTodos} />
         </Panel>
-
 
       </section>
     </div>
