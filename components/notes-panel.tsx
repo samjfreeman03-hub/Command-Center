@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Note } from "@/lib/types";
-import { Plus, Trash2, FileText, ArrowLeft } from "lucide-react";
+import { Plus, Trash2, FileText, ArrowLeft, Check, Loader2, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import { useShareHeaders } from "@/lib/share-context";
+
+type SaveStatus = "idle" | "dirty" | "saving" | "saved" | "error";
 
 export function NotesPanel({ businessId, initial }: { businessId: string; initial: Note[] }) {
   const [notes, setNotes] = useState(initial);
@@ -12,75 +14,155 @@ export function NotesPanel({ businessId, initial }: { businessId: string; initia
   const [draftTitle, setDraftTitle] = useState(initial[0]?.title ?? "");
   const [draftContent, setDraftContent] = useState(initial[0]?.content ?? "");
   const [isNew, setIsNew] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<SaveStatus>("idle");
   // Mobile: "list" | "editor"
   const [mobileView, setMobileView] = useState<"list" | "editor">("list");
   const shareHeaders = useShareHeaders();
 
-  function pick(n: Note) {
-    setSelected(n);
-    setDraftTitle(n.title);
-    setDraftContent(n.content);
-    setIsNew(false);
-    setMobileView("editor");
-  }
+  // ── Autosave machinery (scratchpad-style) ──────────────────────────
+  // Latest draft + what's already persisted, readable from stable callbacks.
+  const latest = useRef({ title: draftTitle, content: draftContent });
+  latest.current = { title: draftTitle, content: draftContent };
+  const lastSaved = useRef({ title: initial[0]?.title ?? "", content: initial[0]?.content ?? "" });
+  const selectedRef = useRef<Note | null>(selected);
+  selectedRef.current = selected;
+  const isNewRef = useRef(isNew);
+  isNewRef.current = isNew;
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inFlight = useRef(false);
+  const runAgain = useRef(false);
 
-  function startNew() {
-    setSelected(null);
-    setDraftTitle("");
-    setDraftContent("");
-    setIsNew(true);
-    setMobileView("editor");
-  }
-
-  function backToList() {
-    setMobileView("list");
-  }
-
-  async function save() {
-    if (!draftTitle.trim() && !draftContent.trim()) return;
-    setSaving(true);
+  const saveNow = useCallback(async () => {
+    const { title, content } = latest.current;
+    const unchanged = title === lastSaved.current.title && content === lastSaved.current.content;
+    if (unchanged) return;
+    // Nothing to create from a completely empty new note.
+    if (isNewRef.current && !selectedRef.current && !title.trim() && !content.trim()) return;
+    if (inFlight.current) {
+      runAgain.current = true; // another pass once the current save lands
+      return;
+    }
+    inFlight.current = true;
+    setStatus("saving");
     try {
-      if (isNew || !selected) {
+      if (isNewRef.current || !selectedRef.current) {
+        // First save of a new note → create it, then future saves PATCH it.
         const res = await fetch("/api/notes", {
           method: "POST",
           headers: { "content-type": "application/json", ...shareHeaders },
           body: JSON.stringify({
             business_id: businessId,
-            title: draftTitle.trim() || "Untitled",
-            content: draftContent,
+            title: title.trim() || "Untitled",
+            content,
           }),
+          keepalive: true,
         });
-        if (res.ok) {
-          const created: Note = await res.json();
-          setNotes((prev) => [created, ...prev]);
-          setSelected(created);
-          setIsNew(false);
-        }
+        if (!res.ok) throw new Error("create failed");
+        const created: Note = await res.json();
+        lastSaved.current = { title, content };
+        setNotes((prev) => [created, ...prev]);
+        setSelected(created);
+        setIsNew(false);
+        setStatus("saved");
       } else {
-        const res = await fetch(`/api/notes/${selected.id}`, {
+        const id = selectedRef.current.id;
+        const res = await fetch(`/api/notes/${id}`, {
           method: "PATCH",
           headers: { "content-type": "application/json", ...shareHeaders },
-          body: JSON.stringify({ title: draftTitle, content: draftContent }),
+          body: JSON.stringify({ title: title.trim() || "Untitled", content }),
+          keepalive: true,
         });
-        if (res.ok) {
-          const updated: Note = await res.json();
-          setNotes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
-          setSelected(updated);
-        }
+        if (!res.ok) throw new Error("save failed");
+        const updated: Note = await res.json();
+        lastSaved.current = { title, content };
+        setNotes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
+        setSelected((cur) => (cur && cur.id === updated.id ? updated : cur));
+        setStatus("saved");
       }
+    } catch {
+      setStatus("error");
     } finally {
-      setSaving(false);
+      inFlight.current = false;
+      if (runAgain.current) {
+        runAgain.current = false;
+        saveNow();
+      }
     }
+  }, [businessId, shareHeaders]);
+
+  // Debounce: save ~800ms after typing stops
+  useEffect(() => {
+    const unchanged =
+      draftTitle === lastSaved.current.title && draftContent === lastSaved.current.content;
+    if (unchanged) return;
+    setStatus("dirty");
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => saveNow(), 800);
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, [draftTitle, draftContent, saveNow]);
+
+  // Flush pending edits when the tab hides / page unloads
+  useEffect(() => {
+    function flush() {
+      if (timer.current) clearTimeout(timer.current);
+      saveNow();
+    }
+    function onVisibility() {
+      if (document.visibilityState === "hidden") flush();
+    }
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", flush);
+    };
+  }, [saveNow]);
+
+  /** Flush pending changes before switching context (pick/new/back). */
+  function flushPending() {
+    if (timer.current) clearTimeout(timer.current);
+    saveNow();
+  }
+
+  function pick(n: Note) {
+    flushPending();
+    setSelected(n);
+    setDraftTitle(n.title);
+    setDraftContent(n.content);
+    lastSaved.current = { title: n.title, content: n.content };
+    setIsNew(false);
+    setStatus("idle");
+    setMobileView("editor");
+  }
+
+  function startNew() {
+    flushPending();
+    setSelected(null);
+    setDraftTitle("");
+    setDraftContent("");
+    lastSaved.current = { title: "", content: "" };
+    setIsNew(true);
+    setStatus("idle");
+    setMobileView("editor");
+  }
+
+  function backToList() {
+    flushPending();
+    setMobileView("list");
   }
 
   async function remove(id: number) {
     if (!confirm("Delete this note?")) return;
+    if (timer.current) clearTimeout(timer.current);
     setNotes((prev) => prev.filter((n) => n.id !== id));
     if (selected?.id === id) {
       setSelected(null);
       setDraftTitle("");
       setDraftContent("");
+      lastSaved.current = { title: "", content: "" };
+      setStatus("idle");
     }
     await fetch(`/api/notes/${id}`, { method: "DELETE", headers: shareHeaders });
     setMobileView("list");
@@ -153,32 +235,33 @@ export function NotesPanel({ businessId, initial }: { businessId: string; initia
           <textarea
             value={draftContent}
             onChange={(e) => setDraftContent(e.target.value)}
-            placeholder="Start writing…"
+            placeholder="Start writing — saves automatically…"
             className="flex-1 px-4 py-4 bg-transparent text-sm leading-7 outline-none resize-none placeholder:text-zinc-400 dark:placeholder:text-zinc-600 text-zinc-800 dark:text-zinc-200 min-h-[200px] scroll-touch"
           />
           <div className="flex items-center justify-between px-4 pt-3 pb-safe-3 border-t border-zinc-100 dark:border-zinc-900 bg-zinc-50/50 dark:bg-zinc-900/20 shrink-0">
-            <div className="text-xs text-zinc-400">
-              {selected
-                ? `Saved ${format(new Date(selected.updated_at), "MMM d 'at' h:mm a")}`
-                : "Unsaved draft"}
-            </div>
-            <div className="flex items-center gap-2">
-              {selected && (
-                <button
-                  onClick={() => remove(selected.id)}
-                  className="h-9 px-3 text-xs text-zinc-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors inline-flex items-center gap-1.5"
-                >
-                  <Trash2 size={12} /> Delete
-                </button>
+            <div className="text-xs text-zinc-400 inline-flex items-center gap-1.5" aria-live="polite">
+              {status === "saving" && (<><Loader2 size={11} className="animate-spin" /> Saving…</>)}
+              {status === "dirty" && "…"}
+              {status === "saved" && (<><Check size={11} className="text-emerald-600" /> Saved</>)}
+              {status === "error" && (
+                <span className="text-amber-600 dark:text-amber-400 inline-flex items-center gap-1.5">
+                  <AlertTriangle size={11} /> Not saved — check connection
+                </span>
               )}
-              <button
-                onClick={save}
-                disabled={saving}
-                className="h-9 px-4 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-xs font-semibold rounded-lg hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-50 transition-colors"
-              >
-                {saving ? "Saving…" : selected ? "Save" : "Create note"}
-              </button>
+              {status === "idle" && (
+                selected
+                  ? `Saved ${format(new Date(selected.updated_at), "MMM d 'at' h:mm a")}`
+                  : "New note — saves as you type"
+              )}
             </div>
+            {selected && (
+              <button
+                onClick={() => remove(selected.id)}
+                className="h-9 px-3 text-xs text-zinc-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors inline-flex items-center gap-1.5"
+              >
+                <Trash2 size={12} /> Delete
+              </button>
+            )}
           </div>
         </>
       ) : (
