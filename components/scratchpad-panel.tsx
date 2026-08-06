@@ -107,7 +107,7 @@ export function ScratchpadPanel({ initialValue }: { initialValue: string }) {
         minRows={6}
         maxHeightPx={520}
         placeholder={"Quick to-dos, numbers, names, anything…\n\n- call the venue back\n- $ figure for the method renewal\n- idea: rooftop for TechWeek closing"}
-        className="w-full flex-1 bg-transparent text-sm leading-relaxed text-zinc-800 dark:text-zinc-200 outline-none resize-none placeholder:text-zinc-300 dark:placeholder:text-zinc-700"
+        className="w-full bg-transparent text-sm leading-relaxed text-zinc-800 dark:text-zinc-200 outline-none resize-none placeholder:text-zinc-300 dark:placeholder:text-zinc-700"
       />
     </div>
   );

@@ -24,12 +24,23 @@ export function AutoTextarea({ value, minRows = 3, maxHeightPx = 420, ...rest }:
     el.style.height = "auto";
     const next = Math.min(el.scrollHeight + 2, maxHeightPx);
     el.style.height = `${next}px`;
-    el.style.overflowY = el.scrollHeight + 2 > maxHeightPx ? "auto" : "hidden";
+    // Decide scrollability from the ACTUAL rendered height, not the height we
+    // asked for — flex layouts or parent constraints can render the element
+    // shorter than the style we set, and clipping without scroll would trap
+    // content out of reach.
+    const clipped = el.scrollHeight > el.clientHeight + 4;
+    el.style.overflowY = clipped ? "auto" : "hidden";
   }, [maxHeightPx]);
 
   useEffect(() => {
     resize();
   }, [value, resize]);
+
+  // Re-measure when the viewport changes (line wraps shift with width)
+  useEffect(() => {
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, [resize]);
 
   return <textarea ref={ref} rows={minRows} value={value} {...rest} />;
 }
