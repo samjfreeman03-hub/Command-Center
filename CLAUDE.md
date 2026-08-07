@@ -41,6 +41,7 @@ over docs.
 26. [Lead Categories](#26-lead-categories-stealth-labs-test-feature)
 27. [Chat Agent (workspace tools)](#27-chat-agent-workspace-tools)
 28. [Current State / Backlog](#28-current-state--backlog)
+29. [Dashboard Scratchpad + Local Preview Verification](#29-dashboard-scratchpad--local-preview-verification-added-2026-08-06)
 
 ---
 
@@ -748,10 +749,14 @@ lib/
 components/
   events-panel.tsx     — Events tab UI
   category-ui.tsx      — shared category pills/badges/multi-select
+  auto-textarea.tsx    — auto-growing textarea for all notes fields (see §15)
+  scratchpad-panel.tsx — dashboard scratchpad (see §29)
 app/
   s/[token]/outreach/  — outreach-only share page (+ outreach-shared-view.tsx)
   s/[token]/icon.tsx, apple-icon.tsx — branded share link previews
   api/events/, api/lead-categories/, api/outreach/backfill-emails/
+  api/scratchpad/      — GET/PUT dashboard scratchpad (app_state table)
+.claude/launch.json    — local preview server config (see §29)
 ```
 
 (`components/theme-toggle.tsx` was deleted as dead code.)
@@ -773,10 +778,22 @@ goes outside `/data` — e.g., positioning prompts moved to `lib/prompts/`.
 
 ### Theme handling (light/dark)
 
-- `<body>` class: `bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100`
+- `<body>` class: `bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100`
+  — the app background is TINTED (visual refresh 2026-08-06) so white cards,
+  the business-page header band, and the white sidebar rail read as elevated
+  surfaces. Don't revert pages to white-on-white.
 - Theme detection script in `app/layout.tsx` runs before paint to avoid FOUC
 - Detection order: `localStorage.getItem('theme')` → `prefers-color-scheme`
 - Sidebar has a theme toggle button (Sun/Moon icons)
+
+### Motion (visual refresh 2026-08-06)
+
+- Tab panels animate in via `.panel-in` (fade + 4px rise, 180ms) — the panels
+  container is keyed on the active tab (`key={tab}`) in both business-view and
+  shared-view, which also forces panels to remount with fresh server props.
+- All enabled buttons get a subtle press-scale (`button:not(:disabled):active`).
+- Both respect `prefers-reduced-motion`.
+- Dashboard business cards carry brand monogram tiles (brand hex bg + initial).
 
 ### Share view special-case: always light mode
 
@@ -788,6 +805,10 @@ starting with `/s/`. Rationale: share visitors don't have the sidebar toggle.
 
 - PWA standalone mode with `viewport-fit: cover`
 - Safe area CSS: `.mobile-header`, `.mobile-content-offset`, `.safe-bottom`, `.safe-left`
+- **`.safe-bottom` TRAP:** it REPLACES padding-bottom (resolves to 0 on desktop)
+  because it's declared after Tailwind's utilities. Never combine it with
+  `pb-*` — use the additive `pb-safe-3/4/10` utilities (base padding + safe
+  area) on elements that have their own bottom padding.
 - 44px minimum touch targets, `touch-action: manipulation` (no double-tap zoom)
 - `overscroll-behavior: none` to prevent bounce
 - Bottom sheet modals on mobile (CRM detail)
@@ -808,6 +829,16 @@ starting with `/s/`. Rationale: share visitors don't have the sidebar toggle.
 - Inline editing triggered by pencil icon → edit form
 - Add forms hidden behind dashed "+" buttons
 - `h-11` inputs, `rounded-2xl` cards/bubbles, `rounded-lg` buttons
+- **Notes/description fields use `components/auto-textarea.tsx`** (grows with
+  content, caps at ~420px then scrolls). It decides scrollability from the
+  ACTUAL rendered height, so it survives flex/parent constraints — do not put
+  `flex-1` on it, and do not use plain fixed-height textareas for notes.
+- **Autosave pattern** (scratchpad + Notes tab): debounce ~600-800ms after
+  typing stops, `keepalive: true` on the save fetch, flush on
+  `visibilitychange`(hidden) + `pagehide` and before context switches, live
+  Saving…/Saved/error indicator. New notes auto-create on first input with an
+  in-flight guard against double-POST. Modal edit forms (leads/CRM/events)
+  intentionally KEEP explicit Save/Cancel — autosave would break Cancel.
 
 ---
 
@@ -1151,7 +1182,32 @@ Known deferred items (user-acknowledged, build when asked):
 
 ---
 
+## 29. Dashboard Scratchpad + Local Preview Verification (added 2026-08-06)
+
+### Scratchpad
+
+- Dashboard panel (beside Open Todos) for free-form quick notes. Server-side
+  persisted in the `app_state` key-value table (key `"scratchpad"`) so it syncs
+  across devices. `GET/PUT /api/scratchpad`, admin-only, 100KB cap.
+- Autosave per the pattern in §15 Component Patterns. Clear button w/ confirm.
+
+### Local preview verification (how UI changes get verified)
+
+- `~/.claude/launch.json` has a `command-center-dev` config: runs the dev
+  server on **port 3005** (3000 is often taken by mtrnm-raise) with a
+  **throwaway** `ADMIN_PASSWORD=cc-ui-preview-2026` env override — real
+  credentials are never used; process env beats `.env.local`, and Railway's
+  real vars make this value meaningless in production. The repo's
+  `.claude/launch.json` mirrors it.
+- Standard loop: seed test rows into the local `./data/command-center.db` with
+  a `node -e` + better-sqlite3 one-liner → verify in the browser preview →
+  DELETE the seeded rows → prod build → commit → push.
+- If the dev server suddenly 404s every route with the layout still rendering:
+  corrupted Turbopack cache from a hard stop — `rm -rf .next` and restart.
+
+---
+
 *End of CLAUDE.md.* Update whenever a major architectural change ships — same
 session as the change, not later. `git log --oneline` + commit bodies fill any
 gap between this doc and the code.
-Last updated: 2026-06-13.
+Last updated: 2026-08-06 (PT).
