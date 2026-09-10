@@ -88,7 +88,19 @@ export function Sidebar({ onLogout, onClose }: { onLogout?: () => void; onClose?
             const href = `/b/${b.id}`;
             const active = pathname === href || pathname.startsWith(`${href}/`);
             return (
-              <NavItem key={b.id} href={href} active={active} dot={b.dot}>
+              <NavItem
+                key={b.id}
+                href={href}
+                active={active}
+                icon={
+                  <span
+                    className="w-5 h-5 rounded-md flex items-center justify-center shrink-0 text-white text-[10px] font-bold shadow-sm"
+                    style={{ backgroundColor: b.hex }}
+                  >
+                    {b.name.charAt(0)}
+                  </span>
+                }
+              >
                 {b.name}
               </NavItem>
             );
@@ -123,13 +135,11 @@ function NavItem({
   active,
   children,
   icon,
-  dot,
 }: {
   href: string;
   active: boolean;
   children: React.ReactNode;
   icon?: React.ReactNode;
-  dot?: string;
 }) {
   return (
     <Link
@@ -141,7 +151,6 @@ function NavItem({
       }`}
     >
       {icon}
-      {dot && <span className={`w-2 h-2 rounded-full ${dot} shrink-0`} />}
       <span className="truncate">{children}</span>
     </Link>
   );
