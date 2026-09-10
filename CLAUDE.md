@@ -194,6 +194,7 @@ business's data. Don't bypass it; don't reimplement it.
 | `outreach_targets`   | Cold outreach targets + drafts + cadence state    |
 | `lead_categories`    | User-defined tag registry (Stealth; shared pipeline+CRM) |
 | `events`             | Hosted events (TechSpace/MTRNM/FLAIR) — see §25   |
+| `initiatives`        | High-level strategic items, all businesses — see §26b |
 | `app_state`          | Key-value store (e.g. dashboard scratchpad); GET/PUT /api/scratchpad |
 
 JSON-array TEXT columns (decoded by parse helpers in `lib/db.ts`):
@@ -1106,6 +1107,10 @@ Tab gating happens in `tabsForBusiness()` in BOTH `app/b/[slug]/business-view.ts
 and `app/s/[token]/shared-view.tsx`; API routes independently 400 on
 unconfigured businesses. Keep all three layers in sync when enabling a feature.
 
+NOT flagged (every business gets them): Todos, Pipeline, CRM, Resources, Notes,
+Chat, Team, and **Initiatives** (§26b — first tab + default landing). Tab pills
+carry lucide icons (13px) in both views; keep the two TABS arrays identical.
+
 ---
 
 ## 25. Events Module (TechSpace + MTRNM + FLAIR)
@@ -1143,6 +1148,36 @@ User-defined multi-select tags shared between pipeline leads and CRM contacts.
 
 ---
 
+## 26b. Initiatives Module (ALL businesses) — added 2026-09-10
+
+High-level strategic items per business — major projects, key clients/relationships,
+and things to keep top of mind. Explicitly HIGHER level than todos (weeks, not tasks).
+Not feature-flagged: every business has the tab, including share views.
+
+- **Table:** `initiatives` — title, kind (`project|client|idea|watch`),
+  horizon (`now|next|later`), status (`active|on_hold|done`), next_step,
+  target_date (YYYY-MM-DD), notes, completed_at (synced automatically when
+  status flips to/from done in `db.updateInitiative`).
+- **API:** `GET/POST /api/initiatives`, `PATCH/DELETE /api/initiatives/[id]`
+  (standard `canAccessBusiness` auth — admin cookie or share token header).
+- **UI:** `components/initiatives-panel.tsx` — sections Now ("Active focus",
+  always shown, has promote-hint empty state) / Next / Later, then On hold and
+  Done (muted). Rows: done-toggle circle (pause icon when held), kind chip,
+  target-date chip, "→ next step" line. Edit modal with segmented pill pickers
+  (`Segmented`) for kind + horizon.
+- **Placement:** FIRST tab and the default landing tab on both business and
+  shared views (`initialTab ?? "initiatives"` in `app/b/[slug]/page.tsx`).
+- **Dashboard:** header chip "N in focus" (`db.activeNowInitiatives()`), and
+  each business card lists up to 2 active-Now initiatives (+N more) under its
+  stats row.
+- **Chat agent:** `add_initiatives` (bulk, dedup on active title) +
+  `update_initiative` tools on all businesses; INITIATIVES context block with
+  `[id:N]`; system prompt explains initiatives-vs-todos routing.
+- **Ordering:** active → on_hold → done; within active Now → Next → Later;
+  newest-touched first (single SQL ORDER BY in `db.listInitiatives`).
+
+---
+
 ## 27. Chat Agent (workspace tools)
 
 The per-business AI chat (`/api/chat`) is an agent, not just Q&A. Added 2026-06-13.
@@ -1151,7 +1186,7 @@ The per-business AI chat (`/api/chat`) is an agent, not just Q&A. Added 2026-06-
   + `chatToolsForBusiness()` (event tools only where events are enabled).
 - **Tools:** `add_crm_contacts` (bulk), `update_crm_contact`, `add_leads` (bulk),
   `update_lead`, `add_todos` (bulk), `complete_todo`, `create_note`,
-  `add_events` (bulk), `update_event`.
+  `add_events` (bulk), `update_event`, `add_initiatives` (bulk), `update_initiative`.
 - **Safety model:** business_id injected server-side (chat can only touch its own
   business); update tools verify row ownership; NO delete tools; duplicates
   (same brand+contact / lead+company / event+date) skipped automatically;
@@ -1210,4 +1245,4 @@ Known deferred items (user-acknowledged, build when asked):
 *End of CLAUDE.md.* Update whenever a major architectural change ships — same
 session as the change, not later. `git log --oneline` + commit bodies fill any
 gap between this doc and the code.
-Last updated: 2026-08-06 (PT).
+Last updated: 2026-09-10 (PT).
