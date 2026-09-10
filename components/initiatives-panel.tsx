@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import type { Initiative } from "@/lib/types";
+import type { Initiative, InitiativeLink } from "@/lib/types";
 import { INITIATIVE_KINDS, INITIATIVE_HORIZONS, INITIATIVE_STATUSES } from "@/lib/types";
 import {
-  Plus, Trash2, X, Target, CalendarDays, ArrowRight, CircleCheck, Circle, PauseCircle,
+  Plus, Trash2, X, Target, CalendarDays, ArrowRight, CircleCheck, Circle, PauseCircle, Link2,
 } from "lucide-react";
 import { useShareHeaders } from "@/lib/share-context";
 import { AutoTextarea } from "@/components/auto-textarea";
@@ -17,6 +17,7 @@ const EMPTY_FORM = {
   next_step: "",
   target_date: "",
   notes: "",
+  links: [] as InitiativeLink[],
 };
 
 type InitiativeForm = typeof EMPTY_FORM;
@@ -30,6 +31,7 @@ function formToPayload(form: InitiativeForm) {
     next_step: form.next_step.trim() || null,
     target_date: form.target_date || null,
     notes: form.notes.trim() || null,
+    links: form.links.filter((l) => l.url.trim()),
   };
 }
 
@@ -42,7 +44,18 @@ function initiativeToForm(i: Initiative): InitiativeForm {
     next_step: i.next_step ?? "",
     target_date: i.target_date ?? "",
     notes: i.notes ?? "",
+    links: i.links,
   };
+}
+
+/** Chip text for a link without a label: its hostname, minus "www.". */
+function linkLabel(l: InitiativeLink): string {
+  if (l.label) return l.label;
+  try {
+    return new URL(l.url).hostname.replace(/^www\./, "");
+  } catch {
+    return l.url;
+  }
 }
 
 function targetLabel(date: string): string {
@@ -253,29 +266,49 @@ function InitiativeRow({
             : <Circle size={18} />}
         </button>
 
-        {/* Body — click to edit */}
-        <button onClick={onStartEdit} className="min-w-0 flex-1 text-left">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className={`text-sm font-medium text-zinc-900 dark:text-zinc-100 ${isDone ? "line-through decoration-zinc-400" : ""}`}>
-              {initiative.title}
-            </span>
-            <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${kind.color}`}>{kind.label}</span>
-            {initiative.target_date && !isDone && (
-              <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-900 text-zinc-500">
-                <CalendarDays size={10} /> {targetLabel(initiative.target_date)}
+        {/* Body — click to edit; link chips are real anchors outside the button */}
+        <div className="min-w-0 flex-1">
+          <button onClick={onStartEdit} className="block w-full text-left">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`text-sm font-medium text-zinc-900 dark:text-zinc-100 ${isDone ? "line-through decoration-zinc-400" : ""}`}>
+                {initiative.title}
               </span>
+              <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${kind.color}`}>{kind.label}</span>
+              {initiative.target_date && !isDone && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-900 text-zinc-500">
+                  <CalendarDays size={10} /> {targetLabel(initiative.target_date)}
+                </span>
+              )}
+            </div>
+            {initiative.next_step && !isDone && (
+              <div className="flex items-center gap-1.5 mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+                <ArrowRight size={11} className="shrink-0 text-zinc-400" />
+                <span className="truncate">{initiative.next_step}</span>
+              </div>
             )}
-          </div>
-          {initiative.next_step && !isDone && (
-            <div className="flex items-center gap-1.5 mt-1 text-xs text-zinc-600 dark:text-zinc-400">
-              <ArrowRight size={11} className="shrink-0 text-zinc-400" />
-              <span className="truncate">{initiative.next_step}</span>
+            {initiative.notes && (
+              <p className="text-xs text-zinc-400 dark:text-zinc-600 mt-1 line-clamp-1">{initiative.notes}</p>
+            )}
+          </button>
+          {initiative.links.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-1.5">
+              {initiative.links.map((l, idx) => (
+                <a
+                  key={`${l.url}-${idx}`}
+                  href={l.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(ev) => ev.stopPropagation()}
+                  title={l.url}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors max-w-[220px]"
+                >
+                  <Link2 size={10} className="shrink-0" />
+                  <span className="truncate">{linkLabel(l)}</span>
+                </a>
+              ))}
             </div>
           )}
-          {initiative.notes && (
-            <p className="text-xs text-zinc-400 dark:text-zinc-600 mt-1 line-clamp-1">{initiative.notes}</p>
-          )}
-        </button>
+        </div>
       </div>
     </>
   );
@@ -338,6 +371,9 @@ function InitiativeFormCard({
             ))}
           </select>
         </Field>
+        <Field label="Links" full>
+          <LinksEditor links={form.links} onChange={(v) => set("links", v)} />
+        </Field>
         <Field label="Notes" full>
           <AutoTextarea value={form.notes} onChange={(e) => set("notes", e.target.value)} minRows={4} className={`${inputCls} resize-none leading-relaxed`} placeholder="Context, why it matters, key people, open questions…" />
         </Field>
@@ -358,6 +394,55 @@ function InitiativeFormCard({
         </div>
       </div>
     </form>
+  );
+}
+
+/** Editable list of {label, url} link rows. */
+function LinksEditor({
+  links, onChange,
+}: {
+  links: InitiativeLink[];
+  onChange: (next: InitiativeLink[]) => void;
+}) {
+  function setLink(idx: number, patch: Partial<InitiativeLink>) {
+    onChange(links.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+  }
+
+  return (
+    <div className="space-y-2">
+      {links.map((l, idx) => (
+        <div key={idx} className="flex items-center gap-2">
+          <input
+            value={l.label ?? ""}
+            onChange={(e) => setLink(idx, { label: e.target.value })}
+            className={`${inputCls} w-32 sm:w-40 shrink-0`}
+            placeholder="Label (optional)"
+          />
+          <input
+            value={l.url}
+            onChange={(e) => setLink(idx, { url: e.target.value })}
+            className={inputCls}
+            placeholder="https://…"
+            autoFocus={l.url === "" && idx === links.length - 1}
+          />
+          <button
+            type="button"
+            onClick={() => onChange(links.filter((_, i) => i !== idx))}
+            className="shrink-0 p-1.5 text-zinc-400 hover:text-red-500 rounded"
+            title="Remove link"
+          >
+            <X size={13} />
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => onChange([...links, { label: null, url: "" }])}
+        className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200 px-2 py-1 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+      >
+        <Plus size={12} /> Add link
+      </button>
+    </div>
   );
 }
 

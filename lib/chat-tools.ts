@@ -1,5 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
+import { sanitizeInitiativeLinks } from "./types";
 import { leadCategoriesEnabled } from "./pipeline-config";
 import { eventsEnabled } from "./events-config";
 
@@ -216,6 +217,18 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
               next_step: { type: "string", description: "The single next concrete move" },
               target_date: { type: "string", description: "YYYY-MM-DD" },
               notes: { type: "string", description: "Context: why it matters, key people, open questions" },
+              links: {
+                type: "array",
+                description: "Related links (deck, doc, site) shown as chips on the initiative",
+                items: {
+                  type: "object",
+                  properties: {
+                    url: { type: "string", description: "https URL (required)" },
+                    label: { type: "string", description: "Short display label, e.g. 'Pitch deck'" },
+                  },
+                  required: ["url"],
+                },
+              },
             },
             required: ["title"],
           },
@@ -238,6 +251,18 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
         next_step: { type: "string" },
         target_date: { type: "string" },
         notes: { type: "string" },
+        links: {
+          type: "array",
+          description: "REPLACES the existing link list — include the full desired list",
+          items: {
+            type: "object",
+            properties: {
+              url: { type: "string" },
+              label: { type: "string" },
+            },
+            required: ["url"],
+          },
+        },
       },
       required: ["id"],
     },
@@ -467,6 +492,7 @@ export function executeChatTool(businessId: string, name: string, input: any): R
             next_step: it?.next_step,
             target_date: it?.target_date,
             notes: it?.notes,
+            links: sanitizeInitiativeLinks(it?.links),
           });
           seen.add(title.toLowerCase());
           created++;
@@ -481,6 +507,7 @@ export function executeChatTool(businessId: string, name: string, input: any): R
         for (const f of ["title", "kind", "horizon", "status", "next_step", "target_date", "notes"] as const) {
           if (f in (input ?? {})) patch[f] = input[f];
         }
+        if ("links" in (input ?? {})) patch.links = sanitizeInitiativeLinks(input.links);
         const updated = db.updateInitiative(id, patch);
         return { ok: true, updated: { id: updated.id, title: updated.title, horizon: updated.horizon, status: updated.status } };
       }

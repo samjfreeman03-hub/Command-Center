@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { canAccessBusiness } from "@/lib/server-auth";
+import { sanitizeInitiativeLinks } from "@/lib/types";
 
 export async function PATCH(
   req: Request,
@@ -12,6 +13,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const patch = await req.json();
+  if ("links" in patch) patch.links = sanitizeInitiativeLinks(patch.links);
   const initiative = db.updateInitiative(Number(id), patch);
   return NextResponse.json(initiative);
 }

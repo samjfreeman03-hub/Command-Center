@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { canAccessBusiness } from "@/lib/server-auth";
+import { sanitizeInitiativeLinks } from "@/lib/types";
 
 /** GET /api/initiatives?business_id= — list a business's initiatives. */
 export async function GET(req: Request) {
@@ -30,6 +31,7 @@ export async function POST(req: Request) {
     next_step: body.next_step || null,
     target_date: body.target_date || null,
     notes: body.notes || null,
+    links: sanitizeInitiativeLinks(body.links),
   });
   return NextResponse.json(initiative);
 }

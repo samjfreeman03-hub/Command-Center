@@ -1157,7 +1157,14 @@ Not feature-flagged: every business has the tab, including share views.
 - **Table:** `initiatives` — title, kind (`project|client|idea|watch`),
   horizon (`now|next|later`), status (`active|on_hold|done`), next_step,
   target_date (YYYY-MM-DD), notes, completed_at (synced automatically when
-  status flips to/from done in `db.updateInitiative`).
+  status flips to/from done in `db.updateInitiative`), and `links` — a
+  JSON-array column of `{label|null, url}` (added 2026-09-10 via migrateAlter;
+  decoded by `parseInitiative`). Untrusted link input is cleaned by
+  `sanitizeInitiativeLinks()` in `lib/types.ts` (drops url-less entries,
+  prefixes missing `https://`) — used by both API routes and chat tools.
+  Row UI shows links as chips (label, else hostname) that are real `<a>`
+  anchors OUTSIDE the click-to-edit button; form has a `LinksEditor`
+  (label + URL rows, Add link). `update_initiative`'s `links` REPLACES the list.
 - **API:** `GET/POST /api/initiatives`, `PATCH/DELETE /api/initiatives/[id]`
   (standard `canAccessBusiness` auth — admin cookie or share token header).
 - **UI:** `components/initiatives-panel.tsx` — sections Now ("Active focus",

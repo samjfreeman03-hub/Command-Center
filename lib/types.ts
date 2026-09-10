@@ -92,10 +92,33 @@ export type Initiative = {
   /** YYYY-MM-DD */
   target_date: string | null;
   notes: string | null;
+  /** Related links (deck, doc, thread, site…) shown as chips on the row. */
+  links: InitiativeLink[];
   created_at: number;
   updated_at: number;
   completed_at: number | null;
 };
+
+export type InitiativeLink = {
+  /** Optional display label; falls back to the URL's hostname. */
+  label: string | null;
+  url: string;
+};
+
+/** Coerce untrusted input (API body / chat tool) into a clean InitiativeLink[]. */
+export function sanitizeInitiativeLinks(raw: unknown): InitiativeLink[] {
+  if (!Array.isArray(raw)) return [];
+  const out: InitiativeLink[] = [];
+  for (const l of raw) {
+    if (!l || typeof l !== "object") continue;
+    let url = String((l as { url?: unknown }).url ?? "").trim();
+    if (!url) continue;
+    if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+    const label = String((l as { label?: unknown }).label ?? "").trim();
+    out.push({ url, label: label || null });
+  }
+  return out;
+}
 
 export const INITIATIVE_KINDS = [
   { value: "project", label: "Project", color: "bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300" },

@@ -147,7 +147,9 @@ export async function POST(req: Request) {
           (i) =>
             `- [id:${i.id}] ${i.title} — ${i.kind}, horizon: ${i.horizon}, status: ${i.status}${
               i.next_step ? `, next step: ${i.next_step}` : ""
-            }${i.target_date ? `, target: ${i.target_date}` : ""}${i.notes ? `, notes: ${i.notes}` : ""}`
+            }${i.target_date ? `, target: ${i.target_date}` : ""}${
+              i.links.length ? `, links: ${i.links.map((l) => `${l.label ? `${l.label} ` : ""}${l.url}`).join(" | ")}` : ""
+            }${i.notes ? `, notes: ${i.notes}` : ""}`
         )
         .join("\n")
     : "(no initiatives yet)";

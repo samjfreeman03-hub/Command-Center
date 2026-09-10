@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
 import { BUSINESSES } from "./businesses";
-import type { Todo, Lead, LeadCategory, BizEvent, Initiative, Note, ChatMessage, LeadAttachment, BusinessResource, TeamMember, BrandContact, BrandAttachment, OutreachTarget, OutreachStatus } from "./types";
+import type { Todo, Lead, LeadCategory, BizEvent, Initiative, InitiativeLink, Note, ChatMessage, LeadAttachment, BusinessResource, TeamMember, BrandContact, BrandAttachment, OutreachTarget, OutreachStatus } from "./types";
 
 // Email row types (internal to db.ts)
 type RawEmailRow = {
@@ -119,6 +119,7 @@ function migrate(db: Database.Database) {
       next_step TEXT,
       target_date TEXT,
       notes TEXT,
+      links TEXT NOT NULL DEFAULT '[]',
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       completed_at INTEGER
@@ -286,6 +287,8 @@ function migrateAlter(db: Database.Database) {
   try { db.exec("ALTER TABLE leads ADD COLUMN category TEXT"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE leads ADD COLUMN categories TEXT"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE brand_contacts ADD COLUMN categories TEXT"); } catch { /* already exists */ }
+  // initiatives shipped one deploy before links — add the column on existing DBs.
+  try { db.exec("ALTER TABLE initiatives ADD COLUMN links TEXT NOT NULL DEFAULT '[]'"); } catch { /* already exists */ }
   try { db.exec("UPDATE brand_contacts SET categories = '[]' WHERE categories IS NULL"); } catch { /* already migrated */ }
   // One-time backfill: seed the multi-category array from the legacy single
   // `category` column. Only touches rows not yet initialized (categories IS NULL),
@@ -336,6 +339,24 @@ function parseLead(row: Record<string, unknown>): Lead {
 
 function parseBrandContact(row: Record<string, unknown>): BrandContact {
   return { ...(row as unknown as BrandContact), categories: parseCategories(row.categories) };
+}
+
+function parseInitiativeLinks(raw: unknown): InitiativeLink[] {
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .filter((l): l is { url: unknown; label?: unknown } => !!l && typeof l === "object" && typeof (l as { url?: unknown }).url === "string")
+          .map((l) => ({ url: String(l.url), label: typeof l.label === "string" && l.label.trim() ? l.label : null }));
+      }
+    } catch { /* malformed — leave empty */ }
+  }
+  return [];
+}
+
+function parseInitiative(row: Record<string, unknown>): Initiative {
+  return { ...(row as unknown as Initiative), links: parseInitiativeLinks(row.links) };
 }
 
 function parseEvent(row: Record<string, unknown>): BizEvent {
@@ -695,7 +716,7 @@ export const db = {
   listInitiatives(businessId: string): Initiative[] {
     // Active before on-hold before done; within active, Now → Next → Later;
     // most recently touched first inside each group.
-    return getDb()
+    return (getDb()
       .prepare(
         `SELECT * FROM initiatives WHERE business_id = ?
          ORDER BY
@@ -703,11 +724,11 @@ export const db = {
            CASE horizon WHEN 'now' THEN 0 WHEN 'next' THEN 1 ELSE 2 END,
            updated_at DESC`
       )
-      .all(businessId) as Initiative[];
+      .all(businessId) as Record<string, unknown>[]).map(parseInitiative);
   },
 
   getInitiative(id: number): Initiative {
-    return getDb().prepare("SELECT * FROM initiatives WHERE id = ?").get(id) as Initiative;
+    return parseInitiative(getDb().prepare("SELECT * FROM initiatives WHERE id = ?").get(id) as Record<string, unknown>);
   },
 
   getInitiativeBizId(id: number): string | null {
@@ -724,12 +745,13 @@ export const db = {
     next_step?: string | null;
     target_date?: string | null;
     notes?: string | null;
+    links?: InitiativeLink[];
   }): Initiative {
     const now = Date.now();
     const result = getDb()
       .prepare(
-        `INSERT INTO initiatives (business_id, title, kind, horizon, status, next_step, target_date, notes, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO initiatives (business_id, title, kind, horizon, status, next_step, target_date, notes, links, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         input.business_id,
@@ -740,6 +762,7 @@ export const db = {
         input.next_step ?? null,
         input.target_date ?? null,
         input.notes ?? null,
+        JSON.stringify(input.links ?? []),
         now,
         now
       );
@@ -755,6 +778,11 @@ export const db = {
         sets.push(`${key} = ?`);
         args.push((patch as Record<string, unknown>)[key] ?? null);
       }
+    }
+    // links is a JSON-array column — serialize when present.
+    if ("links" in patch) {
+      sets.push("links = ?");
+      args.push(JSON.stringify(patch.links ?? []));
     }
     if (sets.length === 0) return this.getInitiative(id);
     // Keep completed_at in sync with the done status.
@@ -774,12 +802,12 @@ export const db = {
 
   /** Dashboard: active "Now" initiatives across all businesses. */
   activeNowInitiatives(): Initiative[] {
-    return getDb()
+    return (getDb()
       .prepare(
         `SELECT * FROM initiatives WHERE status = 'active' AND horizon = 'now'
          ORDER BY updated_at DESC`
       )
-      .all() as Initiative[];
+      .all() as Record<string, unknown>[]).map(parseInitiative);
   },
 
   // ---- Notes ----
