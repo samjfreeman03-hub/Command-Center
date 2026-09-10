@@ -74,6 +74,48 @@ export const LEAD_STAGES: Lead["stage"][] = [
   "lost",
 ];
 
+/**
+ * Initiative — a high-level strategic item for a business: a major project,
+ * key client/relationship, or something important to keep top of mind.
+ * Higher level than todos (which are single actionable tasks).
+ */
+export type Initiative = {
+  id: number;
+  business_id: string;
+  title: string;
+  kind: "project" | "client" | "idea" | "watch";
+  /** Priority horizon — Now (active focus), Next (queued up), Later (someday). */
+  horizon: "now" | "next" | "later";
+  status: "active" | "on_hold" | "done";
+  /** The single next concrete step to move this forward. */
+  next_step: string | null;
+  /** YYYY-MM-DD */
+  target_date: string | null;
+  notes: string | null;
+  created_at: number;
+  updated_at: number;
+  completed_at: number | null;
+};
+
+export const INITIATIVE_KINDS = [
+  { value: "project", label: "Project", color: "bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300" },
+  { value: "client",  label: "Client",  color: "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300" },
+  { value: "idea",    label: "Idea",    color: "bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300" },
+  { value: "watch",   label: "Watch",   color: "bg-sky-50 dark:bg-sky-950/30 text-sky-700 dark:text-sky-300" },
+] as const;
+
+export const INITIATIVE_HORIZONS = [
+  { value: "now",   label: "Now",   hint: "Active focus" },
+  { value: "next",  label: "Next",  hint: "Queued up" },
+  { value: "later", label: "Later", hint: "On the radar" },
+] as const;
+
+export const INITIATIVE_STATUSES = [
+  { value: "active",  label: "Active" },
+  { value: "on_hold", label: "On hold" },
+  { value: "done",    label: "Done" },
+] as const;
+
 export type Note = {
   id: number;
   business_id: string;

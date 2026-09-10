@@ -45,7 +45,7 @@ export default async function SharePage({
     return <SharePasswordGate business={business} />;
   }
 
-  const [todos, leads, resources, notes, chat, members, brands, outreach] = await Promise.all([
+  const [todos, leads, resources, notes, chat, members, brands, outreach, initiatives] = await Promise.all([
     Promise.resolve(db.listTodos({ businessId })),
     Promise.resolve(db.listLeads({ businessId })),
     Promise.resolve(db.listBusinessResources(businessId)),
@@ -54,6 +54,7 @@ export default async function SharePage({
     Promise.resolve(db.listTeamMembers(businessId)),
     Promise.resolve(db.listBrandContacts(businessId)),
     Promise.resolve(db.listOutreach({ businessId })),
+    Promise.resolve(db.listInitiatives(businessId)),
   ]);
 
   const customTagline = db.getBusinessTagline(businessId);
@@ -65,6 +66,7 @@ export default async function SharePage({
       shareToken={token}
       tagline={customTagline ?? business.tagline}
       initialEvents={events}
+      initialInitiatives={initiatives}
       initialTodos={todos}
       initialLeads={leads}
       initialResources={resources}

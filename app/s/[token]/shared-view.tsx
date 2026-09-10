@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import type { Business } from "@/lib/businesses";
-import type { Todo, Lead, BizEvent, Note, ChatMessage, BusinessResource, TeamMember, BrandContact, OutreachTarget } from "@/lib/types";
+import type { Todo, Lead, BizEvent, Initiative, Note, ChatMessage, BusinessResource, TeamMember, BrandContact, OutreachTarget } from "@/lib/types";
 import { EventsPanel } from "@/components/events-panel";
 import { EVENTS_BUSINESS_IDS } from "@/lib/events-config";
+import { InitiativesPanel } from "@/components/initiatives-panel";
 import { TodosPanel } from "@/components/todos-panel";
 import { PipelinePanel } from "@/components/pipeline-panel";
 import { ResourcesPanel } from "@/components/resources-panel";
@@ -15,17 +16,22 @@ import { BrandsPanel } from "@/components/brands-panel";
 import { OutreachPanel } from "@/components/outreach-panel";
 import { ShareTokenContext } from "@/lib/share-context";
 import { OUTREACH_BUSINESS_IDS } from "@/lib/outreach-config";
+import {
+  Target, ListTodo, TrendingUp, CalendarDays, Send, Building2, FolderOpen,
+  StickyNote, MessageSquare, Users,
+} from "lucide-react";
 
 const TABS = [
-  { id: "todos",     label: "Todos" },
-  { id: "pipeline",  label: "Pipeline" },
-  { id: "events",    label: "Events" },
-  { id: "outreach",  label: "Outreach" },
-  { id: "brands",    label: "CRM" },
-  { id: "resources", label: "Resources" },
-  { id: "notes",     label: "Notes" },
-  { id: "chat",      label: "Chat" },
-  { id: "team",      label: "Team" },
+  { id: "initiatives", label: "Initiatives", Icon: Target },
+  { id: "todos",       label: "Todos",       Icon: ListTodo },
+  { id: "pipeline",    label: "Pipeline",    Icon: TrendingUp },
+  { id: "events",      label: "Events",      Icon: CalendarDays },
+  { id: "outreach",    label: "Outreach",    Icon: Send },
+  { id: "brands",      label: "CRM",         Icon: Building2 },
+  { id: "resources",   label: "Resources",   Icon: FolderOpen },
+  { id: "notes",       label: "Notes",       Icon: StickyNote },
+  { id: "chat",        label: "Chat",        Icon: MessageSquare },
+  { id: "team",        label: "Team",        Icon: Users },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -44,6 +50,7 @@ export function SharedView({
   shareToken,
   tagline,
   initialEvents,
+  initialInitiatives,
   initialTodos,
   initialLeads,
   initialResources,
@@ -57,6 +64,7 @@ export function SharedView({
   shareToken: string;
   tagline: string;
   initialEvents: BizEvent[];
+  initialInitiatives: Initiative[];
   initialTodos: Todo[];
   initialLeads: Lead[];
   initialResources: BusinessResource[];
@@ -67,7 +75,7 @@ export function SharedView({
   initialOutreach: OutreachTarget[];
 }) {
   const tabs = tabsForBusiness(business.id);
-  const [tab, setTab] = useState<TabId>("todos");
+  const [tab, setTab] = useState<TabId>("initiatives");
   const [members, setMembers] = useState<TeamMember[]>(initialMembers);
 
   return (
@@ -95,12 +103,13 @@ export function SharedView({
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
-                className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
                   tab === t.id
                     ? `${business.tabActive} shadow-sm`
                     : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900"
                 }`}
               >
+                <t.Icon size={13} className={tab === t.id ? "" : "opacity-70"} />
                 {t.label}
               </button>
             ))}
@@ -109,6 +118,7 @@ export function SharedView({
 
         {/* Panels (key remounts + animates on tab switch) */}
         <div key={tab} className="panel-in w-full px-4 sm:px-8 lg:px-10 pt-5 pb-safe-10 flex-1">
+          {tab === "initiatives" && <InitiativesPanel businessId={business.id} initial={initialInitiatives} />}
           {tab === "todos"     && <TodosPanel businessId={business.id} initial={initialTodos} members={members} />}
           {tab === "pipeline"  && <PipelinePanel businessId={business.id} initial={initialLeads} />}
           {tab === "events"    && <EventsPanel businessId={business.id} initial={initialEvents} />}

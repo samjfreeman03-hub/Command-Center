@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
 import { BUSINESSES } from "./businesses";
-import type { Todo, Lead, LeadCategory, BizEvent, Note, ChatMessage, LeadAttachment, BusinessResource, TeamMember, BrandContact, BrandAttachment, OutreachTarget, OutreachStatus } from "./types";
+import type { Todo, Lead, LeadCategory, BizEvent, Initiative, Note, ChatMessage, LeadAttachment, BusinessResource, TeamMember, BrandContact, BrandAttachment, OutreachTarget, OutreachStatus } from "./types";
 
 // Email row types (internal to db.ts)
 type RawEmailRow = {
@@ -108,6 +108,22 @@ function migrate(db: Database.Database) {
       updated_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_events_business ON events(business_id);
+
+    CREATE TABLE IF NOT EXISTS initiatives (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      business_id TEXT NOT NULL REFERENCES businesses(id),
+      title TEXT NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'project',
+      horizon TEXT NOT NULL DEFAULT 'now',
+      status TEXT NOT NULL DEFAULT 'active',
+      next_step TEXT,
+      target_date TEXT,
+      notes TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      completed_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_initiatives_business ON initiatives(business_id);
 
     CREATE TABLE IF NOT EXISTS notes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -673,6 +689,97 @@ export const db = {
 
   deleteEvent(id: number) {
     getDb().prepare("DELETE FROM events WHERE id = ?").run(id);
+  },
+
+  // ---- Initiatives ----
+  listInitiatives(businessId: string): Initiative[] {
+    // Active before on-hold before done; within active, Now → Next → Later;
+    // most recently touched first inside each group.
+    return getDb()
+      .prepare(
+        `SELECT * FROM initiatives WHERE business_id = ?
+         ORDER BY
+           CASE status WHEN 'active' THEN 0 WHEN 'on_hold' THEN 1 ELSE 2 END,
+           CASE horizon WHEN 'now' THEN 0 WHEN 'next' THEN 1 ELSE 2 END,
+           updated_at DESC`
+      )
+      .all(businessId) as Initiative[];
+  },
+
+  getInitiative(id: number): Initiative {
+    return getDb().prepare("SELECT * FROM initiatives WHERE id = ?").get(id) as Initiative;
+  },
+
+  getInitiativeBizId(id: number): string | null {
+    const row = getDb().prepare("SELECT business_id FROM initiatives WHERE id = ?").get(id) as { business_id: string } | undefined;
+    return row?.business_id ?? null;
+  },
+
+  createInitiative(input: {
+    business_id: string;
+    title: string;
+    kind?: Initiative["kind"];
+    horizon?: Initiative["horizon"];
+    status?: Initiative["status"];
+    next_step?: string | null;
+    target_date?: string | null;
+    notes?: string | null;
+  }): Initiative {
+    const now = Date.now();
+    const result = getDb()
+      .prepare(
+        `INSERT INTO initiatives (business_id, title, kind, horizon, status, next_step, target_date, notes, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        input.business_id,
+        input.title.trim(),
+        input.kind ?? "project",
+        input.horizon ?? "now",
+        input.status ?? "active",
+        input.next_step ?? null,
+        input.target_date ?? null,
+        input.notes ?? null,
+        now,
+        now
+      );
+    return this.getInitiative(Number(result.lastInsertRowid));
+  },
+
+  updateInitiative(id: number, patch: Partial<Initiative>): Initiative {
+    const allowed = ["title", "kind", "horizon", "status", "next_step", "target_date", "notes"] as const;
+    const sets: string[] = [];
+    const args: unknown[] = [];
+    for (const key of allowed) {
+      if (key in patch) {
+        sets.push(`${key} = ?`);
+        args.push((patch as Record<string, unknown>)[key] ?? null);
+      }
+    }
+    if (sets.length === 0) return this.getInitiative(id);
+    // Keep completed_at in sync with the done status.
+    if ("status" in patch) {
+      sets.push("completed_at = ?");
+      args.push(patch.status === "done" ? Date.now() : null);
+    }
+    sets.push("updated_at = ?");
+    args.push(Date.now(), id);
+    getDb().prepare(`UPDATE initiatives SET ${sets.join(", ")} WHERE id = ?`).run(...args);
+    return this.getInitiative(id);
+  },
+
+  deleteInitiative(id: number) {
+    getDb().prepare("DELETE FROM initiatives WHERE id = ?").run(id);
+  },
+
+  /** Dashboard: active "Now" initiatives across all businesses. */
+  activeNowInitiatives(): Initiative[] {
+    return getDb()
+      .prepare(
+        `SELECT * FROM initiatives WHERE status = 'active' AND horizon = 'now'
+         ORDER BY updated_at DESC`
+      )
+      .all() as Initiative[];
   },
 
   // ---- Notes ----

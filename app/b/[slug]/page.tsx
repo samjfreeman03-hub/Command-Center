@@ -19,7 +19,7 @@ export default async function BusinessPage({
   const business = getBusiness(slug);
   if (!business) notFound();
 
-  const [todos, leads, resources, notes, chat, members, brands, outreach] = await Promise.all([
+  const [todos, leads, resources, notes, chat, members, brands, outreach, initiatives] = await Promise.all([
     Promise.resolve(db.listTodos({ businessId: slug })),
     Promise.resolve(db.listLeads({ businessId: slug })),
     Promise.resolve(db.listBusinessResources(slug)),
@@ -28,6 +28,7 @@ export default async function BusinessPage({
     Promise.resolve(db.listTeamMembers(slug)),
     Promise.resolve(db.listBrandContacts(slug)),
     Promise.resolve(db.listOutreach({ businessId: slug })),
+    Promise.resolve(db.listInitiatives(slug)),
   ]);
 
   const shareToken = db.getOrCreateShareToken(slug);
@@ -38,7 +39,7 @@ export default async function BusinessPage({
   return (
     <BusinessView
       business={business}
-      initialTab={tab ?? "todos"}
+      initialTab={tab ?? "initiatives"}
       initialTodos={todos}
       initialLeads={leads}
       initialResources={resources}
@@ -52,6 +53,7 @@ export default async function BusinessPage({
       leadCategories={leadCategories}
       leadCategoriesEnabled={leadCategoriesEnabled(slug)}
       initialEvents={events}
+      initialInitiatives={initiatives}
     />
   );
 }

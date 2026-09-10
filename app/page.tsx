@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { BUSINESSES } from "@/lib/businesses";
-import { ArrowUpRight, CheckCircle2, TrendingUp, Users, ListTodo } from "lucide-react";
+import { ArrowUpRight, CheckCircle2, TrendingUp, Users, ListTodo, Target, ArrowRight } from "lucide-react";
 import { DashboardTodos } from "@/components/dashboard-todos";
 import { ScratchpadPanel } from "@/components/scratchpad-panel";
 
@@ -32,9 +32,16 @@ export default function Dashboard() {
   const pipelineSummary = db.pipelineSummary();
   const todoCounts = db.todoCounts();
   const scratchpad = db.getAppState("scratchpad") ?? "";
+  const nowInitiatives = db.activeNowInitiatives();
 
   const todosByBusiness = new Map(todoCounts.map((t) => [t.business_id, t.open_count]));
   const pipelineByBusiness = new Map(pipelineSummary.map((p) => [p.business_id, p]));
+  const initiativesByBusiness = new Map<string, typeof nowInitiatives>();
+  for (const i of nowInitiatives) {
+    const list = initiativesByBusiness.get(i.business_id) ?? [];
+    list.push(i);
+    initiativesByBusiness.set(i.business_id, list);
+  }
 
   const totalPipeline = pipelineSummary.reduce((s, p) => s + p.pipeline_cents, 0);
   const totalLeads = pipelineSummary.reduce((s, p) => s + p.open_count, 0);
@@ -52,6 +59,7 @@ export default function Dashboard() {
         </div>
         {/* At-a-glance totals */}
         <div className="flex items-center gap-2 flex-wrap">
+          <HeaderStat icon={<Target size={13} />} label="in focus" value={nowInitiatives.length.toString()} />
           <HeaderStat icon={<ListTodo size={13} />} label="open todos" value={openTodos.length.toString()} />
           <HeaderStat icon={<Users size={13} />} label="active leads" value={totalLeads.toString()} />
           <HeaderStat icon={<TrendingUp size={13} />} label="pipeline" value={money(totalPipeline) === "—" ? "$0" : money(totalPipeline)} />
@@ -63,6 +71,7 @@ export default function Dashboard() {
         {BUSINESSES.map((b) => {
           const pipe = pipelineByBusiness.get(b.id);
           const open = todosByBusiness.get(b.id) ?? 0;
+          const focus = initiativesByBusiness.get(b.id) ?? [];
           return (
             <Link
               key={b.id}
@@ -94,6 +103,30 @@ export default function Dashboard() {
                 <Stat label="Leads" value={(pipe?.open_count ?? 0).toString()} />
                 <Stat label="Pipeline" value={money(pipe?.pipeline_cents ?? 0)} />
               </div>
+
+              {/* Focus initiatives (active + Now) */}
+              {focus.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-900 space-y-1.5">
+                  {focus.slice(0, 2).map((i) => (
+                    <div key={i.id} className="flex items-start gap-1.5 text-xs">
+                      <Target size={11} className="shrink-0 mt-[3px] text-zinc-400" />
+                      <div className="min-w-0">
+                        <span className="text-zinc-700 dark:text-zinc-300 font-medium">{i.title}</span>
+                        {i.next_step && (
+                          <span className="text-zinc-400 dark:text-zinc-600">
+                            {" "}<ArrowRight size={9} className="inline -mt-px" /> {i.next_step}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {focus.length > 2 && (
+                    <div className="text-[11px] text-zinc-400 dark:text-zinc-600 pl-[22px]">
+                      +{focus.length - 2} more in focus
+                    </div>
+                  )}
+                </div>
+              )}
             </Link>
           );
         })}

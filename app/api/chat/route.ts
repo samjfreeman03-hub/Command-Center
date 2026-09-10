@@ -139,6 +139,18 @@ export async function POST(req: Request) {
   const categoryNames = catsEnabled ? db.listLeadCategories(business_id).map((c) => c.name) : [];
   const evtsEnabled = eventsEnabled(business_id);
   const events = evtsEnabled ? db.listEvents(business_id) : [];
+  const initiatives = db.listInitiatives(business_id);
+
+  const initiativesBlock = initiatives.length
+    ? initiatives
+        .map(
+          (i) =>
+            `- [id:${i.id}] ${i.title} — ${i.kind}, horizon: ${i.horizon}, status: ${i.status}${
+              i.next_step ? `, next step: ${i.next_step}` : ""
+            }${i.target_date ? `, target: ${i.target_date}` : ""}${i.notes ? `, notes: ${i.notes}` : ""}`
+        )
+        .join("\n")
+    : "(no initiatives yet)";
 
   const eventsBlock = events.length
     ? events
@@ -233,7 +245,9 @@ export async function POST(req: Request) {
 Tagline: ${business.tagline}
 Today's date: ${new Date().toISOString().slice(0, 10)}
 
-You can BOTH answer questions AND take actions in this workspace using your tools. You can add or update CRM contacts, pipeline leads, and todos, and create notes. When the user asks you to add, import, log, update, or organize data — do it with tools, don't just describe how.
+You can BOTH answer questions AND take actions in this workspace using your tools. You can add or update initiatives, CRM contacts, pipeline leads, and todos, and create notes. When the user asks you to add, import, log, update, or organize data — do it with tools, don't just describe how.
+
+INITIATIVES vs TODOS: initiatives are high-level strategic items (major projects, key clients, priorities tracked over weeks) with a Now/Next/Later horizon; todos are single actionable tasks. If the user mentions a big project, an important client relationship, or something to "keep an eye on", it's an initiative; a discrete task is a todo.
 
 TOOL RULES:
 - Use the BULK array tools for lists ("add these 30 companies") — one tool call with all items, not 30 calls.
@@ -246,6 +260,9 @@ TOOL RULES:
 ${catsEnabled ? `\nAVAILABLE CATEGORIES for this business (usable on CRM contacts and leads): ${categoryNames.length ? categoryNames.join(", ") : "(none defined yet — user can add them in Pipeline → Manage)"}. Only apply these exact category names; never invent new ones.` : ""}
 
 You also have the following read context about this business. Use it to ground your answers. Cite specifics when relevant. If something is not present, say so honestly — do not invent.
+
+== INITIATIVES (high-level strategic priorities: Now = active focus, Next = queued, Later = radar) ==
+${initiativesBlock}
 
 == NOTES ==
 ${notesBlock}

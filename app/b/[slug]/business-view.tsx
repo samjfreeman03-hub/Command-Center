@@ -2,9 +2,10 @@
 
 import { useState, useRef } from "react";
 import type { Business } from "@/lib/businesses";
-import type { Todo, Lead, LeadCategory, BizEvent, Note, ChatMessage, BusinessResource, TeamMember, BrandContact, OutreachTarget } from "@/lib/types";
+import type { Todo, Lead, LeadCategory, BizEvent, Initiative, Note, ChatMessage, BusinessResource, TeamMember, BrandContact, OutreachTarget } from "@/lib/types";
 import { EventsPanel } from "@/components/events-panel";
 import { EVENTS_BUSINESS_IDS } from "@/lib/events-config";
+import { InitiativesPanel } from "@/components/initiatives-panel";
 import { TodosPanel } from "@/components/todos-panel";
 import { PipelinePanel } from "@/components/pipeline-panel";
 import { ResourcesPanel } from "@/components/resources-panel";
@@ -13,19 +14,23 @@ import { ChatPanel } from "@/components/chat-panel";
 import { TeamPanel } from "@/components/team-panel";
 import { BrandsPanel } from "@/components/brands-panel";
 import { OutreachPanel } from "@/components/outreach-panel";
-import { Link2, Check, Pencil, Send } from "lucide-react";
+import {
+  Link2, Check, Pencil, Send, Target, ListTodo, TrendingUp, CalendarDays,
+  Building2, FolderOpen, StickyNote, MessageSquare, Users,
+} from "lucide-react";
 import { OUTREACH_BUSINESS_IDS } from "@/lib/outreach-config";
 
 const TABS = [
-  { id: "todos",     label: "Todos" },
-  { id: "pipeline",  label: "Pipeline" },
-  { id: "events",    label: "Events" },
-  { id: "outreach",  label: "Outreach" },
-  { id: "brands",    label: "CRM" },
-  { id: "resources", label: "Resources" },
-  { id: "notes",     label: "Notes" },
-  { id: "chat",      label: "Chat" },
-  { id: "team",      label: "Team" },
+  { id: "initiatives", label: "Initiatives", Icon: Target },
+  { id: "todos",       label: "Todos",       Icon: ListTodo },
+  { id: "pipeline",    label: "Pipeline",    Icon: TrendingUp },
+  { id: "events",      label: "Events",      Icon: CalendarDays },
+  { id: "outreach",    label: "Outreach",    Icon: Send },
+  { id: "brands",      label: "CRM",         Icon: Building2 },
+  { id: "resources",   label: "Resources",   Icon: FolderOpen },
+  { id: "notes",       label: "Notes",       Icon: StickyNote },
+  { id: "chat",        label: "Chat",        Icon: MessageSquare },
+  { id: "team",        label: "Team",        Icon: Users },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -55,6 +60,7 @@ export function BusinessView({
   leadCategories,
   leadCategoriesEnabled,
   initialEvents,
+  initialInitiatives,
 }: {
   business: Business;
   initialTab: string;
@@ -71,10 +77,11 @@ export function BusinessView({
   leadCategories: LeadCategory[];
   leadCategoriesEnabled: boolean;
   initialEvents: BizEvent[];
+  initialInitiatives: Initiative[];
 }) {
   const tabs = tabsForBusiness(business.id);
   const [tab, setTabState] = useState<TabId>(
-    (tabs.find((t) => t.id === initialTab)?.id ?? "todos") as TabId
+    (tabs.find((t) => t.id === initialTab)?.id ?? "initiatives") as TabId
   );
 
   // Keep ?tab= in the URL so refresh/back keeps the active tab
@@ -190,12 +197,13 @@ export function BusinessView({
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
+              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
                 tab === t.id
                   ? `${business.tabActive} shadow-sm`
                   : "text-zinc-500 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900"
               }`}
             >
+              <t.Icon size={13} className={tab === t.id ? "" : "opacity-70"} />
               {t.label}
             </button>
           ))}
@@ -204,6 +212,7 @@ export function BusinessView({
 
       {/* ── Tab panels (key remounts + animates on tab switch) ── */}
       <div key={tab} className="panel-in w-full px-4 sm:px-8 lg:px-10 pt-5 pb-safe-10 flex-1">
+        {tab === "initiatives" && <InitiativesPanel businessId={business.id} initial={initialInitiatives} />}
         {tab === "todos"     && <TodosPanel businessId={business.id} initial={initialTodos} members={members} />}
         {tab === "pipeline"  && <PipelinePanel businessId={business.id} initial={initialLeads} categories={leadCategories} categoriesEnabled={leadCategoriesEnabled} />}
         {tab === "events"    && <EventsPanel businessId={business.id} initial={initialEvents} />}

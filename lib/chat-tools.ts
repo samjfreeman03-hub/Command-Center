@@ -199,6 +199,50 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "add_initiatives",
+    description:
+      "Add one or more initiatives for this business. Initiatives are HIGH-LEVEL strategic items — major projects, key clients/relationships, or priorities to keep top of mind — tracked over weeks, unlike todos (single actionable tasks). Duplicates (same title already active) are skipped automatically.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        initiatives: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string", description: "Initiative title (required)" },
+              kind: { type: "string", enum: ["project", "client", "idea", "watch"], description: "project = major project; client = key client/relationship; idea = opportunity to explore; watch = something to keep an eye on. Default project" },
+              horizon: { type: "string", enum: ["now", "next", "later"], description: "now = active focus, next = queued up, later = on the radar. Default now" },
+              next_step: { type: "string", description: "The single next concrete move" },
+              target_date: { type: "string", description: "YYYY-MM-DD" },
+              notes: { type: "string", description: "Context: why it matters, key people, open questions" },
+            },
+            required: ["title"],
+          },
+        },
+      },
+      required: ["initiatives"],
+    },
+  },
+  {
+    name: "update_initiative",
+    description: "Update fields on an existing initiative by its id (ids are shown in the INITIATIVES context). Use to change horizon (now/next/later), set the next step, put on hold, or mark done. Only include fields you want to change.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        id: { type: "number" },
+        title: { type: "string" },
+        kind: { type: "string", enum: ["project", "client", "idea", "watch"] },
+        horizon: { type: "string", enum: ["now", "next", "later"] },
+        status: { type: "string", enum: ["active", "on_hold", "done"] },
+        next_step: { type: "string" },
+        target_date: { type: "string" },
+        notes: { type: "string" },
+      },
+      required: ["id"],
+    },
+  },
+  {
     name: "create_note",
     description: "Create a note for this business (meeting recaps, research, briefs — notes feed future chat context).",
     input_schema: {
@@ -402,6 +446,43 @@ export function executeChatTool(businessId: string, name: string, input: any): R
         }
         const updated = db.updateEvent(id, patch);
         return { ok: true, updated: { id: updated.id, name: updated.name, status: updated.status } };
+      }
+
+      case "add_initiatives": {
+        const items: any[] = Array.isArray(input?.initiatives) ? input.initiatives : [];
+        const existing = db.listInitiatives(businessId);
+        const seen = new Set(
+          existing.filter((i) => i.status !== "done").map((i) => i.title.toLowerCase().trim())
+        );
+        let created = 0, skipped = 0;
+        for (const it of items) {
+          const title = String(it?.title ?? "").trim();
+          if (!title) { skipped++; continue; }
+          if (seen.has(title.toLowerCase())) { skipped++; continue; }
+          db.createInitiative({
+            business_id: businessId,
+            title,
+            kind: it?.kind,
+            horizon: it?.horizon,
+            next_step: it?.next_step,
+            target_date: it?.target_date,
+            notes: it?.notes,
+          });
+          seen.add(title.toLowerCase());
+          created++;
+        }
+        return { ok: true, created, skipped_duplicates_or_invalid: skipped };
+      }
+
+      case "update_initiative": {
+        const id = Number(input?.id);
+        if (!id || db.getInitiativeBizId(id) !== businessId) return { ok: false, error: "No initiative with that id in this business" };
+        const patch: Record<string, unknown> = {};
+        for (const f of ["title", "kind", "horizon", "status", "next_step", "target_date", "notes"] as const) {
+          if (f in (input ?? {})) patch[f] = input[f];
+        }
+        const updated = db.updateInitiative(id, patch);
+        return { ok: true, updated: { id: updated.id, title: updated.title, horizon: updated.horizon, status: updated.status } };
       }
 
       case "create_note": {
