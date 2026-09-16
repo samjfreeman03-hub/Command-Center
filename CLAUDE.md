@@ -1233,7 +1233,13 @@ Known deferred items (user-acknowledged, build when asked):
   across devices. `GET/PUT /api/scratchpad`, admin-only, 100KB cap.
 - Autosave per the pattern in §15 Component Patterns. Clear button w/ confirm.
 - Organize (2026-09-16): admin-only POST /api/scratchpad/organize uses Sonnet 4.6
-  to group notes without summarizing away details. Returns a preview only; Apply
+  to group notes without summarizing away details. Certainty-first grouping:
+  each line is judged by its own text alone (never by neighbors or named
+  people); anything ambiguous lands in an "Uncategorized" section that is
+  always last (user prefers uncategorized over miscategorized). Lines the
+  user indented beneath a company heading inherit that company. The prompt
+  includes a worked example because instructions alone did not stop
+  adjacency-based grouping. Returns a preview only; Apply
   saves through existing PUT. Discard leaves original intact. Undo available in
   the current session until subsequent edits; no durable version history.
   Stale previews cannot replace newer edits. Autosaves serialize requests.
