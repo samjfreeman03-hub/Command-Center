@@ -18,6 +18,7 @@ export function ScratchpadPanel({ initialValue }: { initialValue: string }) {
   const [preview, setPreview] = useState<{ original: string; organized: string } | null>(null);
   const [undo, setUndo] = useState<{ original: string; organized: string } | null>(null);
   const organizingRef = useRef(false);
+  const previewRef = useRef<HTMLElement>(null);
   const saving = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latest = useRef(value);
@@ -76,6 +77,12 @@ export function ScratchpadPanel({ initialValue }: { initialValue: string }) {
       window.removeEventListener("pagehide", flush);
     };
   }, [saveNow]);
+
+  // Bring the preview into view when it arrives — with a tall scratchpad it
+  // renders below the fold and is otherwise easy to miss entirely.
+  useEffect(() => {
+    if (preview) previewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [preview]);
 
   function changeValue(text: string) {
     latest.current = text;
@@ -183,10 +190,10 @@ export function ScratchpadPanel({ initialValue }: { initialValue: string }) {
         placeholder={"Quick to-dos, numbers, names, anything…\n\n- call the venue back\n- $ figure for the method renewal\n- idea: rooftop for TechWeek closing"}
         className="w-full bg-transparent text-sm leading-relaxed text-zinc-800 dark:text-zinc-200 outline-none resize-none placeholder:text-zinc-300 dark:placeholder:text-zinc-700"
       />
-      {preview && <section aria-label="Organized preview" className="mt-5 border-t border-zinc-200 dark:border-zinc-800 pt-4">
-        <h3 className="text-sm font-semibold">Organized preview</h3>
-        <p className="mt-1 text-xs text-zinc-500">Review before applying. Your original stays unchanged until you apply.</p>
-        <pre className="my-3 max-h-96 overflow-y-auto whitespace-pre-wrap break-words rounded-xl bg-zinc-50 dark:bg-zinc-900 p-4 font-sans text-sm leading-relaxed">{preview.organized}</pre>
+      {preview && <section ref={previewRef} aria-label="Organized preview" className="mt-5 scroll-mt-4 rounded-xl border-2 border-zinc-900/20 dark:border-zinc-100/20 bg-zinc-50 dark:bg-zinc-900 p-4">
+        <h3 className="text-sm font-semibold inline-flex items-center gap-1.5"><Sparkles size={13} /> Organized preview</h3>
+        <p className="mt-1 text-xs text-zinc-500">Review before applying. Your original stays unchanged until you hit Apply. Refreshing discards this preview.</p>
+        <pre className="my-3 max-h-96 overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-4 font-sans text-sm leading-relaxed">{preview.organized}</pre>
         {value !== preview.original && <p role="status" className="mb-2 text-sm text-amber-700 dark:text-amber-400">You edited the scratchpad after organizing. Organize again to include your latest changes.</p>}
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={applyPreview} disabled={value !== preview.original}
