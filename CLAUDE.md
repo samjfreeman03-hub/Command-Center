@@ -1034,7 +1034,7 @@ runtime — don't reference paths inside the prompts intended for the LLM.
 ## 22. Outstanding Security Items
 
 1. **Anthropic API key** — rotate at https://console.anthropic.com/settings/keys.
-   Update both Railway Variables and `~/command-center/.env.local`.
+   Update both Railway Variables and `.env.local` in the repo root (`~/Desktop/Sam's AI Projects/Sam's Command Center`).
 2. **GitHub PAT** — consider switching to SSH for permanence:
    ```bash
    git remote set-url origin git@github.com:samjfreeman03-hub/Command-Center.git
@@ -1259,4 +1259,4 @@ Known deferred items (user-acknowledged, build when asked):
 *End of CLAUDE.md.* Update whenever a major architectural change ships — same
 session as the change, not later. `git log --oneline` + commit bodies fill any
 gap between this doc and the code.
-Last updated: 2026-09-10 (PT).
+Last updated: 2026-09-16 (PT).
