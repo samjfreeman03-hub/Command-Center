@@ -2,9 +2,16 @@
 
 import { useState } from "react";
 import type { TeamMember, Todo } from "@/lib/types";
-import { Plus, Trash2, UserCircle2 } from "lucide-react";
-import { format, parseISO, isPast, isToday } from "date-fns";
+import { AlertCircle, Calendar, ChevronDown, Plus, Trash2, Users } from "lucide-react";
+import { addDays, format, parseISO } from "date-fns";
 import { useShareHeaders } from "@/lib/share-context";
+import { usePanelState, usePanelValue } from "@/lib/panel-cache";
+import { Button, IconButton } from "@/components/ui/button";
+import { Field, Input } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
+import { confirmDialog, toast } from "@/components/ui/host";
+import { Badge, Card, EmptyState, SectionHeader } from "@/components/ui/display";
+import { cn } from "@/lib/cn";
 
 export const MEMBER_COLORS = [
   { bg: "bg-blue-500",    ring: "ring-blue-500",    light: "bg-blue-50 dark:bg-blue-950/30",    text: "text-blue-700 dark:text-blue-300" },
@@ -18,18 +25,66 @@ export const MEMBER_COLORS = [
 ] as const;
 
 export function memberInitials(name: string) {
-  return name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
+  return name.split(" ").filter(Boolean).map((w) => w[0]).join("").toUpperCase().slice(0, 2);
 }
 
-export function MemberAvatar({ member, size = "md" }: { member: TeamMember; size?: "sm" | "md" | "lg" }) {
+export function MemberAvatar({
+  member,
+  size = "md",
+  className,
+}: {
+  member: TeamMember;
+  size?: "sm" | "md" | "lg";
+  className?: string;
+}) {
   const color = MEMBER_COLORS[member.color_index % MEMBER_COLORS.length];
-  const sz = size === "sm" ? "w-5 h-5 text-[10px]" : size === "lg" ? "w-10 h-10 text-base" : "w-7 h-7 text-xs";
+  const sz =
+    size === "sm" ? "h-[22px] w-[22px] text-[11px]" : size === "lg" ? "h-10 w-10 text-base" : "h-8 w-8 text-xs";
   return (
-    <div className={`${sz} ${color.bg} rounded-full flex items-center justify-center font-semibold text-white shrink-0`}>
+    <span
+      title={member.name}
+      className={cn(sz, color.bg, "flex shrink-0 items-center justify-center rounded-full font-semibold text-white", className)}
+    >
       {memberInitials(member.name)}
-    </div>
+    </span>
   );
 }
+
+// ── Due date helpers (shared with the Todos panel) ───────────────────────────
+
+export type DueBucket = "overdue" | "today" | "week" | "later" | "none";
+
+/** Buckets a `YYYY-MM-DD` due date against the local calendar day. */
+export function dueBucket(dueDate: string | null | undefined): DueBucket {
+  if (!dueDate) return "none";
+  const d = dueDate.slice(0, 10);
+  const now = new Date();
+  const today = format(now, "yyyy-MM-dd");
+  if (d < today) return "overdue";
+  if (d === today) return "today";
+  if (d <= format(addDays(now, 7), "yyyy-MM-dd")) return "week";
+  return "later";
+}
+
+/** Due date chip: red with an alert icon when overdue, amber today, neutral otherwise. */
+export function DueBadge({ dueDate, muted }: { dueDate: string; muted?: boolean }) {
+  const bucket = muted ? "later" : dueBucket(dueDate);
+  const label = format(parseISO(dueDate.slice(0, 10)), "MMM d");
+  if (bucket === "overdue") {
+    return (
+      <Badge tone="red">
+        <AlertCircle size={11} /> {label}
+      </Badge>
+    );
+  }
+  return (
+    <Badge tone={bucket === "today" ? "amber" : "neutral"} className={muted ? "opacity-60" : undefined}>
+      <Calendar size={11} /> {bucket === "today" ? "Today" : label}
+    </Badge>
+  );
+}
+
+// ── Panel ────────────────────────────────────────────────────────────────────
 
 export function TeamPanel({
   businessId,
@@ -42,10 +97,13 @@ export function TeamPanel({
   initialTodos: Todo[];
   onMembersChange: (members: TeamMember[]) => void;
 }) {
-  const [members, setMembers] = useState(initialMembers);
-  const [todos] = useState(initialTodos);
+  const [members, setMembers] = usePanelState("members", initialMembers);
+  const todos = usePanelValue<Todo[]>("todos", initialTodos);
+  const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState("");
   const [title, setTitle] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
   const shareHeaders = useShareHeaders();
 
   function updateMembers(next: TeamMember[]) {
@@ -53,147 +111,208 @@ export function TeamPanel({
     onMembersChange(next);
   }
 
-  async function addMember(e: React.FormEvent) {
-    e.preventDefault();
-    if (!name.trim()) return;
-    const res = await fetch("/api/team", {
-      method: "POST",
-      headers: { "content-type": "application/json", ...shareHeaders },
-      body: JSON.stringify({ business_id: businessId, name: name.trim(), title: title.trim() || undefined }),
-    });
-    if (res.ok) {
+  function closeAdd() {
+    setShowAdd(false);
+    setName("");
+    setTitle("");
+  }
+
+  async function addMember() {
+    if (!name.trim() || saving) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/team", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...shareHeaders },
+        body: JSON.stringify({ business_id: businessId, name: name.trim(), title: title.trim() || undefined }),
+      });
+      if (!res.ok) throw new Error("failed");
       const created: TeamMember = await res.json();
       updateMembers([...members, created]);
-      setName("");
-      setTitle("");
+      closeAdd();
+    } catch {
+      toast("Could not add member", { tone: "error" });
+    } finally {
+      setSaving(false);
     }
   }
 
-  async function removeMember(id: number) {
-    if (!confirm("Remove this team member? Their task assignments will be cleared.")) return;
-    await fetch(`/api/team/${id}`, { method: "DELETE", headers: shareHeaders });
-    updateMembers(members.filter((m) => m.id !== id));
+  async function removeMember(m: TeamMember) {
+    const ok = await confirmDialog({
+      title: `Remove ${m.name}?`,
+      description: "Their todo assignments will be cleared.",
+      confirmLabel: "Remove",
+      destructive: true,
+    });
+    if (!ok) return;
+    const prev = members;
+    updateMembers(members.filter((x) => x.id !== m.id));
+    try {
+      const res = await fetch(`/api/team/${m.id}`, { method: "DELETE", headers: shareHeaders });
+      if (!res.ok) throw new Error("failed");
+    } catch {
+      updateMembers(prev);
+      toast("Could not remove member", { tone: "error" });
+    }
   }
 
+  function toggleCollapsed(id: number) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const memberIds = new Set(members.map((m) => m.id));
   const openTodos = todos.filter((t) => t.status === "open");
-  const unassigned = openTodos.filter((t) => !t.assignee_ids?.length);
+  // A todo whose only assignees were removed counts as unassigned.
+  const unassigned = openTodos.filter((t) => !(t.assignee_ids ?? []).some((id) => memberIds.has(id)));
 
   return (
-    <div className="space-y-6">
-      {/* Add member */}
-      <form
-        onSubmit={addMember}
-        className="flex flex-col sm:flex-row gap-2 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-4"
-      >
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Name"
-          className="flex-1 h-9 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-sm px-3 rounded-lg outline-none focus:border-zinc-400 dark:focus:border-zinc-600 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 text-zinc-900 dark:text-zinc-100 transition-colors"
-        />
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Title / role"
-          className="flex-1 h-9 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-sm px-3 rounded-lg outline-none focus:border-zinc-400 dark:focus:border-zinc-600 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 text-zinc-700 dark:text-zinc-300 transition-colors"
-        />
-        <button
-          type="submit"
-          disabled={!name.trim()}
-          className="h-9 px-4 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-sm font-medium rounded-lg hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-40 transition-colors inline-flex items-center gap-1.5 shrink-0"
-        >
+    <div>
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="text-[13px] text-ink-3">
+          <span className="font-medium tabular-nums text-ink">{members.length}</span>{" "}
+          {members.length === 1 ? "member" : "members"},{" "}
+          <span className="font-medium tabular-nums text-ink">{openTodos.length}</span> open{" "}
+          {openTodos.length === 1 ? "todo" : "todos"}
+        </div>
+        <Button variant="primary" onClick={() => setShowAdd(true)}>
           <Plus size={14} /> Add member
-        </button>
-      </form>
+        </Button>
+      </div>
 
-      {/* Team breakdown */}
       {members.length === 0 ? (
-        <div className="text-sm text-zinc-500 py-10 text-center">No team members yet. Add someone above.</div>
+        <Card>
+          <EmptyState
+            icon={<Users size={18} />}
+            title="No team members yet"
+            body="Add the people you work with so todos can be assigned to them."
+            action={
+              <Button onClick={() => setShowAdd(true)}>
+                <Plus size={14} /> Add member
+              </Button>
+            }
+          />
+        </Card>
       ) : (
-        <div className="space-y-3">
-          <div className="text-xs uppercase tracking-wider text-zinc-500">
-            {members.length} {members.length === 1 ? "member" : "members"} · {openTodos.length} open tasks
-          </div>
-
-          {members.map((m) => {
-            const mTodos = openTodos.filter((t) => t.assignee_ids?.includes(m.id));
-            const color = MEMBER_COLORS[m.color_index % MEMBER_COLORS.length];
-            return (
-              <div key={m.id} className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden">
-                <div className="flex items-center gap-3 px-4 py-3">
-                  <MemberAvatar member={m} size="lg" />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{m.name}</div>
-                    {m.title && <div className="text-xs text-zinc-500">{m.title}</div>}
+        <div className="space-y-6">
+          <Card>
+            <div className="divide-y divide-line">
+              {members.map((m) => {
+                const mTodos = openTodos.filter((t) => t.assignee_ids?.includes(m.id));
+                const isOpen = mTodos.length > 0 && !collapsed.has(m.id);
+                return (
+                  <div key={m.id}>
+                    <div className="group flex items-center gap-1 pr-3 transition-colors hover:bg-hover">
+                      <button
+                        type="button"
+                        onClick={() => toggleCollapsed(m.id)}
+                        disabled={mTodos.length === 0}
+                        aria-expanded={isOpen}
+                        className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-4 text-left"
+                      >
+                        <MemberAvatar member={m} />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium text-ink">{m.name}</div>
+                          {m.title && <div className="truncate text-xs text-ink-3">{m.title}</div>}
+                        </div>
+                        <Badge className={mTodos.length === 0 ? "opacity-60" : undefined}>
+                          <span className="tabular-nums">{mTodos.length}</span> open
+                        </Badge>
+                        <ChevronDown
+                          size={14}
+                          className={cn(
+                            "shrink-0 text-ink-3 transition-transform",
+                            !isOpen && "-rotate-90",
+                            mTodos.length === 0 && "invisible"
+                          )}
+                        />
+                      </button>
+                      <IconButton
+                        label="Remove member"
+                        size="sm"
+                        variant="danger"
+                        onClick={() => removeMember(m)}
+                        className="md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+                      >
+                        <Trash2 size={14} />
+                      </IconButton>
+                    </div>
+                    {isOpen && (
+                      <div className="border-t border-line bg-sunken/50 py-1">
+                        {mTodos.map((t) => (
+                          <TaskRow key={t.id} todo={t} />
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <div className={`text-xs font-medium px-2 py-0.5 rounded-full ${color.light} ${color.text} shrink-0`}>
-                    {mTodos.length} {mTodos.length === 1 ? "task" : "tasks"}
-                  </div>
-                  <button
-                    onClick={() => removeMember(m.id)}
-                    className="text-zinc-400 hover:text-red-500 dark:hover:text-red-400 p-1 shrink-0"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-                {mTodos.length > 0 && (
-                  <div className="border-t border-zinc-100 dark:border-zinc-900 divide-y divide-zinc-100 dark:divide-zinc-900">
-                    {mTodos.map((t) => (
-                      <TaskRow key={t.id} todo={t} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          </Card>
 
           {unassigned.length > 0 && (
-            <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden">
-              <div className="flex items-center gap-3 px-4 py-3">
-                <div className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
-                  <UserCircle2 size={20} className="text-zinc-400" />
+            <div>
+              <SectionHeader title="Unassigned" count={unassigned.length} hint="Open todos with no owner" />
+              <Card>
+                <div className="py-1">
+                  {unassigned.map((t) => (
+                    <TaskRow key={t.id} todo={t} flush />
+                  ))}
                 </div>
-                <div className="flex-1">
-                  <div className="text-sm font-medium text-zinc-500">Unassigned</div>
-                </div>
-                <div className="text-xs font-medium px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-900 text-zinc-500">
-                  {unassigned.length} {unassigned.length === 1 ? "task" : "tasks"}
-                </div>
-              </div>
-              <div className="border-t border-zinc-100 dark:border-zinc-900 divide-y divide-zinc-100 dark:divide-zinc-900">
-                {unassigned.map((t) => (
-                  <TaskRow key={t.id} todo={t} />
-                ))}
-              </div>
+              </Card>
             </div>
           )}
         </div>
       )}
+
+      <Modal
+        open={showAdd}
+        onClose={closeAdd}
+        title="Add member"
+        size="sm"
+        onSubmit={addMember}
+        footer={
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant="ghost" onClick={closeAdd}>
+              Cancel
+            </Button>
+            <Button variant="primary" type="submit" disabled={!name.trim()} loading={saving}>
+              Add member
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <Field label="Name" required>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" autoFocus />
+          </Field>
+          <Field label="Title">
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Role or title" />
+          </Field>
+        </div>
+      </Modal>
     </div>
   );
 }
 
-function TaskRow({ todo }: { todo: Todo }) {
-  const overdue = todo.due_date
-    ? isPast(parseISO(todo.due_date)) && !isToday(parseISO(todo.due_date))
-    : false;
+function TaskRow({ todo, flush }: { todo: Todo; flush?: boolean }) {
   return (
-    <div className="px-4 py-2.5 flex items-start gap-2">
-      <div className={`mt-0.5 w-1.5 h-1.5 rounded-full shrink-0 ${
-        todo.priority === "high" ? "bg-amber-500" : todo.priority === "low" ? "bg-zinc-300 dark:bg-zinc-700" : "bg-zinc-400"
-      }`} />
-      <div className="flex-1 min-w-0">
-        <div className="text-sm text-zinc-800 dark:text-zinc-200">{todo.title}</div>
-        <div className="flex items-center gap-2 mt-0.5 text-xs text-zinc-400">
-          {todo.priority !== "medium" && (
-            <span className={todo.priority === "high" ? "text-amber-600 dark:text-amber-400" : ""}>{todo.priority}</span>
-          )}
-          {todo.due_date && (
-            <span className={overdue ? "text-red-500 dark:text-red-400" : ""}>
-              {overdue ? "overdue · " : ""}{format(parseISO(todo.due_date), "MMM d")}
-            </span>
-          )}
-        </div>
+    <div className={cn("flex items-start gap-2.5 py-2 pr-4", flush ? "pl-4" : "pl-[60px]")}>
+      <span
+        className={cn(
+          "mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full",
+          todo.priority === "high" ? "bg-amber-500" : todo.priority === "low" ? "bg-ink-4/50" : "bg-ink-4"
+        )}
+      />
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="min-w-0 text-[13px] leading-5 text-ink">{todo.title}</span>
+        {todo.due_date && <DueBadge dueDate={todo.due_date} />}
+        {todo.priority === "high" && <Badge tone="amber">High</Badge>}
+        {todo.priority === "low" && <span className="text-xs text-ink-3">Low</span>}
       </div>
     </div>
   );

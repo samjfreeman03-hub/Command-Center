@@ -1,18 +1,39 @@
 "use client";
 
-import { useState } from "react";
-import type { Business } from "@/lib/businesses";
-import { Lock, Loader2 } from "lucide-react";
+import { useRef, useState } from "react";
+import { AlertCircle } from "lucide-react";
+import { brandVars, type Business } from "@/lib/businesses";
+import { Button } from "@/components/ui/button";
+import { Field, Input } from "@/components/ui/input";
+import { BrandTile } from "@/components/ui/display";
+
+/** Quick horizontal shake. Skipped when the visitor prefers reduced motion. */
+function shake(el: HTMLElement | null) {
+  if (!el || typeof el.animate !== "function") return;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  el.animate(
+    [
+      { transform: "translateX(0)" },
+      { transform: "translateX(-6px)" },
+      { transform: "translateX(5px)" },
+      { transform: "translateX(-3px)" },
+      { transform: "translateX(2px)" },
+      { transform: "translateX(0)" },
+    ],
+    { duration: 320, easing: "ease-out" }
+  );
+}
 
 /**
  * Client-side password gate shown when a visitor lands on /s/[token] without
  * a valid share-auth cookie. Submits to /api/share-auth/[business_id], which
- * sets the cookie on success — then reloads to render the SharedView.
+ * sets the cookie on success, then reloads to render the SharedView.
  */
 export function SharePasswordGate({ business }: { business: Business }) {
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const cardRef = useRef<HTMLFormElement>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -26,68 +47,76 @@ export function SharePasswordGate({ business }: { business: Business }) {
         body: JSON.stringify({ password }),
       });
       if (res.ok) {
-        // Cookie is now set — reload so the server-rendered page picks it up
+        // Cookie is now set. Reload so the server-rendered page picks it up.
         window.location.reload();
       } else {
         const data: { error?: string } = await res.json().catch(() => ({}));
-        setError(data.error === "Wrong password" ? "Wrong password — ask Sam for the team password." : (data.error ?? "Login failed."));
+        setError(data.error === "Wrong password" ? "Wrong password. Ask Sam for the team password." : (data.error ?? "Login failed."));
         setSubmitting(false);
+        shake(cardRef.current);
       }
     } catch {
-      setError("Network error — please try again.");
+      setError("Network error. Please try again.");
       setSubmitting(false);
+      shake(cardRef.current);
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-[radial-gradient(ellipse_at_top,_#ffffff_0%,_#f4f4f5_55%,_#e4e4e7_100%)]">
+    <div
+      className="brand-scope flex min-h-screen items-center justify-center bg-shell px-4 py-10"
+      style={brandVars(business)}
+    >
       <form
+        ref={cardRef}
         onSubmit={submit}
-        className="w-full max-w-md bg-white border border-zinc-200/80 rounded-2xl p-7 space-y-5 shadow-xl shadow-zinc-200/50"
+        className="pop-in w-full max-w-[380px] rounded-2xl border border-line bg-raised p-8 shadow-pop"
       >
-        <div className="space-y-2.5">
-          <div
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${business.accentBg} ${business.accent} ring-1`}
-          >
-            <span className={`w-1.5 h-1.5 rounded-full ${business.dot}`} />
-            <span>{business.fullName}</span>
+        <div className="mb-7">
+          <div className="mb-5">
+            <BrandTile business={business} size="lg" />
           </div>
-          <h1 className={`text-2xl font-bold tracking-tight ${business.accent}`}>
-            {business.name}
-          </h1>
-          <p className="text-sm text-zinc-500 leading-snug flex items-center gap-1.5">
-            <Lock size={12} /> Team password required
+          <h1 className="text-xl font-semibold tracking-tight text-ink">{business.name}</h1>
+          <p className="mt-1 text-[13px] leading-snug text-ink-3">
+            Team workspace. Enter the team password to continue.
           </p>
         </div>
 
-        <div className="space-y-1.5">
-          <label htmlFor="share-password" className="text-xs text-zinc-500 block">
-            Password
-          </label>
-          <input
-            id="share-password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder=""
-            autoFocus
-            autoComplete="current-password"
-            disabled={submitting}
-            className="w-full px-3 py-2 text-sm rounded-md border border-zinc-200 bg-white text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-300 disabled:opacity-50"
-          />
-          {error && (
-            <p className="text-xs text-rose-600 pt-1">{error}</p>
-          )}
+        <div className="space-y-4">
+          <div>
+            <Field label="Password">
+              <Input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoFocus
+                autoComplete="current-password"
+                disabled={submitting}
+                aria-invalid={error ? true : undefined}
+              />
+            </Field>
+            {error && (
+              <p role="alert" className="mt-1.5 flex items-start gap-1.5 text-xs text-red-600 dark:text-red-400">
+                <AlertCircle size={13} className="mt-px shrink-0" />
+                {error}
+              </p>
+            )}
+          </div>
+          <Button
+            type="submit"
+            variant="brand"
+            size="lg"
+            className="w-full"
+            loading={submitting}
+            disabled={!password.trim()}
+          >
+            Continue
+          </Button>
         </div>
 
-        <button
-          type="submit"
-          disabled={submitting || !password.trim()}
-          className="w-full inline-flex items-center justify-center gap-2 bg-zinc-900 text-white text-sm font-medium py-2.5 rounded-md hover:bg-zinc-800 disabled:opacity-50 transition-colors"
-        >
-          {submitting && <Loader2 size={14} className="animate-spin" />}
-          {submitting ? "Checking..." : "Continue"}
-        </button>
+        <p className="mt-5 text-center text-xs text-ink-3">
+          Need access? Ask Sam for the team password.
+        </p>
       </form>
     </div>
   );

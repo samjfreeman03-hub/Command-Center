@@ -1,23 +1,50 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { StickyNote, Check, Loader2, Trash2, AlertTriangle, Sparkles, Undo2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Check, Loader2, Trash2, AlertTriangle, Sparkles, Undo2, Send } from "lucide-react";
 import { AutoTextarea } from "@/components/auto-textarea";
+import { BUSINESSES } from "@/lib/businesses";
+import { Button, IconButton } from "@/components/ui/button";
+import { Input, Select } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
+import { Badge, Card, SectionHeader } from "@/components/ui/display";
+import { confirmDialog, toast } from "@/components/ui/host";
+import { refreshNav } from "@/lib/ui-events";
+import { cn } from "@/lib/cn";
+
+type Proposal = {
+  line_index: number;
+  type: "todo" | "lead" | "initiative";
+  business_id: string | null;
+  title: string;
+  priority: "low" | "medium" | "high" | null;
+  due_date: string | null;
+  company: string | null;
+};
+type ReviewItem = Proposal & { checked: boolean };
 
 /**
  * Dashboard scratchpad: free-form quick notes/todos. Persisted server-side
  * (app_state table) so it follows the user across devices and survives
  * refreshes. Autosaves ~600ms after typing stops; flushes immediately when
  * the tab is hidden/closed so fast exits don't lose the last keystrokes.
+ *
+ * Two AI actions, both preview-first (nothing changes until you confirm):
+ *  - Organize: regroup the text itself.
+ *  - File: turn lines into real todos / leads / initiatives in the right business.
  */
 export function ScratchpadPanel({ initialValue }: { initialValue: string }) {
+  const router = useRouter();
   const [value, setValue] = useState(initialValue);
   const [status, setStatus] = useState<"idle" | "dirty" | "saving" | "saved" | "error">("idle");
   const [organizing, setOrganizing] = useState(false);
-  const [organizeError, setOrganizeError] = useState("");
   const [preview, setPreview] = useState<{ original: string; organized: string } | null>(null);
   const [undo, setUndo] = useState<{ original: string; organized: string } | null>(null);
-  const organizingRef = useRef(false);
+  const [filing, setFiling] = useState(false);
+  const [review, setReview] = useState<{ original: string; items: ReviewItem[] } | null>(null);
+  const [applying, setApplying] = useState(false);
+  const busyRef = useRef(false);
   const previewRef = useRef<HTMLElement>(null);
   const saving = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -78,10 +105,10 @@ export function ScratchpadPanel({ initialValue }: { initialValue: string }) {
     };
   }, [saveNow]);
 
-  // Bring the preview into view when it arrives — with a tall scratchpad it
+  // Bring the preview into view when it arrives: with a tall scratchpad it
   // renders below the fold and is otherwise easy to miss entirely.
   useEffect(() => {
-    if (preview) previewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (preview) previewRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [preview]);
 
   function changeValue(text: string) {
@@ -89,12 +116,13 @@ export function ScratchpadPanel({ initialValue }: { initialValue: string }) {
     setValue(text);
   }
 
+  // ── Organize ──────────────────────────────────────────────────────────────
+
   async function organize() {
-    if (organizingRef.current || !latest.current.trim()) return;
+    if (busyRef.current || !latest.current.trim()) return;
     const original = latest.current;
-    organizingRef.current = true;
+    busyRef.current = true;
     setOrganizing(true);
-    setOrganizeError("");
     setPreview(null);
     try {
       const res = await fetch("/api/scratchpad/organize", {
@@ -109,9 +137,9 @@ export function ScratchpadPanel({ initialValue }: { initialValue: string }) {
       }
       setPreview({ original, organized: data.value });
     } catch (error) {
-      setOrganizeError(error instanceof Error ? error.message : "Could not organize. Please try again.");
+      toast(error instanceof Error ? error.message : "Could not organize. Please try again.", { tone: "error" });
     } finally {
-      organizingRef.current = false;
+      busyRef.current = false;
       setOrganizing(false);
     }
   }
@@ -131,76 +159,235 @@ export function ScratchpadPanel({ initialValue }: { initialValue: string }) {
     setUndo(null);
   }
 
-  function clearAll() {
+  // ── File to tabs ──────────────────────────────────────────────────────────
+
+  async function proposeFiling() {
+    if (busyRef.current || !latest.current.trim()) return;
+    const original = latest.current;
+    busyRef.current = true;
+    setFiling(true);
+    try {
+      const res = await fetch("/api/scratchpad/file", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ value: original }),
+        signal: AbortSignal.timeout(60000),
+      });
+      const data = await res.json();
+      if (!res.ok || !Array.isArray(data.items)) throw new Error(data.error || "Could not read the scratchpad.");
+      if (data.items.length === 0) {
+        toast("Nothing here looks like a task, deal or initiative yet");
+        return;
+      }
+      // Pre-check only what the AI was certain about; the rest waits for a business.
+      setReview({ original, items: (data.items as Proposal[]).map((p) => ({ ...p, checked: p.business_id !== null })) });
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Could not read the scratchpad.", { tone: "error" });
+    } finally {
+      busyRef.current = false;
+      setFiling(false);
+    }
+  }
+
+  function patchItem(index: number, patch: Partial<ReviewItem>) {
+    setReview((r) => (r ? { ...r, items: r.items.map((it, i) => (i === index ? { ...it, ...patch } : it)) } : r));
+  }
+
+  async function applyFiling() {
+    if (!review) return;
+    if (latest.current !== review.original) {
+      toast("The scratchpad changed since this was prepared. Run File again.", { tone: "error" });
+      setReview(null);
+      return;
+    }
+    const chosen = review.items.filter((it) => it.checked && it.business_id && it.title.trim());
+    if (chosen.length === 0) return;
+    setApplying(true);
+    const filed: number[] = [];
+    for (const it of chosen) {
+      const base = { business_id: it.business_id, title: it.title.trim() };
+      const request =
+        it.type === "todo"
+          ? { url: "/api/todos", body: { ...base, priority: it.priority ?? undefined, due_date: it.due_date ?? undefined } }
+          : it.type === "lead"
+            ? { url: "/api/leads", body: { business_id: it.business_id, name: it.title.trim(), company: it.company ?? undefined, next_action_date: it.due_date ?? undefined } }
+            : { url: "/api/initiatives", body: { ...base, horizon: "next", target_date: it.due_date ?? undefined } };
+      try {
+        const res = await fetch(request.url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(request.body),
+        });
+        if (res.ok) filed.push(it.line_index);
+      } catch {
+        /* counted as not filed below */
+      }
+    }
+    // Remove exactly the lines that made it into a tab; everything else stays put.
+    if (filed.length > 0) {
+      const drop = new Set(filed);
+      const remaining = review.original
+        .split("\n")
+        .filter((_, i) => !drop.has(i))
+        .join("\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+      changeValue(remaining);
+      void saveNow(remaining);
+      setUndo(null);
+      refreshNav();
+      router.refresh();
+    }
+    setApplying(false);
+    setReview(null);
+    const failed = chosen.length - filed.length;
+    toast(
+      failed === 0 ? `Filed ${filed.length} item${filed.length === 1 ? "" : "s"}` : `Filed ${filed.length}, ${failed} failed and stayed in the scratchpad`,
+      { tone: failed === 0 ? "success" : "error" }
+    );
+  }
+
+  async function clearAll() {
     if (!value.trim()) return;
-    if (!confirm("Clear the scratchpad?")) return;
+    if (!(await confirmDialog({ title: "Clear the scratchpad?", description: "This removes everything in it.", confirmLabel: "Clear", destructive: true }))) return;
     changeValue("");
     setPreview(null);
     setUndo(null);
   }
 
+  const readyCount = review?.items.filter((it) => it.checked && it.business_id && it.title.trim()).length ?? 0;
+  const busy = organizing || filing;
+
   return (
-    <div className="rounded-2xl border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-950 shadow-sm p-5 flex flex-col">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <div className="flex items-center gap-2">
-          <StickyNote size={14} className="text-zinc-400" />
-          <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">Scratchpad</h2>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] text-zinc-400 inline-flex items-center gap-1" aria-live="polite">
-            {status === "saving" && (<><Loader2 size={11} className="animate-spin" /> Saving…</>)}
-            {(status === "dirty") && "…"}
-            {status === "saved" && (<><Check size={11} className="text-emerald-600" /> Saved</>)}
+    <div>
+      <SectionHeader
+        title="Scratchpad"
+        action={
+          <span className="inline-flex items-center gap-1 text-xs text-ink-3" aria-live="polite">
+            {status === "saving" && (<><Loader2 size={11} className="animate-spin" /> Saving</>)}
+            {status === "saved" && (<><Check size={11} className="text-emerald-600 dark:text-emerald-400" /> Saved</>)}
             {status === "error" && (
-              <span className="text-amber-600 dark:text-amber-400 inline-flex items-center gap-1">
-                <AlertTriangle size={11} /> Not saved — check connection
-              </span>
+              <button onClick={() => void saveNow(latest.current)} className="inline-flex items-center gap-1 text-amber-700 hover:underline dark:text-amber-400">
+                <AlertTriangle size={11} /> Not saved. Retry
+              </button>
             )}
           </span>
+        }
+      />
+      <Card className="transition-[border-color,box-shadow] focus-within:border-line-strong focus-within:shadow-lift">
+        <AutoTextarea
+          value={value}
+          onChange={(e) => changeValue(e.target.value)}
+          aria-label="Scratchpad"
+          minRows={7}
+          maxHeightPx={520}
+          placeholder={"Dump anything here. It saves as you type.\n\n- call the venue back\n- flair: send method the renewal proposal friday\n- idea: rooftop for TechWeek closing"}
+          className="block w-full resize-none bg-transparent px-4 pt-3.5 pb-2 text-sm leading-relaxed text-ink outline-none placeholder:text-ink-4"
+        />
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-line bg-sunken/50 px-2.5 py-2">
+          <Button size="sm" variant="brand" onClick={proposeFiling} disabled={busy || !value.trim()} loading={filing} title="Turn lines into real todos, deals and initiatives in the right business">
+            {!filing && <Send size={12} />} File to tabs
+          </Button>
+          <Button size="sm" variant="ghost" onClick={organize} disabled={busy || !value.trim()} loading={organizing} title="Regroup and tidy the text without losing anything">
+            {!organizing && <Sparkles size={12} />} Organize
+          </Button>
+          {undo && value === undo.organized && (
+            <Button size="sm" variant="ghost" onClick={undoOrganize}>
+              <Undo2 size={12} /> Undo organize
+            </Button>
+          )}
+          <span className="flex-1" />
           {value.trim() && (
-            <button
-              onClick={clearAll}
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
-              title="Clear scratchpad"
-            >
+            <IconButton size="sm" label="Clear scratchpad" onClick={clearAll}>
               <Trash2 size={13} />
-            </button>
+            </IconButton>
           )}
         </div>
-      </div>
-      <div className="flex flex-wrap items-center gap-2 mb-3">
-        <button type="button" onClick={organize} disabled={organizing || !value.trim()}
-          className="min-h-11 inline-flex items-center gap-2 rounded-xl border border-zinc-200 dark:border-zinc-700 px-3 text-sm font-medium hover:bg-zinc-50 dark:hover:bg-zinc-900 disabled:opacity-40 disabled:cursor-not-allowed">
-          {organizing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-          {organizing ? "Organizing…" : "Organize"}
-        </button>
-        {undo && value === undo.organized && <button type="button" onClick={undoOrganize}
-          className="min-h-11 inline-flex items-center gap-2 px-3 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100">
-          <Undo2 size={14} /> Undo organize
-        </button>}
-        {status === "error" && <button type="button" onClick={() => void saveNow(latest.current)} className="min-h-11 px-3 text-sm text-amber-700">Retry save</button>}
-      </div>
-      {organizeError && <p role="alert" className="mb-3 text-sm text-amber-700 dark:text-amber-400">{organizeError}</p>}
-      <AutoTextarea
-        value={value}
-        onChange={(e) => changeValue(e.target.value)}
-        aria-label="Scratchpad"
-        minRows={6}
-        maxHeightPx={520}
-        placeholder={"Quick to-dos, numbers, names, anything…\n\n- call the venue back\n- $ figure for the method renewal\n- idea: rooftop for TechWeek closing"}
-        className="w-full bg-transparent text-sm leading-relaxed text-zinc-800 dark:text-zinc-200 outline-none resize-none placeholder:text-zinc-300 dark:placeholder:text-zinc-700"
-      />
-      {preview && <section ref={previewRef} aria-label="Organized preview" className="mt-5 scroll-mt-4 rounded-xl border-2 border-zinc-900/20 dark:border-zinc-100/20 bg-zinc-50 dark:bg-zinc-900 p-4">
-        <h3 className="text-sm font-semibold inline-flex items-center gap-1.5"><Sparkles size={13} /> Organized preview</h3>
-        <p className="mt-1 text-xs text-zinc-500">Review before applying. Your original stays unchanged until you hit Apply. Refreshing discards this preview.</p>
-        <pre className="my-3 max-h-96 overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-4 font-sans text-sm leading-relaxed">{preview.organized}</pre>
-        {value !== preview.original && <p role="status" className="mb-2 text-sm text-amber-700 dark:text-amber-400">You edited the scratchpad after organizing. Organize again to include your latest changes.</p>}
-        <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={applyPreview} disabled={value !== preview.original}
-            className="min-h-11 rounded-xl bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 px-4 text-sm font-medium disabled:opacity-40">Apply cleanup</button>
-          <button type="button" onClick={() => setPreview(null)} className="min-h-11 rounded-xl px-4 text-sm text-zinc-500">Discard</button>
+
+        {preview && (
+          <section ref={previewRef} aria-label="Organized preview" className="scroll-mt-4 border-t border-line p-4">
+            <h3 className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+              <Sparkles size={13} /> Organized preview
+            </h3>
+            <p className="mt-0.5 text-xs text-ink-3">Review before applying. Your original stays unchanged until you apply. Refreshing discards this preview.</p>
+            <pre className="my-3 max-h-96 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-sunken p-4 font-sans text-sm leading-relaxed text-ink ring-1 ring-inset ring-line">{preview.organized}</pre>
+            {value !== preview.original && (
+              <p role="status" className="mb-2 text-xs text-amber-700 dark:text-amber-400">You edited the scratchpad after organizing. Organize again to include your latest changes.</p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <Button variant="primary" onClick={applyPreview} disabled={value !== preview.original}>Apply cleanup</Button>
+              <Button variant="ghost" onClick={() => setPreview(null)}>Discard</Button>
+            </div>
+          </section>
+        )}
+      </Card>
+
+      {/* Review what will be filed, and where, before anything is created */}
+      <Modal
+        open={review !== null}
+        onClose={() => !applying && setReview(null)}
+        title="File to tabs"
+        description="Checked items become real records and leave the scratchpad. Anything without a clear business is left unchecked for you to place."
+        size="lg"
+        footer={
+          <>
+            <span className="text-xs text-ink-3">{readyCount} of {review?.items.length ?? 0} selected</span>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => setReview(null)} disabled={applying}>Cancel</Button>
+              <Button variant="primary" onClick={applyFiling} disabled={readyCount === 0} loading={applying}>
+                File {readyCount || ""} item{readyCount === 1 ? "" : "s"}
+              </Button>
+            </div>
+          </>
+        }
+      >
+        <div className="space-y-2">
+          {review?.items.map((it, i) => {
+            const needsBusiness = !it.business_id;
+            return (
+              <div key={it.line_index} className={cn("rounded-xl border border-line p-3 transition-opacity", !it.checked && "opacity-60")}>
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={it.checked}
+                    onChange={(e) => patchItem(i, { checked: e.target.checked })}
+                    aria-label={`File: ${it.title}`}
+                    className="mt-2.5 h-4 w-4 shrink-0 accent-[var(--ink)]"
+                  />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <Input value={it.title} onChange={(e) => patchItem(i, { title: e.target.value })} aria-label="Title" />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="w-36">
+                        <Select value={it.type} onChange={(e) => patchItem(i, { type: e.target.value as Proposal["type"] })} aria-label="Type">
+                          <option value="todo">Todo</option>
+                          <option value="lead">Pipeline deal</option>
+                          <option value="initiative">Initiative</option>
+                        </Select>
+                      </div>
+                      <div className="w-44">
+                        <Select
+                          value={it.business_id ?? ""}
+                          onChange={(e) => patchItem(i, { business_id: e.target.value || null, checked: !!e.target.value })}
+                          aria-label="Business"
+                          className={cn(needsBusiness && "border-amber-500/60")}
+                        >
+                          <option value="">Choose a business…</option>
+                          {BUSINESSES.map((b) => (
+                            <option key={b.id} value={b.id}>{b.name}</option>
+                          ))}
+                        </Select>
+                      </div>
+                      {it.due_date && <Badge>Due {it.due_date}</Badge>}
+                      {it.priority === "high" && <Badge tone="amber">High</Badge>}
+                      {it.company && it.type === "lead" && <Badge>{it.company}</Badge>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
-      </section>}
+      </Modal>
     </div>
   );
 }

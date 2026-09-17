@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Sidebar } from "./sidebar";
-import { Menu } from "lucide-react";
+import { OPEN_PALETTE_EVENT } from "@/lib/ui-events";
+import { CommandPalette } from "./command-palette";
+import { Menu, Search } from "lucide-react";
 
 export function AdminShell({
   children,
@@ -15,7 +17,15 @@ export function AdminShell({
   const pathname = usePathname();
   const router = useRouter();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const canvasRef = useRef<HTMLElement>(null);
   const isPublic = pathname.startsWith("/login") || pathname.startsWith("/s/");
+
+  // The canvas is its own scroll container on desktop and persists across
+  // navigations, so reset it when the page changes.
+  useEffect(() => {
+    canvasRef.current?.scrollTo(0, 0);
+    setDrawerOpen(false);
+  }, [pathname]);
 
   if (isPublic) return <>{children}</>;
 
@@ -27,48 +37,55 @@ export function AdminShell({
 
   return (
     <>
-      {/* Mobile top bar — sits behind status bar, uses safe-area padding */}
-      <header className="mobile-header md:hidden fixed top-0 inset-x-0 z-30 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800">
-        <div className="h-13 flex items-center px-4 gap-3">
+      {/* Mobile top bar: sits behind the status bar, uses safe-area padding */}
+      <header className="mobile-header fixed inset-x-0 top-0 z-30 border-b border-line bg-canvas/90 backdrop-blur-md md:hidden">
+        <div className="flex h-13 items-center gap-2 px-3">
           <button
             onClick={() => setDrawerOpen(true)}
-            className="flex items-center justify-center w-10 h-10 -ml-2 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 rounded-xl hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
             aria-label="Open menu"
+            className="flex h-10 w-10 items-center justify-center rounded-lg text-ink-2 hover:bg-hover hover:text-ink"
           >
-            <Menu size={20} />
+            <Menu size={19} />
           </button>
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-zinc-900 dark:bg-zinc-100 flex items-center justify-center shrink-0">
-              <span className="text-[10px] font-bold text-zinc-50 dark:text-zinc-900">CC</span>
-            </div>
-            <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight">Command Center</span>
+          <div className="flex flex-1 items-center gap-2">
+            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-inverse text-[9px] font-bold text-on-inverse">CC</span>
+            <span className="text-sm font-semibold tracking-tight text-ink">Command Center</span>
           </div>
+          <button
+            onClick={() => window.dispatchEvent(new Event(OPEN_PALETTE_EVENT))}
+            aria-label="Search"
+            className="flex h-10 w-10 items-center justify-center rounded-lg text-ink-2 hover:bg-hover hover:text-ink"
+          >
+            <Search size={18} />
+          </button>
         </div>
       </header>
 
       {/* Mobile sidebar drawer */}
       {drawerOpen && (
         <>
-          <div
-            className="md:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
-            onClick={() => setDrawerOpen(false)}
-          />
-          {/* Drawer — adds safe-area padding at top and bottom */}
-          <div className="md:hidden fixed inset-y-0 left-0 z-50 w-[280px] shadow-2xl safe-left">
+          <div className="fade-in fixed inset-0 z-40 bg-black/45 backdrop-blur-[2px] md:hidden" onClick={() => setDrawerOpen(false)} />
+          <div className="safe-left fixed inset-y-0 left-0 z-50 w-[280px] border-r border-line shadow-pop md:hidden">
             <Sidebar onLogout={logout} onClose={() => setDrawerOpen(false)} hiddenBusinessIds={hiddenBusinessIds} />
           </div>
         </>
       )}
 
-      <div className="flex min-h-screen">
-        <div className="hidden md:block sticky top-0 h-screen shrink-0">
+      <div className="flex min-h-dvh md:h-dvh md:overflow-hidden">
+        <div className="hidden h-dvh shrink-0 md:block">
           <Sidebar onLogout={logout} hiddenBusinessIds={hiddenBusinessIds} />
         </div>
-        {/* mobile-content-offset handles notch via CSS */}
-        <main className="flex-1 min-w-0 mobile-content-offset md:pt-0 overflow-x-hidden">
+        {/* Canvas: full-bleed on phones, an inset rounded surface on desktop */}
+        <main
+          ref={canvasRef}
+          id="canvas"
+          className="mobile-content-offset min-w-0 flex-1 overflow-x-hidden bg-canvas md:my-2 md:mr-2 md:overflow-y-auto md:rounded-2xl md:border md:border-line md:pt-0 md:shadow-card"
+        >
           {children}
         </main>
       </div>
+
+      <CommandPalette hiddenBusinessIds={hiddenBusinessIds} />
     </>
   );
 }

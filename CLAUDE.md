@@ -42,6 +42,9 @@ over docs.
 27. [Chat Agent (workspace tools)](#27-chat-agent-workspace-tools)
 28. [Current State / Backlog](#28-current-state--backlog)
 29. [Dashboard Scratchpad + Local Preview Verification](#29-dashboard-scratchpad--local-preview-verification-added-2026-08-06)
+30. Design System + App Shell (read `DESIGN.md` first)
+31. Command Layer: Cmd+K, Global Search, Ask AI
+32. Today Dashboard + Scratchpad Filing
 
 ---
 
@@ -965,7 +968,10 @@ These came up while debugging and would cost real time to rediscover.
 6. **Share views force light mode** — `themeInit` script skips dark mode for `/s/`.
 7. **Brand colors use inline hex** — Tailwind arbitrary values, NOT theme config.
 8. **File uploads stored on disk** — Would break on Vercel/serverless.
-9. **No max-width on content** — Content fills available width. Don't add `max-w-*`.
+9. **Content width is owned by the workspace/page, not panels.** Business tabs
+   render in a centered `max-w-6xl` column (the pipeline board is full width,
+   see `WIDE_TABS` in `components/business-workspace.tsx`). Panels must not add
+   their own outer padding or `max-w-*`.
 10. **Session token derivation** — `middleware.ts` (edge, `crypto.subtle`) and
     `server-auth.ts` (Node, `createHash`) compute same token via different APIs.
 11. **Outreach panel is ~1700 lines** — one file by design (shared state).
@@ -1226,36 +1232,27 @@ via `NEXT_PHASE`. Toggles call `router.refresh()` to re-render the layout.
 `migrateHiddenBusinesses()` runs after `seed()` and hides CampusLink exactly
 once (the ALTER throws on later boots, so an unhide sticks).
 
-### Product audit 2026-09-16 (findings + proposed roadmap, NOT yet built)
+### Product audit 2026-09-16 and what shipped from it (2026-09-17)
 
-Sam asked whether the app is missing a "second brain". Audit conclusion: the
-app is a set of well-built silos (CRUD tabs per business) with an AI bolted
-onto each silo. What is missing is the layer ACROSS the silos. Verified gaps:
-no search anywhere, no keyboard shortcuts, no drag and drop, AI chat scoped to
-one business and buried as tab 9 of 10, no persistent memory, no linking
-between records (method exists separately as a lead, a CRM contact, an
-initiative and a note), dashboard shows counts rather than what needs
-attention. UI debt: three generations of UI side by side (lead edit modal is
-unlabeled raw inputs; events/initiatives modals are newer), 22 native
-confirm()/alert() dialogs, 6 corner radii with no system, no shared
-Button/Input/Modal primitives, ~50 uses of 10-11px text, pipeline is a vertical
-list instead of a board, full-width rows on wide screens.
+Audit conclusion: the app was a set of well-built silos (CRUD tabs per business)
+with an AI bolted onto each silo, plus three generations of UI side by side.
+Roadmap status:
 
-Proposed order (each phase shippable on its own):
-1. Design system pass: shared primitives (Button, Input, Field, Modal, Card,
-   ConfirmDialog, Toast) + one radius/type scale, then migrate every panel.
-   Rebuild the lead modal, pipeline as a drag-and-drop board, CRM search.
-2. Command layer: Cmd+K palette (jump anywhere, create anything, global
-   search across all businesses) + a global "Ask" chat that sees every
-   business and can act in any of them.
-3. Brain: `memories` table (facts about Sam, people, companies, decisions,
-   preferences; FTS5 search) that every AI surface reads and that grows from
-   chats/notes/scratchpad with a review queue; entity linking so a company or
-   person page shows its lead + CRM + initiative + notes + events together.
-4. Attention: "Today" dashboard (overdue, due today, follow-ups due, events
-   this week, stale initiatives, leads past their next-action date), a
-   scratchpad "File these" action that routes lines into real todos/leads,
-   and an optional morning brief.
+1. **Design system + full revamp: SHIPPED.** See §30 and `DESIGN.md`.
+2. **Command layer: SHIPPED.** Cmd+K palette + global search + global Ask AI (§31).
+3. **Brain: NEXT, not started.** Sam wants it connected to everything: Gmail,
+   Google Calendar, Google Contacts, Google Drive, Notion, Slack, Canva,
+   Dropbox, WhatsApp, iMessage, phone contacts. Planned shape: a `memories`
+   store (facts about Sam, people, companies, decisions, preferences; FTS5)
+   that every AI surface reads and that grows from chats/notes/scratchpad via a
+   review queue; entity linking so a company or person page shows its lead +
+   CRM + initiative + notes + events together; one connector per source with
+   its own auth + sync. Treat as its own major build. Note up front that
+   iMessage and WhatsApp have no server-side API (iMessage needs a local Mac
+   agent reading chat.db; WhatsApp needs the Business API or an export), so
+   those two cannot work like the OAuth sources.
+4. **Attention: SHIPPED.** Today dashboard + scratchpad "File to tabs" (§32).
+   A scheduled morning brief was discussed but not built.
 
 Known deferred items (user-acknowledged, build when asked):
 - Inbox feature disabled (code preserved in `app/inbox/`, nav link removed;
@@ -1307,7 +1304,104 @@ Known deferred items (user-acknowledged, build when asked):
 
 ---
 
+## 30. Design System + App Shell (full revamp, 2026-09-17)
+
+**`DESIGN.md` at the repo root is mandatory reading before touching any UI.**
+It defines tokens, type/radius scales, every primitive's API, panel anatomy,
+data rules and the ban list. §15 above predates it; where they disagree,
+DESIGN.md wins. Highlights:
+
+- **Semantic color tokens** in `app/globals.css` (`bg-shell/canvas/raised/sunken`,
+  `text-ink/ink-2/ink-3/ink-4`, `border-line/line-strong`, `bg-inverse`,
+  `brand`). One class covers light and dark. Never write `zinc-*` + `dark:`
+  pairs for neutral surfaces or text again.
+- **Per-business accent:** `brandVars(business)` + `.brand-scope` expose
+  `--brand` (uses `hex` in light, `hexDark` in dark, both in `lib/businesses.ts`).
+  The workspace also mirrors the scope onto `<body>` because modals, toasts and
+  the palette portal outside the subtree. Derived vars (`--brand-soft`) are
+  redeclared inside `.brand-scope` on purpose (a `var()` inside a custom
+  property resolves where it is declared).
+- **Primitives** in `components/ui/`: `Button`/`IconButton`, `Input`/`Textarea`/
+  `Select`/`PrefixInput`/`SearchInput`/`Field`/`FieldGroup`, `Modal` (the only
+  modal; bottom sheet on phones), `confirmDialog()` + `toast()` via `<UIHost />`
+  in the root layout (native `confirm/alert/prompt` are banned), `Badge`,
+  `BrandTile`, `Card`, `SectionHeader`, `EmptyState`, `Kbd`, `Segmented`.
+  `cn()` in `lib/cn.ts` (no tailwind-merge; later classes do not override).
+- **App shell** (`components/admin-shell.tsx`): sidebar blends into `bg-shell`;
+  content is an inset rounded **canvas** (`<main id="canvas">`). On desktop the
+  canvas is THE scroll container (the window does not scroll), so: use
+  `min-h-full` not `min-h-screen`, sticky elements stick to the canvas, and the
+  shell resets `scrollTop` on route change. On phones the window scrolls and
+  there is a fixed 52px top bar. The chat panel's height offsets
+  (`OFFSETS_ADMIN`/`OFFSETS_SHARE` in `chat-panel.tsx`) depend on this chrome.
+- **Sidebar:** search trigger (opens the palette), Today, Ask AI, businesses
+  with live open-todo counts (`GET /api/nav`; panels call `refreshNav()` from
+  `lib/ui-events.ts` after todo changes), Hidden group, Shortcuts, footer.
+- **`components/business-workspace.tsx`** is the single business-page body used
+  by BOTH `/b/[slug]` (`business-view.tsx` adds owner controls) and `/s/[token]`
+  (`shared-view.tsx`). Compact header, underline tabs in the brand color with
+  live counts, panels. Tabs are defined once in `lib/tabs.ts`. Server pages pass
+  one `data` object (`WorkspaceData`).
+- **Panel cache (`lib/panel-cache.tsx`) fixes a long-standing bug:** panels
+  unmount on tab switch and used to re-read the original page-load props, so
+  anything added or edited silently vanished until reload. Every panel's main
+  dataset now uses `usePanelState("<key>", initial)`; siblings read live data
+  with `usePanelValue` (tab counts, Team panel). Fresh server props (after
+  `router.refresh()` or a deep-link navigation) clear the cache and are adopted
+  by mounted panels. Always pass the server prop itself as `initial`.
+- **Deep links:** `/b/<id>?tab=<tab>&open=<recordId>` opens that record;
+  `&new=1` opens the tab's create form. Consumed once (dropped on tab switch).
+- **Pipeline is a drag-and-drop board** (native HTML5 DnD, optimistic with
+  rollback; stage picker list on phones). `listLeads` returns `attachment_count`.
+- **Notes autosave** got a `contextEpoch` guard: a save that lands after you
+  switch notes no longer touches the new note's state, and refs are updated
+  immediately so the queued follow-up save cannot POST a duplicate note.
+- Copy rule everywhere: no em or en dashes in UI text, sentence case.
+
+---
+
+## 31. Command Layer: Cmd+K + Global Search + Ask AI (2026-09-17)
+
+- **`components/command-palette.tsx`** (mounted in AdminShell; Cmd/Ctrl+K, the
+  sidebar search button, or `OPEN_PALETTE_EVENT`). Jump to any page or
+  `business · tab`, search every record, create ("New todo" is fully inline:
+  pick business, type, Enter; other types deep-link to `&new=1`), toggle theme,
+  or hand the query to Ask AI.
+- **`GET /api/search?q=`** (admin only) calls `db.search()`: LIKE search across
+  initiatives, todos, leads, CRM, notes, events and outreach in every business,
+  a few hits per type, each deep-linkable (`SearchHit` in `lib/types.ts`).
+- **Ask AI** (`/ask`, `components/ask-view.tsx`, `POST/GET/DELETE /api/ask`,
+  table `ask_messages`): a global chief of staff that sees a compact, id-tagged
+  snapshot of EVERY business and can act in any of them. Tools are the
+  per-business chat tools wrapped by `globalChatTools()` /
+  `executeGlobalChatTool()` in `lib/chat-tools.ts`, which add a required
+  `business_id` and validate it. Admin only; same no-delete safety model; max 8
+  tool rounds; replies are dash-normalized. The per-business Chat tab is
+  unchanged and still scoped to its own business.
+
+---
+
+## 32. Today Dashboard + Scratchpad Filing (2026-09-17)
+
+- **`app/page.tsx` is now "Today"**, computed in LA time and excluding hidden
+  businesses: **Needs attention** (`components/today-attention.tsx`: overdue
+  and due-today todos, completable in place with Undo; deal next actions due;
+  initiative targets due; events today; outreach follow-ups and new targets
+  waiting), **Coming up** (next 7 days, events 14), the scratchpad, dense
+  business rows (focus initiative + todos/deals/pipeline), and all open todos.
+  Two independent columns on desktop; on phones the wrappers use
+  `display: contents` so `order-*` puts the scratchpad second.
+- **Scratchpad "File to tabs"** (`POST /api/scratchpad/file`, admin only,
+  proposal only): Sonnet maps lines to todo / pipeline deal / initiative with a
+  business, due date and priority, using the same certainty-first rule as
+  Organize (a business is set only when the line itself names it; otherwise
+  null). The review modal pre-checks only certain items; Apply creates records
+  through the normal APIs, then removes exactly the filed lines from the
+  scratchpad. A stale scratchpad cancels the apply.
+
+---
+
 *End of CLAUDE.md.* Update whenever a major architectural change ships — same
 session as the change, not later. `git log --oneline` + commit bodies fill any
 gap between this doc and the code.
-Last updated: 2026-09-16 (PT).
+Last updated: 2026-09-17 (PT).

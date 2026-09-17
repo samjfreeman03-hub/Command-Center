@@ -87,8 +87,8 @@ const FLAIR_CONFIG: OutreachConfig = {
     "CPG", "beverage", "EdTech", "DTC-genz", "enterprise",
   ],
   senders: ["Sam", "Tyler"],
-  templateALabel: "Template A — Identity + proof (Sam-style)",
-  templateBLabel: "Template B — Specific question (Tyler-style)",
+  templateALabel: "Template A · Identity + proof (Sam-style)",
+  templateBLabel: "Template B · Specific question (Tyler-style)",
 };
 
 const MTRNM_CONFIG: OutreachConfig = {
@@ -135,8 +135,8 @@ const MTRNM_CONFIG: OutreachConfig = {
     "hospitality", "travel", "fintech", "tech-audio", "wellness", "jewelry-watches",
   ],
   senders: ["Sam"],
-  templateALabel: "Template A — Dream collab hook (generalized)",
-  templateBLabel: "Template B — Semi-personalized DM",
+  templateALabel: "Template A · Dream collab hook (generalized)",
+  templateBLabel: "Template B · Semi-personalized DM",
 };
 
 export const OUTREACH_CONFIGS: Record<string, OutreachConfig> = {

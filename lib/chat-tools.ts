@@ -288,6 +288,26 @@ export function chatToolsForBusiness(businessId: string): Anthropic.Tool[] {
     : CHAT_TOOLS.filter((t) => t.name !== "add_events" && t.name !== "update_event");
 }
 
+/**
+ * Global ("Ask AI") variants of the same tools: identical behavior, but every
+ * call must name the business it targets. Used by /api/ask, which is admin
+ * only, so unlike the per-business chat it may act in any business.
+ */
+export function globalChatTools(businessIds: string[]): Anthropic.Tool[] {
+  return CHAT_TOOLS.map((t) => ({
+    ...t,
+    description: `${t.description} You MUST pass business_id to say which business this applies to.`,
+    input_schema: {
+      ...t.input_schema,
+      properties: {
+        business_id: { type: "string", enum: businessIds, description: "Which business to act in" },
+        ...(t.input_schema.properties as Record<string, unknown>),
+      },
+      required: ["business_id", ...((t.input_schema.required as string[] | undefined) ?? [])],
+    },
+  }));
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /** Match requested category names to the business's canonical set (case-insensitive); drop unknowns. */
@@ -526,4 +546,14 @@ export function executeChatTool(businessId: string, name: string, input: any): R
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Tool execution failed" };
   }
+}
+
+/** Execute a global tool call: validates the target business, then defers to the per-business executor. */
+export function executeGlobalChatTool(businessIds: string[], name: string, input: any): Record<string, unknown> {
+  const businessId = String(input?.business_id ?? "");
+  if (!businessIds.includes(businessId)) {
+    return { ok: false, error: `Unknown business_id. Use one of: ${businessIds.join(", ")}` };
+  }
+  const result = executeChatTool(businessId, name, input);
+  return { business_id: businessId, ...result };
 }

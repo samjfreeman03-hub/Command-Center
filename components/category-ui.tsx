@@ -1,6 +1,7 @@
 "use client";
 
 import { Tag, Plus, Check } from "lucide-react";
+import { cn } from "@/lib/cn";
 
 /**
  * Shared UI for the custom category/tag pool that a business defines once and
@@ -10,25 +11,25 @@ import { Tag, Plus, Check } from "lucide-react";
 
 // Distinct, readable badge colors assigned to categories by their position.
 export const CATEGORY_COLORS = [
-  "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
-  "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
-  "bg-violet-100 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300",
-  "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
-  "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300",
-  "bg-cyan-100 text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-300",
-  "bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300",
-  "bg-pink-100 text-pink-700 dark:bg-pink-950/40 dark:text-pink-300",
+  "bg-blue-500/10 text-blue-700 dark:text-blue-300 ring-1 ring-inset ring-blue-500/20",
+  "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-500/20",
+  "bg-violet-500/10 text-violet-700 dark:text-violet-300 ring-1 ring-inset ring-violet-500/20",
+  "bg-amber-500/12 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-500/25",
+  "bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-500/20",
+  "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 ring-1 ring-inset ring-cyan-500/20",
+  "bg-orange-500/10 text-orange-700 dark:text-orange-300 ring-1 ring-inset ring-orange-500/20",
+  "bg-pink-500/10 text-pink-700 dark:text-pink-300 ring-1 ring-inset ring-pink-500/20",
 ];
+
+const NEUTRAL_COLOR = "bg-sunken text-ink-2 ring-1 ring-inset ring-line";
 
 /** Stable badge color for a category name, by its index in the canonical list. */
 export function categoryColor(allNames: string[], name: string): string {
   const idx = allNames.indexOf(name);
-  return idx >= 0
-    ? CATEGORY_COLORS[idx % CATEGORY_COLORS.length]
-    : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300";
+  return idx >= 0 ? CATEGORY_COLORS[idx % CATEGORY_COLORS.length] : NEUTRAL_COLOR;
 }
 
-/** Read-only row of category badges. */
+/** Read-only row of category badges. Same shape as <Badge>. */
 export function CategoryBadges({
   names,
   allNames,
@@ -39,12 +40,17 @@ export function CategoryBadges({
   size?: "sm" | "xs";
 }) {
   if (names.length === 0) return null;
-  const cls = size === "xs" ? "text-[10px] px-1.5 py-0.5" : "text-[11px] px-1.5 py-0.5";
   return (
-    <div className="flex flex-wrap gap-1">
+    <div className={cn("flex flex-wrap", size === "xs" ? "gap-1" : "gap-1.5")}>
       {names.map((name) => (
-        <span key={name} className={`inline-flex items-center gap-1 rounded-md font-medium ${cls} ${categoryColor(allNames, name)}`}>
-          <Tag size={9} /> {name}
+        <span
+          key={name}
+          className={cn(
+            "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium leading-4 whitespace-nowrap",
+            categoryColor(allNames, name)
+          )}
+        >
+          <Tag size={10} /> {name}
         </span>
       ))}
     </div>
@@ -56,7 +62,7 @@ export function CategoryMultiSelect({
   all,
   selected,
   onChange,
-  emptyHint = "No categories yet — add some via Manage in the Pipeline tab.",
+  emptyHint = "No categories yet. Add some with Manage categories in the Pipeline tab.",
 }: {
   all: string[];
   selected: string[];
@@ -64,7 +70,7 @@ export function CategoryMultiSelect({
   emptyHint?: string;
 }) {
   if (all.length === 0) {
-    return <p className="text-xs text-zinc-400">{emptyHint}</p>;
+    return <p className="text-xs text-ink-3">{emptyHint}</p>;
   }
   function toggle(name: string) {
     onChange(selected.includes(name) ? selected.filter((c) => c !== name) : [...selected, name]);
@@ -77,14 +83,16 @@ export function CategoryMultiSelect({
           <button
             key={name}
             type="button"
+            aria-pressed={on}
             onClick={() => toggle(name)}
-            className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border transition-colors ${
+            className={cn(
+              "inline-flex h-8 items-center gap-1 rounded-md border px-2 text-xs font-medium transition-colors md:h-7",
               on
-                ? "border-zinc-900 dark:border-zinc-100 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900"
-                : "border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            }`}
+                ? "border-transparent bg-inverse text-on-inverse"
+                : "border-line-strong bg-raised text-ink-2 hover:bg-hover hover:text-ink"
+            )}
           >
-            {on ? <Check size={11} /> : <Plus size={11} />}
+            {on ? <Check size={12} /> : <Plus size={12} />}
             {name}
           </button>
         );
@@ -107,14 +115,17 @@ export function CatPill({
 }) {
   return (
     <button
+      type="button"
+      aria-pressed={active}
       onClick={onClick}
-      className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full border transition-colors ${
+      className={cn(
+        "inline-flex h-8 items-center gap-1 whitespace-nowrap rounded-md px-2 text-xs font-medium transition-[background-color,color,opacity] md:h-7",
         active
-          ? "border-zinc-900 dark:border-zinc-100 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900"
+          ? "bg-inverse text-on-inverse"
           : color
-            ? `border-transparent ${color} hover:opacity-80`
-            : "border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-      }`}
+            ? cn(color, "hover:opacity-80")
+            : "bg-raised text-ink-2 ring-1 ring-inset ring-line-strong hover:bg-hover hover:text-ink"
+      )}
     >
       {children}
     </button>

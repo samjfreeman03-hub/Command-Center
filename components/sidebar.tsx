@@ -1,10 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { BUSINESSES, type Business } from "@/lib/businesses";
-import { LayoutDashboard, Mail, Calendar, ExternalLink, LogOut, Sun, Moon, X, ChevronRight, Eye } from "lucide-react";
+import {
+  Sun, Moon, LogOut, X, ChevronRight, Eye, Search, Sparkles, Mail, Calendar, ArrowUpRight, LayoutGrid,
+} from "lucide-react";
+import { BrandTile, Kbd } from "@/components/ui/display";
+import { cn } from "@/lib/cn";
+import { NAV_REFRESH_EVENT, OPEN_PALETTE_EVENT } from "@/lib/ui-events";
+
 
 export function Sidebar({
   onLogout,
@@ -18,6 +24,7 @@ export function Sidebar({
   const pathname = usePathname();
   const router = useRouter();
   const [theme, setTheme] = useState<"light" | "dark" | null>(null);
+  const [todoCounts, setTodoCounts] = useState<Record<string, number>>({});
 
   const visible = BUSINESSES.filter((b) => !hiddenBusinessIds.includes(b.id));
   const hidden = BUSINESSES.filter((b) => hiddenBusinessIds.includes(b.id));
@@ -25,6 +32,32 @@ export function Sidebar({
   // Open the Hidden group automatically while viewing one of its businesses
   const [showHidden, setShowHidden] = useState(false);
   const hiddenOpen = showHidden || hidden.some(isActive);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("theme") as "light" | "dark" | null;
+    setTheme(stored ?? (document.documentElement.classList.contains("dark") ? "dark" : "light"));
+  }, []);
+
+  const loadCounts = useCallback(() => {
+    fetch("/api/nav")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d?.todoCounts && setTodoCounts(d.todoCounts))
+      .catch(() => {});
+  }, []);
+
+  // Refresh counts on navigation and whenever a panel reports a change
+  useEffect(() => {
+    loadCounts();
+    window.addEventListener(NAV_REFRESH_EVENT, loadCounts);
+    return () => window.removeEventListener(NAV_REFRESH_EVENT, loadCounts);
+  }, [pathname, loadCounts]);
+
+  function toggleTheme() {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    document.documentElement.classList.toggle("dark", next === "dark");
+    localStorage.setItem("theme", next);
+  }
 
   async function unhide(id: string) {
     await fetch(`/api/businesses/${id}`, {
@@ -35,82 +68,66 @@ export function Sidebar({
     router.refresh();
   }
 
-  useEffect(() => {
-    const stored = localStorage.getItem("theme") as "light" | "dark" | null;
-    const initial: "light" | "dark" =
-      stored ?? (document.documentElement.classList.contains("dark") ? "dark" : "light");
-    setTheme(initial);
-  }, []);
-
-  function toggleTheme() {
-    const next = theme === "dark" ? "light" : "dark";
-    setTheme(next);
-    document.documentElement.classList.toggle("dark", next === "dark");
-    localStorage.setItem("theme", next);
-  }
-
   return (
-    <aside className="w-full h-full shrink-0 border-r border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 flex flex-col overflow-y-auto safe-bottom">
-
-      {/* Logo — pushes down by safe-area-inset-top when drawer on mobile */}
-      <div className="mobile-header md:pt-0 px-4 pt-5">
-      <div className="h-14 md:h-auto md:py-5 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-zinc-900 dark:bg-zinc-100 flex items-center justify-center shrink-0 shadow-sm">
-            <span className="text-[11px] font-bold text-zinc-50 dark:text-zinc-900 tracking-tight">CC</span>
-          </div>
-          <div className="leading-tight">
-            <div className="text-[13px] font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight">Command</div>
-            <div className="text-[11px] text-zinc-400 dark:text-zinc-500 -mt-0.5 tracking-tight">Center</div>
-          </div>
+    <aside className="flex h-full w-full shrink-0 flex-col overflow-y-auto bg-shell safe-bottom md:w-60">
+      {/* Brand */}
+      <div className="mobile-header px-3 md:pt-0">
+        <div className="flex h-14 items-center justify-between pl-1.5">
+          <Link href="/" className="flex items-center gap-2.5">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-inverse text-[10px] font-bold tracking-tight text-on-inverse shadow-card">
+              CC
+            </span>
+            <span className="text-[13px] font-semibold tracking-tight text-ink">Command Center</span>
+          </Link>
+          {onClose && (
+            <button
+              onClick={onClose}
+              aria-label="Close menu"
+              className="flex h-10 w-10 items-center justify-center rounded-lg text-ink-3 hover:bg-hover hover:text-ink"
+            >
+              <X size={16} />
+            </button>
+          )}
         </div>
-        {onClose && (
-          <button onClick={onClose} className="w-10 h-10 flex items-center justify-center text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-xl hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors">
-            <X size={16} />
-          </button>
-        )}
       </div>
+
+      {/* Search / command palette */}
+      <div className="px-3 pb-2">
+        <button
+          onClick={() => {
+            onClose?.();
+            window.dispatchEvent(new Event(OPEN_PALETTE_EVENT));
+          }}
+          className="flex h-10 w-full items-center gap-2 rounded-lg border border-line bg-raised px-2.5 text-[13px] text-ink-3 shadow-card transition-colors hover:border-line-strong hover:text-ink-2 md:h-8"
+        >
+          <Search size={13} className="shrink-0" />
+          <span className="flex-1 text-left">Search or jump to…</span>
+          <Kbd className="hidden md:inline-flex">⌘K</Kbd>
+        </button>
       </div>
 
       {/* Main nav */}
-      <div className="px-3 space-y-0.5">
-        <NavItem href="/" active={pathname === "/"} icon={<LayoutDashboard size={15} />}>
-          Dashboard
+      <nav className="space-y-px px-3">
+        <NavItem href="/" active={pathname === "/"} icon={<LayoutGrid size={15} />}>
+          Today
         </NavItem>
-      </div>
-
-      {/* Quick links */}
-      <div className="mt-1 px-3 space-y-0.5">
-        <a
-          href="https://mail.google.com/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2.5 px-3 py-2.5 md:py-2 rounded-lg text-sm text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors group"
-        >
-          <Mail size={15} className="shrink-0" />
-          <span className="truncate flex-1">Email</span>
-          <ExternalLink size={12} className="shrink-0 opacity-40 md:opacity-0 md:group-hover:opacity-60 transition-opacity" />
-        </a>
-        <a
-          href="https://calendar.google.com/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2.5 px-3 py-2.5 md:py-2 rounded-lg text-sm text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors group"
-        >
-          <Calendar size={15} className="shrink-0" />
-          <span className="truncate flex-1">Calendar</span>
-          <ExternalLink size={12} className="shrink-0 opacity-40 md:opacity-0 md:group-hover:opacity-60 transition-opacity" />
-        </a>
-      </div>
+        <NavItem href="/ask" active={pathname.startsWith("/ask")} icon={<Sparkles size={15} />}>
+          Ask AI
+        </NavItem>
+      </nav>
 
       {/* Businesses */}
-      <div className="mt-5 px-3 flex-1">
-        <div className="px-2 mb-2 text-[10px] uppercase tracking-[0.12em] font-semibold text-zinc-400 dark:text-zinc-600">
-          Businesses
-        </div>
-        <div className="space-y-0.5">
+      <div className="mt-5 flex-1 px-3">
+        <GroupLabel>Businesses</GroupLabel>
+        <div className="space-y-px">
           {visible.map((b) => (
-            <NavItem key={b.id} href={`/b/${b.id}`} active={isActive(b)} icon={<BrandTile business={b} />}>
+            <NavItem
+              key={b.id}
+              href={`/b/${b.id}`}
+              active={isActive(b)}
+              icon={<BrandTile business={b} size="xs" />}
+              trailing={todoCounts[b.id] ? <span className="text-[11px] tabular-nums text-ink-3">{todoCounts[b.id]}</span> : null}
+            >
               {b.name}
             </NavItem>
           ))}
@@ -118,21 +135,21 @@ export function Sidebar({
 
         {/* Hidden businesses: out of the way, one click to reach or restore */}
         {hidden.length > 0 && (
-          <div className="mt-3">
+          <div className="mt-2">
             <button
               onClick={() => setShowHidden((v) => !v)}
-              className="w-full flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-medium text-zinc-400 dark:text-zinc-600 hover:text-zinc-600 dark:hover:text-zinc-400 transition-colors"
               aria-expanded={hiddenOpen}
+              className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-ink-3 transition-colors hover:text-ink-2"
             >
-              <ChevronRight size={11} className={`transition-transform ${hiddenOpen ? "rotate-90" : ""}`} />
+              <ChevronRight size={11} className={cn("transition-transform", hiddenOpen && "rotate-90")} />
               Hidden · {hidden.length}
             </button>
             {hiddenOpen && (
-              <div className="space-y-0.5">
+              <div className="space-y-px">
                 {hidden.map((b) => (
-                  <div key={b.id} className="flex items-center gap-1">
-                    <div className="flex-1 min-w-0 opacity-60 hover:opacity-100 transition-opacity">
-                      <NavItem href={`/b/${b.id}`} active={isActive(b)} icon={<BrandTile business={b} />}>
+                  <div key={b.id} className="flex items-center gap-0.5">
+                    <div className="min-w-0 flex-1 opacity-60 transition-opacity hover:opacity-100">
+                      <NavItem href={`/b/${b.id}`} active={isActive(b)} icon={<BrandTile business={b} size="xs" />}>
                         {b.name}
                       </NavItem>
                     </div>
@@ -140,7 +157,7 @@ export function Sidebar({
                       onClick={() => unhide(b.id)}
                       title={`Unhide ${b.name}`}
                       aria-label={`Unhide ${b.name}`}
-                      className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-3 transition-colors hover:bg-hover hover:text-ink"
                     >
                       <Eye size={13} />
                     </button>
@@ -150,21 +167,31 @@ export function Sidebar({
             )}
           </div>
         )}
+
+        {/* External shortcuts */}
+        <div className="mt-5">
+          <GroupLabel>Shortcuts</GroupLabel>
+          <div className="space-y-px">
+            <ExternalItem href="https://mail.google.com/" icon={<Mail size={15} />}>Email</ExternalItem>
+            <ExternalItem href="https://calendar.google.com/" icon={<Calendar size={15} />}>Calendar</ExternalItem>
+          </div>
+        </div>
       </div>
 
-      {/* Bottom bar */}
-      <div className="px-3 pt-3 pb-safe-3 mt-4 border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+      {/* Footer */}
+      <div className="pb-safe-3 mt-4 flex items-center justify-between px-3 pt-2">
         <button
           onClick={toggleTheme}
-          className="w-10 h-10 flex items-center justify-center rounded-xl text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
           aria-label="Toggle theme"
+          title="Toggle theme"
+          className="flex h-10 w-10 items-center justify-center rounded-lg text-ink-3 transition-colors hover:bg-hover hover:text-ink md:h-8 md:w-8"
         >
-          {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+          {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
         </button>
         {onLogout && (
           <button
             onClick={onLogout}
-            className="inline-flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 px-3 h-10 rounded-xl hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
+            className="inline-flex h-10 items-center gap-1.5 rounded-lg px-2.5 text-xs text-ink-3 transition-colors hover:bg-hover hover:text-ink md:h-8"
           >
             <LogOut size={13} /> Log out
           </button>
@@ -174,39 +201,47 @@ export function Sidebar({
   );
 }
 
-function BrandTile({ business }: { business: Business }) {
-  return (
-    <span
-      className="w-5 h-5 rounded-md flex items-center justify-center shrink-0 text-white text-[10px] font-bold shadow-sm"
-      style={{ backgroundColor: business.hex }}
-    >
-      {business.name.charAt(0)}
-    </span>
-  );
+function GroupLabel({ children }: { children: React.ReactNode }) {
+  return <div className="mb-1 px-2 text-[11px] font-medium text-ink-3">{children}</div>;
 }
+
+const itemClass =
+  "group flex h-10 md:h-8 items-center gap-2.5 rounded-lg px-2 text-[13px] transition-colors";
 
 function NavItem({
   href,
   active,
-  children,
   icon,
+  trailing,
+  children,
 }: {
   href: string;
   active: boolean;
-  children: React.ReactNode;
   icon?: React.ReactNode;
+  trailing?: React.ReactNode;
+  children: React.ReactNode;
 }) {
   return (
     <Link
       href={href}
-      className={`flex items-center gap-2.5 px-3 py-2.5 md:py-2 rounded-lg text-sm transition-colors ${
-        active
-          ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 font-medium shadow-sm ring-1 ring-zinc-200/70 dark:ring-zinc-700/50"
-          : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100/70 dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-100"
-      }`}
+      className={cn(
+        itemClass,
+        active ? "bg-raised font-medium text-ink shadow-card ring-1 ring-line" : "text-ink-2 hover:bg-hover hover:text-ink"
+      )}
     >
-      {icon}
-      <span className="truncate">{children}</span>
+      <span className={cn("flex w-5 shrink-0 justify-center", !active && "text-ink-3 group-hover:text-ink-2")}>{icon}</span>
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+      {trailing}
     </Link>
+  );
+}
+
+function ExternalItem({ href, icon, children }: { href: string; icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" className={cn(itemClass, "text-ink-2 hover:bg-hover hover:text-ink")}>
+      <span className="flex w-5 shrink-0 justify-center text-ink-3 group-hover:text-ink-2">{icon}</span>
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+      <ArrowUpRight size={12} className="shrink-0 text-ink-4 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100" />
+    </a>
   );
 }

@@ -45,36 +45,25 @@ export default async function SharePage({
     return <SharePasswordGate business={business} />;
   }
 
-  const [todos, leads, resources, notes, chat, members, brands, outreach, initiatives] = await Promise.all([
-    Promise.resolve(db.listTodos({ businessId })),
-    Promise.resolve(db.listLeads({ businessId })),
-    Promise.resolve(db.listBusinessResources(businessId)),
-    Promise.resolve(db.listNotes({ businessId })),
-    Promise.resolve(db.listChat(businessId)),
-    Promise.resolve(db.listTeamMembers(businessId)),
-    Promise.resolve(db.listBrandContacts(businessId)),
-    Promise.resolve(db.listOutreach({ businessId })),
-    Promise.resolve(db.listInitiatives(businessId)),
-  ]);
-
-  const customTagline = db.getBusinessTagline(businessId);
-  const events = eventsEnabled(businessId) ? db.listEvents(businessId) : [];
+  const data = {
+    initiatives: db.listInitiatives(businessId),
+    todos: db.listTodos({ businessId }),
+    leads: db.listLeads({ businessId }),
+    events: eventsEnabled(businessId) ? db.listEvents(businessId) : [],
+    outreach: db.listOutreach({ businessId }),
+    brands: db.listBrandContacts(businessId),
+    resources: db.listBusinessResources(businessId),
+    notes: db.listNotes({ businessId }),
+    chat: db.listChat(businessId),
+    members: db.listTeamMembers(businessId),
+  };
 
   return (
     <SharedView
       business={business}
       shareToken={token}
-      tagline={customTagline ?? business.tagline}
-      initialEvents={events}
-      initialInitiatives={initiatives}
-      initialTodos={todos}
-      initialLeads={leads}
-      initialResources={resources}
-      initialNotes={notes}
-      initialChat={chat}
-      initialMembers={members}
-      initialBrands={brands}
-      initialOutreach={outreach}
+      tagline={db.getBusinessTagline(businessId) ?? business.tagline}
+      data={data}
     />
   );
 }

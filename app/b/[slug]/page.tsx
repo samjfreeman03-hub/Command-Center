@@ -12,48 +12,39 @@ export default async function BusinessPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; open?: string; new?: string }>;
 }) {
   const { slug } = await params;
-  const { tab } = await searchParams;
+  const { tab, open, new: isNew } = await searchParams;
   const business = getBusiness(slug);
   if (!business) notFound();
 
-  const [todos, leads, resources, notes, chat, members, brands, outreach, initiatives] = await Promise.all([
-    Promise.resolve(db.listTodos({ businessId: slug })),
-    Promise.resolve(db.listLeads({ businessId: slug })),
-    Promise.resolve(db.listBusinessResources(slug)),
-    Promise.resolve(db.listNotes({ businessId: slug })),
-    Promise.resolve(db.listChat(slug)),
-    Promise.resolve(db.listTeamMembers(slug)),
-    Promise.resolve(db.listBrandContacts(slug)),
-    Promise.resolve(db.listOutreach({ businessId: slug })),
-    Promise.resolve(db.listInitiatives(slug)),
-  ]);
+  const data = {
+    initiatives: db.listInitiatives(slug),
+    todos: db.listTodos({ businessId: slug }),
+    leads: db.listLeads({ businessId: slug }),
+    events: eventsEnabled(slug) ? db.listEvents(slug) : [],
+    outreach: db.listOutreach({ businessId: slug }),
+    brands: db.listBrandContacts(slug),
+    resources: db.listBusinessResources(slug),
+    notes: db.listNotes({ businessId: slug }),
+    chat: db.listChat(slug),
+    members: db.listTeamMembers(slug),
+  };
 
-  const shareToken = db.getOrCreateShareToken(slug);
-  const customTagline = db.getBusinessTagline(slug);
-  const leadCategories = leadCategoriesEnabled(slug) ? db.listLeadCategories(slug) : [];
-  const events = eventsEnabled(slug) ? db.listEvents(slug) : [];
+  const openId = open ? Number(open) : undefined;
 
   return (
     <BusinessView
       business={business}
+      data={data}
       initialTab={tab ?? "initiatives"}
-      initialTodos={todos}
-      initialLeads={leads}
-      initialResources={resources}
-      initialNotes={notes}
-      initialChat={chat}
-      initialMembers={members}
-      initialBrands={brands}
-      initialOutreach={outreach}
-      shareToken={shareToken}
-      initialTagline={customTagline ?? business.tagline}
-      leadCategories={leadCategories}
+      openId={Number.isFinite(openId) ? openId : undefined}
+      autoNew={isNew === "1"}
+      shareToken={db.getOrCreateShareToken(slug)}
+      initialTagline={db.getBusinessTagline(slug) ?? business.tagline}
+      leadCategories={leadCategoriesEnabled(slug) ? db.listLeadCategories(slug) : []}
       leadCategoriesEnabled={leadCategoriesEnabled(slug)}
-      initialEvents={events}
-      initialInitiatives={initiatives}
       initialHidden={db.hiddenBusinessIds().includes(slug)}
     />
   );

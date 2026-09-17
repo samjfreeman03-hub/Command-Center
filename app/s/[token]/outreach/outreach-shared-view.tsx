@@ -1,13 +1,13 @@
 "use client";
 
-import type { Business } from "@/lib/businesses";
+import { brandVars, type Business } from "@/lib/businesses";
 import type { OutreachTarget } from "@/lib/types";
 import { OutreachPanel } from "@/components/outreach-panel";
 import { ShareTokenContext } from "@/lib/share-context";
-import { Send } from "lucide-react";
+import { BrandTile } from "@/components/ui/display";
 
 /**
- * Standalone outreach view for team members — same panel the admin sees,
+ * Standalone outreach view for team members. Same panel the admin sees,
  * wrapped in the share-token context so every API call authenticates via
  * the x-share-token header.
  */
@@ -20,29 +20,24 @@ export function OutreachSharedView({
   shareToken: string;
   initialOutreach: OutreachTarget[];
 }) {
+  const column = "mx-auto w-full max-w-6xl";
   return (
     <ShareTokenContext.Provider value={shareToken}>
-      <div className="flex flex-col min-h-screen">
-
-        {/* Header — white background, brand identity via pill + name color */}
-        <header className="w-full shrink-0 bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-zinc-800">
-          <div className="px-4 sm:px-8 lg:px-10 pt-5 pb-5 sm:pt-7 sm:pb-7">
-            <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold mb-2.5 ${business.accentBg} ${business.accent} ring-1`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${business.dot}`} />
-              <span className="truncate max-w-[180px] sm:max-w-none">{business.fullName}</span>
+      <div className="brand-scope flex min-h-screen flex-col bg-canvas" style={brandVars(business)}>
+        <header className="shrink-0 border-b border-line px-4 pb-4 pt-5 sm:px-8 sm:pb-5 sm:pt-7">
+          <div className={`${column} flex items-center gap-3.5`}>
+            <BrandTile business={business} size="lg" />
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-xl font-semibold tracking-tight text-ink">{business.name}</h1>
+              <div className="text-[13px] text-ink-3">Outreach</div>
             </div>
-            <h1 className={`text-2xl sm:text-3xl font-bold tracking-tight mb-1 ${business.accent}`}>
-              {business.name} Outreach
-            </h1>
-            <p className="text-sm text-zinc-500 leading-snug flex items-center gap-1.5">
-              <Send size={12} /> Team outreach workspace — find contacts, draft, send, track follow-ups
-            </p>
           </div>
         </header>
 
-        {/* Panel */}
-        <div className="w-full px-4 sm:px-8 lg:px-10 pt-5 pb-safe-10 flex-1">
-          <OutreachPanel businessId={business.id} initial={initialOutreach} />
+        <div className="pb-safe-10 w-full flex-1 px-4 pt-5 sm:px-8 sm:pt-6">
+          <div className={column}>
+            <OutreachPanel businessId={business.id} initial={initialOutreach} />
+          </div>
         </div>
       </div>
     </ShareTokenContext.Provider>

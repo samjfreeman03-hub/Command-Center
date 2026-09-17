@@ -4,17 +4,43 @@ import { useState } from "react";
 import Link from "next/link";
 import type { Todo } from "@/lib/types";
 import { BUSINESSES } from "@/lib/businesses";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, CircleCheckBig } from "lucide-react";
+import { Badge, BrandTile, EmptyState } from "@/components/ui/display";
+import { toast } from "@/components/ui/host";
+import { refreshNav } from "@/lib/ui-events";
+import { cn } from "@/lib/cn";
 
 const PRIORITY_ORDER = { high: 0, medium: 1, low: 2 } as const;
 
+/** Every open todo, grouped by business. Lives inside a <Card> on the dashboard. */
 export function DashboardTodos({ initialTodos }: { initialTodos: Todo[] }) {
   const [todos, setTodos] = useState(initialTodos);
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  async function toggle(id: number) {
-    setTodos((prev) => prev.filter((t) => t.id !== id));
-    await fetch(`/api/todos/${id}`, { method: "PATCH" });
+  async function complete(todo: Todo) {
+    const snapshot = todos;
+    setTodos((prev) => prev.filter((t) => t.id !== todo.id));
+    try {
+      const res = await fetch(`/api/todos/${todo.id}`, { method: "PATCH" });
+      if (!res.ok) throw new Error();
+      refreshNav();
+      toast("Completed", {
+        tone: "success",
+        action: {
+          label: "Undo",
+          onClick: async () => {
+            const undo = await fetch(`/api/todos/${todo.id}`, { method: "PATCH" });
+            if (undo.ok) {
+              setTodos(snapshot);
+              refreshNav();
+            } else toast("Could not undo", { tone: "error" });
+          },
+        },
+      });
+    } catch {
+      setTodos(snapshot);
+      toast("Could not complete the todo", { tone: "error" });
+    }
   }
 
   const groups = BUSINESSES.map((b) => ({
@@ -25,66 +51,49 @@ export function DashboardTodos({ initialTodos }: { initialTodos: Todo[] }) {
   })).filter((g) => g.todos.length > 0);
 
   if (groups.length === 0) {
-    return (
-      <div className="text-sm text-zinc-400 dark:text-zinc-600 py-4 text-center">
-        All clear. 🎉
-      </div>
-    );
+    return <EmptyState icon={<CircleCheckBig size={18} />} title="All clear" body="No open todos in any business." className="py-10" />;
   }
 
   return (
-    <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
+    <div className="divide-y divide-line">
       {groups.map(({ business: b, todos: bTodos }) => {
         const isOpen = expanded === b.id;
-        const hasHigh = bTodos.some((t) => t.priority === "high");
-
+        const highCount = bTodos.filter((t) => t.priority === "high").length;
         return (
           <div key={b.id}>
-            {/* Company row */}
             <button
               onClick={() => setExpanded(isOpen ? null : b.id)}
-              className="w-full flex items-center gap-3 py-3 text-left group"
+              aria-expanded={isOpen}
+              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-hover"
             >
-              <span className={`w-2 h-2 rounded-full shrink-0 ${b.dot}`} />
-              <span className={`text-sm font-semibold flex-1 ${b.accent}`}>{b.name}</span>
-              {hasHigh && !isOpen && (
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" title="Has high-priority tasks" />
-              )}
-              <span className="text-xs text-zinc-400 tabular-nums">{bTodos.length}</span>
-              <ChevronDown
-                size={14}
-                className={`text-zinc-400 transition-transform duration-200 shrink-0 ${isOpen ? "rotate-180" : ""}`}
-              />
+              <BrandTile business={b} size="xs" />
+              <span className="flex-1 text-[13px] font-medium text-ink">{b.name}</span>
+              {highCount > 0 && !isOpen && <Badge tone="amber">{highCount} high</Badge>}
+              <span className="text-xs tabular-nums text-ink-3">{bTodos.length}</span>
+              <ChevronDown size={14} className={cn("shrink-0 text-ink-4 transition-transform duration-200", isOpen && "rotate-180")} />
             </button>
 
-            {/* Expanded todo list */}
             {isOpen && (
-              <div className="pb-3 space-y-0.5 pl-5">
+              <div className="px-2 pb-2">
                 {bTodos.map((t) => (
                   <button
                     key={t.id}
-                    onClick={() => toggle(t.id)}
-                    className="w-full flex items-center gap-2.5 px-2 py-2 -mx-2 rounded-lg text-left group/item hover:bg-zinc-50 dark:hover:bg-zinc-900/50 active:bg-zinc-100 dark:active:bg-zinc-900 transition-colors"
+                    onClick={() => complete(t)}
+                    title="Mark done"
+                    className="group/item flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-hover"
                   >
-                    <span className="shrink-0 w-4 h-4 rounded-full border-2 border-zinc-300 dark:border-zinc-700 group-hover/item:border-emerald-500 flex items-center justify-center transition-colors">
-                      <Check size={9} className="text-emerald-500 opacity-0 group-hover/item:opacity-100 transition-opacity" strokeWidth={3} />
+                    <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-[1.5px] border-line-strong text-transparent transition-colors group-hover/item:border-emerald-500 group-hover/item:text-emerald-500">
+                      <Check size={10} strokeWidth={3} />
                     </span>
-                    <span className={`flex-1 text-sm leading-snug group-hover/item:line-through group-hover/item:text-zinc-400 transition-all min-w-0 truncate ${
-                      t.priority === "low" ? "text-zinc-400 dark:text-zinc-600" : "text-zinc-700 dark:text-zinc-300"
-                    }`}>
-                      {t.title}
-                    </span>
-                    {t.priority === "high" && (
-                      <span className="shrink-0 text-[10px] font-semibold text-amber-600 dark:text-amber-400">HIGH</span>
-                    )}
+                    <span className={cn("min-w-0 flex-1 truncate text-[13px]", t.priority === "low" ? "text-ink-3" : "text-ink")}>{t.title}</span>
+                    {t.priority === "high" && <Badge tone="amber">High</Badge>}
                   </button>
                 ))}
                 <Link
                   href={`/b/${b.id}?tab=todos`}
-                  className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 mt-1 px-2 transition-colors"
-                  onClick={(e) => e.stopPropagation()}
+                  className="mt-0.5 inline-flex items-center gap-1 px-2 py-1 text-xs text-ink-3 transition-colors hover:text-ink"
                 >
-                  Open in {b.name} →
+                  Open in {b.name}
                 </Link>
               </div>
             )}

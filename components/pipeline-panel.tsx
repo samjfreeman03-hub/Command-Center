@@ -1,14 +1,39 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import type { Lead, LeadAttachment, LeadCategory } from "@/lib/types";
 import { LEAD_STAGES } from "@/lib/types";
-import { Plus, Trash2, Link2, Paperclip, X, Upload, ExternalLink, Download, TrendingUp, Tag, Settings2 } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  Link2,
+  Paperclip,
+  X,
+  Upload,
+  ExternalLink,
+  Download,
+  TrendingUp,
+  Settings2,
+  Search,
+  CalendarDays,
+  ArrowRight,
+  Loader2,
+} from "lucide-react";
 import { useShareHeaders } from "@/lib/share-context";
-import { categoryColor, CategoryMultiSelect, CatPill } from "@/components/category-ui";
+import { usePanelState } from "@/lib/panel-cache";
+import { cn } from "@/lib/cn";
+import { categoryColor, CategoryBadges, CategoryMultiSelect, CatPill } from "@/components/category-ui";
 import { AutoTextarea } from "@/components/auto-textarea";
+import { Button, IconButton } from "@/components/ui/button";
+import { Input, Select, PrefixInput, Field, textareaClass, FieldGroup } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
+import { confirmDialog, toast } from "@/components/ui/host";
+import { EmptyState } from "@/components/ui/display";
+import { Segmented } from "@/components/ui/segmented";
 
-const STAGE_LABELS: Record<Lead["stage"], string> = {
+type Stage = Lead["stage"];
+
+const STAGE_LABELS: Record<Stage, string> = {
   new: "New",
   contacted: "Contacted",
   qualified: "Qualified",
@@ -24,648 +49,940 @@ function money(cents: number | null) {
   return `$${(cents / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 
+function isClosed(stage: Stage) {
+  return stage === "won" || stage === "lost";
+}
+
+/** Local YYYY-MM-DD, comparable as a string with next_action_date. */
+function todayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function shortDate(ymd: string) {
+  const [y, m, d] = ymd.split("-").map(Number);
+  if (!y || !m || !d) return ymd;
+  const date = new Date(y, m - 1, d);
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    ...(y !== new Date().getFullYear() ? { year: "numeric" } : {}),
+  });
+}
+
+type Editor = { mode: "new" } | { mode: "edit"; id: number } | null;
+
 export function PipelinePanel({
   businessId,
   initial,
   categories: initialCategories = [],
   categoriesEnabled = false,
+  openId,
+  autoNew,
 }: {
   businessId: string;
   initial: Lead[];
   categories?: LeadCategory[];
   categoriesEnabled?: boolean;
+  openId?: number;
+  autoNew?: boolean;
 }) {
-  const [leads, setLeads] = useState(initial);
-  const [showAdd, setShowAdd] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [leads, setLeads] = usePanelState("leads", initial);
+  const [editor, setEditor] = useState<Editor>(autoNew ? { mode: "new" } : null);
   const [cats, setCats] = useState<LeadCategory[]>(initialCategories);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [query, setQuery] = useState("");
   const [showManageCats, setShowManageCats] = useState(false);
   const [newCatName, setNewCatName] = useState("");
+  const [addingCat, setAddingCat] = useState(false);
+  const [mobileStage, setMobileStage] = useState<Stage>("new");
+  const [draggingId, setDraggingId] = useState<number | null>(null);
+  const [overStage, setOverStage] = useState<Stage | null>(null);
+  // Attachment counts are only known once a lead's editor has loaded them.
+  const [attachmentCounts, setAttachmentCounts] = useState<Record<number, number>>({});
   const shareHeaders = useShareHeaders();
 
-  const catNames = cats.map((c) => c.name);
-  const catColor = (name: string) => categoryColor(catNames, name);
+  const leadsRef = useRef(leads);
+  leadsRef.current = leads;
 
-  async function addCategory(e: React.FormEvent) {
-    e.preventDefault();
+  // Deep link: open that lead's editor on mount and whenever openId changes.
+  useEffect(() => {
+    if (openId == null) return;
+    const lead = leadsRef.current.find((l) => l.id === openId);
+    if (lead) {
+      setEditor({ mode: "edit", id: lead.id });
+      setMobileStage(lead.stage);
+    }
+  }, [openId]);
+
+  const catNames = cats.map((c) => c.name);
+
+  async function addCategory() {
     const name = newCatName.trim();
-    if (!name) return;
-    const res = await fetch("/api/lead-categories", {
-      method: "POST",
-      headers: { "content-type": "application/json", ...shareHeaders },
-      body: JSON.stringify({ business_id: businessId, name }),
-    });
-    if (res.ok) {
-      const created: LeadCategory = await res.json();
-      setCats((prev) => [...prev, created]);
-      setNewCatName("");
-    } else if (res.status === 409) {
-      alert("A category with that name already exists.");
+    if (!name || addingCat) return;
+    setAddingCat(true);
+    try {
+      const res = await fetch("/api/lead-categories", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...shareHeaders },
+        body: JSON.stringify({ business_id: businessId, name }),
+      });
+      if (res.ok) {
+        const created: LeadCategory = await res.json();
+        setCats((prev) => [...prev, created]);
+        setNewCatName("");
+      } else if (res.status === 409) {
+        toast("A category with that name already exists", { tone: "error" });
+      } else {
+        toast("Could not add the category", { tone: "error" });
+      }
+    } catch {
+      toast("Could not add the category", { tone: "error" });
+    } finally {
+      setAddingCat(false);
     }
   }
 
   async function deleteCategory(cat: LeadCategory) {
-    if (!confirm(`Delete the "${cat.name}" category? Leads tagged with it will become uncategorized.`)) return;
+    const ok = await confirmDialog({
+      title: `Delete the "${cat.name}" category?`,
+      description: "Leads tagged with it will become uncategorized.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+    const prevCats = cats;
+    const prevLeads = leadsRef.current;
     setCats((prev) => prev.filter((c) => c.id !== cat.id));
-    setLeads((prev) => prev.map((l) => (l.categories.includes(cat.name) ? { ...l, categories: l.categories.filter((c) => c !== cat.name) } : l)));
+    setLeads((prev) =>
+      prev.map((l) => (l.categories.includes(cat.name) ? { ...l, categories: l.categories.filter((c) => c !== cat.name) } : l))
+    );
     if (categoryFilter === cat.name) setCategoryFilter("all");
-    await fetch(`/api/lead-categories/${cat.id}`, { method: "DELETE", headers: shareHeaders });
+    const res = await fetch(`/api/lead-categories/${cat.id}`, { method: "DELETE", headers: shareHeaders }).catch(() => null);
+    if (!res?.ok) {
+      setCats(prevCats);
+      setLeads(prevLeads);
+      toast("Could not delete the category", { tone: "error" });
+    }
   }
 
-  async function add(form: NewLeadForm) {
+  async function add(form: NewLeadForm): Promise<boolean> {
     const res = await fetch("/api/leads", {
       method: "POST",
       headers: { "content-type": "application/json", ...shareHeaders },
       body: JSON.stringify({ business_id: businessId, ...form }),
-    });
-    if (res.ok) {
+    }).catch(() => null);
+    if (res?.ok) {
       const created: Lead = await res.json();
       setLeads((prev) => [created, ...prev]);
-      setShowAdd(false);
+      setMobileStage(created.stage);
+      setEditor(null);
+      return true;
     }
+    toast("Could not create the lead", { tone: "error" });
+    return false;
   }
 
-  async function update(id: number, patch: Partial<Lead>) {
+  /** Optimistic PATCH. Rolls back and reports `failMessage` when the request fails. */
+  async function update(id: number, patch: Partial<Lead>, failMessage = "Could not save the lead"): Promise<boolean> {
+    const before = leadsRef.current.find((l) => l.id === id);
     setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
     const res = await fetch(`/api/leads/${id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json", ...shareHeaders },
       body: JSON.stringify(patch),
-    });
-    if (res.ok) {
+    }).catch(() => null);
+    if (res?.ok) {
       const updated: Lead = await res.json();
       setLeads((prev) => prev.map((l) => (l.id === id ? updated : l)));
+      return true;
     }
+    if (before) setLeads((prev) => prev.map((l) => (l.id === id ? before : l)));
+    toast(failMessage, { tone: "error" });
+    return false;
+  }
+
+  async function moveLead(id: number, stage: Stage) {
+    const lead = leadsRef.current.find((l) => l.id === id);
+    if (!lead || lead.stage === stage) return;
+    const ok = await update(id, { stage }, "Could not move the lead");
+    if (ok && stage === "won") toast("Marked as won", { tone: "success" });
+  }
+
+  /** Saving from the modal with a stage change: same PATCH, plus the won toast. */
+  async function moveLeadWithPatch(id: number, patch: Partial<Lead>) {
+    const ok = await update(id, patch);
+    if (ok && patch.stage === "won") toast("Marked as won", { tone: "success" });
   }
 
   async function remove(id: number) {
-    if (!confirm("Delete this lead?")) return;
+    const ok = await confirmDialog({
+      title: "Delete this lead?",
+      description: "Its notes and attachments will be removed too.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+    const prevLeads = leadsRef.current;
     setLeads((prev) => prev.filter((l) => l.id !== id));
-    setEditingId(null);
-    await fetch(`/api/leads/${id}`, { method: "DELETE", headers: shareHeaders });
+    setEditor(null);
+    const res = await fetch(`/api/leads/${id}`, { method: "DELETE", headers: shareHeaders }).catch(() => null);
+    if (!res?.ok) {
+      setLeads(prevLeads);
+      toast("Could not delete the lead", { tone: "error" });
+    }
   }
 
-  const totalPipeline = leads
-    .filter((l) => l.stage !== "won" && l.stage !== "lost")
-    .reduce((s, l) => s + (l.value_cents ?? 0), 0);
-  const totalWon = leads
-    .filter((l) => l.stage === "won")
-    .reduce((s, l) => s + (l.value_cents ?? 0), 0);
+  const active = leads.filter((l) => !isClosed(l.stage));
+  const totalPipeline = active.reduce((s, l) => s + (l.value_cents ?? 0), 0);
+  const won = leads.filter((l) => l.stage === "won");
+  const totalWon = won.reduce((s, l) => s + (l.value_cents ?? 0), 0);
+
+  const showSearch = leads.length > 8;
+  const q = showSearch ? query.trim().toLowerCase() : "";
+
+  const byStage = useMemo(() => {
+    const map: Record<Stage, Lead[]> = { new: [], contacted: [], qualified: [], proposal: [], won: [], lost: [] };
+    for (const l of leads) {
+      const catOk =
+        !categoriesEnabled ||
+        categoryFilter === "all" ||
+        (categoryFilter === UNCATEGORIZED ? l.categories.length === 0 : l.categories.includes(categoryFilter));
+      if (!catOk) continue;
+      if (q && ![l.name, l.company, l.notes].some((v) => v?.toLowerCase().includes(q))) continue;
+      map[l.stage]?.push(l);
+    }
+    return map;
+  }, [leads, categoriesEnabled, categoryFilter, q]);
+
+  const editingLead = editor?.mode === "edit" ? leads.find((l) => l.id === editor.id) ?? null : null;
+  const filtered = q !== "" || (categoriesEnabled && categoryFilter !== "all");
+
+  function renderCard(l: Lead) {
+    return (
+      <LeadCard
+        key={l.id}
+        lead={l}
+        allCategories={categoriesEnabled ? catNames : undefined}
+        attachmentCount={attachmentCounts[l.id] ?? l.attachment_count ?? 0}
+        dragging={draggingId === l.id}
+        onOpen={() => setEditor({ mode: "edit", id: l.id })}
+        onDragStart={() => setDraggingId(l.id)}
+        onDragEnd={() => {
+          setDraggingId(null);
+          setOverStage(null);
+        }}
+      />
+    );
+  }
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3 text-sm text-zinc-600 dark:text-zinc-400">
-          <span>
-            <span className="text-zinc-900 dark:text-zinc-100 font-medium">{leads.filter((l) => l.stage !== "won" && l.stage !== "lost").length}</span> active
-            <span className="mx-2 text-zinc-300 dark:text-zinc-700">·</span>
-            <span className="text-zinc-900 dark:text-zinc-100 font-medium">{money(totalPipeline) || "$0"}</span> pipeline
-          </span>
-          <span className="text-zinc-300 dark:text-zinc-700">|</span>
-          <span>
-            <span className="text-emerald-600 dark:text-emerald-400 font-medium">{money(totalWon) || "$0"}</span> closed
-          </span>
-        </div>
-        <button
-          onClick={() => setShowAdd((v) => !v)}
-          className="bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 text-sm font-medium px-3 py-1.5 rounded-md hover:bg-zinc-800 dark:hover:bg-white inline-flex items-center gap-1.5"
-        >
-          <Plus size={14} />
-          New lead
-        </button>
-      </div>
+    <div>
+      {/* Toolbar */}
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-1 flex-col gap-3">
+          <div className="flex min-h-10 flex-wrap items-center gap-x-4 gap-y-2 md:min-h-8">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-ink-3">
+              <span>
+                <span className="font-medium tabular-nums text-ink">{active.length}</span> active
+              </span>
+              <span>
+                <span className="font-medium tabular-nums text-ink">{money(totalPipeline) || "$0"}</span> pipeline
+              </span>
+              <span>
+                <span className="font-medium tabular-nums text-emerald-600 dark:text-emerald-400">{money(totalWon) || "$0"}</span>{" "}
+                closed, <span className="tabular-nums">{won.length}</span> won
+              </span>
+            </div>
+            {showSearch && (
+              <div className="relative w-full sm:w-60">
+                <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3" />
+                <Input
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search leads"
+                  aria-label="Search leads"
+                  className="pl-8 md:h-8 md:text-[13px]"
+                />
+              </div>
+            )}
+          </div>
 
-      {/* Category filter + management (feature-flagged per business) */}
-      {categoriesEnabled && (
-        <div className="space-y-2">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <CatPill active={categoryFilter === "all"} onClick={() => setCategoryFilter("all")}>
-              All <span className="opacity-50">{leads.length}</span>
-            </CatPill>
-            {cats.map((c) => {
-              const count = leads.filter((l) => l.categories.includes(c.name)).length;
-              return (
+          {/* Category filter (feature-flagged per business) */}
+          {categoriesEnabled && leads.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <CatPill active={categoryFilter === "all"} onClick={() => setCategoryFilter("all")}>
+                All <span className="tabular-nums opacity-60">{leads.length}</span>
+              </CatPill>
+              {cats.map((c) => (
                 <CatPill
                   key={c.id}
                   active={categoryFilter === c.name}
-                  color={catColor(c.name)}
+                  color={categoryColor(catNames, c.name)}
                   onClick={() => setCategoryFilter(c.name)}
                 >
-                  {c.name} <span className="opacity-60">{count}</span>
+                  {c.name}{" "}
+                  <span className="tabular-nums opacity-60">{leads.filter((l) => l.categories.includes(c.name)).length}</span>
                 </CatPill>
-              );
-            })}
-            {leads.some((l) => l.categories.length === 0) && (
-              <CatPill active={categoryFilter === UNCATEGORIZED} onClick={() => setCategoryFilter(UNCATEGORIZED)}>
-                Uncategorized <span className="opacity-50">{leads.filter((l) => l.categories.length === 0).length}</span>
-              </CatPill>
-            )}
-            <button
-              onClick={() => setShowManageCats((v) => !v)}
-              className={`ml-1 inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-full border transition-colors ${
-                showManageCats
-                  ? "border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
-                  : "border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-              }`}
-            >
-              <Settings2 size={12} /> Manage
-            </button>
-          </div>
-
-          {showManageCats && (
-            <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 p-3 space-y-2.5">
-              <form onSubmit={addCategory} className="flex gap-2">
-                <input
-                  value={newCatName}
-                  onChange={(e) => setNewCatName(e.target.value)}
-                  placeholder="New category name (e.g. Healthcare, Logistics)"
-                  className="flex-1 px-2.5 py-1.5 text-sm rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 outline-none focus:border-zinc-400 dark:focus:border-zinc-600"
-                />
-                <button
-                  type="submit"
-                  disabled={!newCatName.trim()}
-                  className="shrink-0 inline-flex items-center gap-1.5 bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 text-sm font-medium px-3 py-1.5 rounded-md hover:bg-zinc-800 dark:hover:bg-white disabled:opacity-40"
-                >
-                  <Plus size={14} /> Add
-                </button>
-              </form>
-              {cats.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {cats.map((c) => (
-                    <span key={c.id} className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ${catColor(c.name)}`}>
-                      {c.name}
-                      <button onClick={() => deleteCategory(c)} className="hover:text-rose-600 dark:hover:text-rose-400" title="Delete category">
-                        <X size={11} />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-zinc-400">No categories yet. Add one above, then tag leads when you create or edit them.</p>
+              ))}
+              {leads.some((l) => l.categories.length === 0) && (
+                <CatPill active={categoryFilter === UNCATEGORIZED} onClick={() => setCategoryFilter(UNCATEGORIZED)}>
+                  Uncategorized{" "}
+                  <span className="tabular-nums opacity-60">{leads.filter((l) => l.categories.length === 0).length}</span>
+                </CatPill>
               )}
             </div>
           )}
         </div>
-      )}
 
-      {showAdd && <NewLeadCard onCreate={add} onCancel={() => setShowAdd(false)} categories={categoriesEnabled ? catNames : undefined} />}
+        <div className="flex shrink-0 items-center gap-2">
+          {categoriesEnabled && (
+            <Button onClick={() => setShowManageCats(true)}>
+              <Settings2 size={14} /> Manage categories
+            </Button>
+          )}
+          <Button variant="primary" onClick={() => setEditor({ mode: "new" })}>
+            <Plus size={14} /> New lead
+          </Button>
+        </div>
+      </div>
 
-      <div className="space-y-5">
-        {LEAD_STAGES.map((stage) => {
-          const stageLeads = leads.filter(
-            (l) =>
-              l.stage === stage &&
-              (categoryFilter === "all" ||
-                (categoryFilter === UNCATEGORIZED ? l.categories.length === 0 : l.categories.includes(categoryFilter)))
-          );
-          if (stageLeads.length === 0) return null;
-          return (
-            <div key={stage}>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="text-xs font-medium uppercase tracking-wider text-zinc-500">{STAGE_LABELS[stage]}</div>
-                <div className="text-xs text-zinc-400 dark:text-zinc-600 bg-zinc-100 dark:bg-zinc-900 px-1.5 py-0.5 rounded-full">{stageLeads.length}</div>
-              </div>
-              <div className="rounded-lg border border-zinc-200 dark:border-zinc-900 divide-y divide-zinc-100 dark:divide-zinc-900 overflow-hidden">
-                {stageLeads.map((l) => (
-                  <LeadCard
-                    key={l.id}
-                    lead={l}
-                    isEditing={editingId === l.id}
-                    categories={categoriesEnabled ? catNames : undefined}
-                    catColor={catColor}
-                    onStartEdit={() => setEditingId(l.id)}
-                    onCancelEdit={() => setEditingId(null)}
-                    onUpdate={(patch) => update(l.id, patch)}
-                    onDelete={() => remove(l.id)}
-                  />
-                ))}
-              </div>
+      {leads.length === 0 ? (
+        <EmptyState
+          icon={<TrendingUp size={18} />}
+          title="No leads yet"
+          body="Add your first lead to start tracking deals from first contact to won."
+          action={
+            <Button onClick={() => setEditor({ mode: "new" })}>
+              <Plus size={14} /> New lead
+            </Button>
+          }
+        />
+      ) : (
+        <>
+          {/* Board (desktop) */}
+          <div className="hidden gap-3 overflow-x-auto pb-3 md:flex">
+            {LEAD_STAGES.map((stage) => {
+              const stageLeads = byStage[stage];
+              const quiet = isClosed(stage);
+              const isTarget = overStage === stage && draggingId !== null;
+              const total = stageLeads.reduce((s, l) => s + (l.value_cents ?? 0), 0);
+              return (
+                <section
+                  key={stage}
+                  aria-label={`${STAGE_LABELS[stage]} stage`}
+                  onDragOver={(e) => {
+                    if (draggingId === null) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    if (overStage !== stage) setOverStage(stage);
+                  }}
+                  onDragLeave={(e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                      setOverStage((s) => (s === stage ? null : s));
+                    }
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const id = draggingId ?? Number(e.dataTransfer.getData("text/plain"));
+                    setDraggingId(null);
+                    setOverStage(null);
+                    if (id) moveLead(id, stage);
+                  }}
+                  className={cn(
+                    "flex min-h-[420px] w-[280px] shrink-0 flex-col rounded-xl border p-2 transition-colors",
+                    isTarget
+                      ? "border-dashed border-brand bg-brand-soft"
+                      : quiet
+                        ? "border-dashed border-line bg-transparent"
+                        : "border-transparent bg-sunken"
+                  )}
+                >
+                  <header className="flex items-baseline justify-between gap-2 px-1.5 pb-2.5 pt-1">
+                    <div className="flex min-w-0 items-baseline gap-2">
+                      <h2 className={cn("text-[13px] font-semibold", quiet ? "text-ink-3" : "text-ink")}>{STAGE_LABELS[stage]}</h2>
+                      <span className="text-xs tabular-nums text-ink-3">{stageLeads.length}</span>
+                    </div>
+                    {total > 0 && (
+                      <span
+                        className={cn(
+                          "text-xs font-medium tabular-nums",
+                          stage === "won" ? "text-emerald-600 dark:text-emerald-400" : quiet ? "text-ink-3" : "text-ink-2"
+                        )}
+                      >
+                        {money(total)}
+                      </span>
+                    )}
+                  </header>
+                  <div className={cn("flex flex-1 flex-col gap-2", quiet && !isTarget && "opacity-75")}>
+                    {stageLeads.map(renderCard)}
+                    {stageLeads.length === 0 && (
+                      <div className="flex flex-1 items-start justify-center px-2 pt-6 text-center text-xs text-ink-4">
+                        {isTarget ? "Drop here" : filtered ? "No matches" : "No leads"}
+                      </div>
+                    )}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+
+          {/* Stage picker + list (mobile, where HTML5 drag is unavailable) */}
+          <div className="md:hidden">
+            <Segmented
+              className="flex-nowrap! w-full overflow-x-auto scrollbar-none"
+              value={mobileStage}
+              onChange={setMobileStage}
+              options={LEAD_STAGES.map((s) => ({
+                value: s,
+                label: (
+                  <span className="whitespace-nowrap">
+                    {STAGE_LABELS[s]} <span className="ml-0.5 text-[11px] tabular-nums opacity-60">{byStage[s].length}</span>
+                  </span>
+                ),
+              }))}
+            />
+            <div className="mt-2 flex items-baseline justify-between px-1 text-xs text-ink-3">
+              <span>Open a lead to change its stage</span>
+              <span className="font-medium tabular-nums text-ink-2">
+                {money(byStage[mobileStage].reduce((s, l) => s + (l.value_cents ?? 0), 0))}
+              </span>
             </div>
-          );
-        })}
-        {leads.length === 0 && (
-          <div className="flex flex-col items-center gap-3 py-12 text-center">
-            <div className="w-12 h-12 rounded-2xl bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center">
-              <TrendingUp size={20} className="text-zinc-400" />
-            </div>
-            <div>
-              <div className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">No leads yet</div>
-              <div className="text-xs text-zinc-400">Click &ldquo;New lead&rdquo; to start tracking your pipeline.</div>
+            <div className="mt-3 flex flex-col gap-2">
+              {byStage[mobileStage].map(renderCard)}
+              {byStage[mobileStage].length === 0 && (
+                <p className="py-10 text-center text-[13px] text-ink-3">
+                  {filtered ? "No matching leads in this stage." : `No leads in ${STAGE_LABELS[mobileStage].toLowerCase()} yet.`}
+                </p>
+              )}
             </div>
           </div>
+        </>
+      )}
+
+      {editor && (editor.mode === "new" || editingLead) && (
+        <LeadModal
+          key={editor.mode === "edit" ? `edit-${editor.id}` : "new"}
+          lead={editingLead}
+          categories={categoriesEnabled ? catNames : undefined}
+          onClose={() => setEditor(null)}
+          onCreate={add}
+          onSave={(patch) => {
+            if (!editingLead) return;
+            if (patch.stage && patch.stage !== editingLead.stage) {
+              setMobileStage(patch.stage);
+              moveLeadWithPatch(editingLead.id, patch);
+            } else {
+              update(editingLead.id, patch);
+            }
+            setEditor(null);
+          }}
+          onDelete={() => editingLead && remove(editingLead.id)}
+          onAttachmentCount={(n) =>
+            editingLead && setAttachmentCounts((prev) => (prev[editingLead.id] === n ? prev : { ...prev, [editingLead.id]: n }))
+          }
+        />
+      )}
+
+      <Modal
+        open={showManageCats}
+        onClose={() => setShowManageCats(false)}
+        title="Manage categories"
+        description="Categories are shared by the pipeline and the CRM."
+        size="sm"
+        onSubmit={addCategory}
+        footer={
+          <>
+            <span />
+            <Button variant="ghost" onClick={() => setShowManageCats(false)}>
+              Done
+            </Button>
+          </>
+        }
+      >
+        <div className="flex items-end gap-2">
+          <Field label="New category" className="min-w-0 flex-1">
+            <Input
+              value={newCatName}
+              onChange={(e) => setNewCatName(e.target.value)}
+              placeholder="e.g. Healthcare"
+              autoFocus
+            />
+          </Field>
+          <Button type="submit" disabled={!newCatName.trim()} loading={addingCat} className="md:h-9">
+            <Plus size={14} /> Add
+          </Button>
+        </div>
+        {cats.length > 0 ? (
+          <div className="mt-4 divide-y divide-line overflow-hidden rounded-xl border border-line">
+            {cats.map((c) => (
+              <div key={c.id} className="flex items-center justify-between gap-3 py-1.5 pl-3 pr-1.5">
+                <div className="flex min-w-0 items-center gap-2">
+                  <CategoryBadges names={[c.name]} allNames={catNames} />
+                  <span className="text-xs tabular-nums text-ink-3">
+                    {leads.filter((l) => l.categories.includes(c.name)).length} leads
+                  </span>
+                </div>
+                <IconButton label={`Delete ${c.name}`} size="sm" variant="danger" onClick={() => deleteCategory(c)}>
+                  <Trash2 size={13} />
+                </IconButton>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-4 text-xs text-ink-3">No categories yet. Add one above, then tag leads when you create or edit them.</p>
         )}
-      </div>
+      </Modal>
     </div>
   );
 }
+
+// ── Card ─────────────────────────────────────────────────────────────────────
+
+function LeadCard({
+  lead,
+  allCategories,
+  attachmentCount,
+  dragging,
+  onOpen,
+  onDragStart,
+  onDragEnd,
+}: {
+  lead: Lead;
+  allCategories?: string[];
+  attachmentCount: number;
+  dragging: boolean;
+  onOpen: () => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+}) {
+  const overdue = !!lead.next_action_date && !isClosed(lead.stage) && lead.next_action_date < todayKey();
+  const hasNext = !!lead.next_action || !!lead.next_action_date;
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      draggable
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", String(lead.id));
+        // Defer so the browser snapshots the card at full opacity for the drag image.
+        setTimeout(onDragStart, 0);
+      }}
+      onDragEnd={onDragEnd}
+      className={cn(
+        "cursor-pointer select-none rounded-xl border border-line bg-raised p-3 text-left shadow-card outline-none",
+        "transition-[box-shadow,border-color,opacity] duration-150 hover:border-line-strong hover:shadow-lift",
+        "focus-visible:border-ink-3 focus-visible:ring-[3px] focus-visible:ring-ink/10 md:cursor-grab md:active:cursor-grabbing",
+        dragging && "opacity-40 shadow-lift"
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-medium text-ink">{lead.company || lead.name}</div>
+          {lead.company && <div className="mt-0.5 truncate text-xs text-ink-3">{lead.name}</div>}
+        </div>
+        {lead.value_cents ? (
+          <span className="shrink-0 text-[13px] font-medium tabular-nums text-emerald-600 dark:text-emerald-400">
+            {money(lead.value_cents)}
+          </span>
+        ) : null}
+      </div>
+
+      {hasNext && (
+        <div className="mt-2 flex items-start gap-1.5 text-xs text-ink-2">
+          <ArrowRight size={13} className="mt-px shrink-0 text-ink-3" />
+          <span className="min-w-0 flex-1 break-words">{lead.next_action || "Follow up"}</span>
+        </div>
+      )}
+
+      {(lead.next_action_date || attachmentCount > 0 || (allCategories && lead.categories.length > 0)) && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+          {lead.next_action_date && (
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 text-xs tabular-nums",
+                overdue ? "font-medium text-red-600 dark:text-red-400" : "text-ink-3"
+              )}
+            >
+              <CalendarDays size={13} />
+              {shortDate(lead.next_action_date)}
+              {overdue && <span className="sr-only">, overdue</span>}
+            </span>
+          )}
+          {attachmentCount > 0 && (
+            <span className="inline-flex items-center gap-1 text-xs tabular-nums text-ink-3" title="Attachments">
+              <Paperclip size={13} />
+              {attachmentCount}
+            </span>
+          )}
+          {allCategories && lead.categories.length > 0 && (
+            <CategoryBadges names={lead.categories} allNames={allCategories} size="xs" />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Create / edit modal ──────────────────────────────────────────────────────
 
 type NewLeadForm = {
   name: string;
   company?: string;
   contact_email?: string;
-  stage: Lead["stage"];
+  stage: Stage;
   value_cents?: number;
   next_action?: string;
   next_action_date?: string;
+  notes?: string;
   categories?: string[];
 };
 
-function NewLeadCard({
+
+function LeadModal({
+  lead,
+  categories,
+  onClose,
   onCreate,
-  onCancel,
-  categories,
-}: {
-  onCreate: (form: NewLeadForm) => void;
-  onCancel: () => void;
-  categories?: string[];
-}) {
-  const [name, setName] = useState("");
-  const [company, setCompany] = useState("");
-  const [email, setEmail] = useState("");
-  const [stage, setStage] = useState<Lead["stage"]>("new");
-  const [value, setValue] = useState("");
-  const [nextAction, setNextAction] = useState("");
-  const [nextDate, setNextDate] = useState("");
-  const [selectedCats, setSelectedCats] = useState<string[]>([]);
-
-  return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!name.trim()) return;
-        onCreate({
-          name: name.trim(),
-          company: company.trim() || undefined,
-          contact_email: email.trim() || undefined,
-          stage,
-          value_cents: value ? Math.round(parseFloat(value) * 100) : undefined,
-          next_action: nextAction.trim() || undefined,
-          next_action_date: nextDate || undefined,
-          categories: categories ? selectedCats : undefined,
-        });
-      }}
-      className="rounded-lg border border-zinc-300 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/40 p-4 grid grid-cols-2 gap-3"
-    >
-      <Field label="Name / Lead">
-        <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="Required" autoFocus />
-      </Field>
-      <Field label="Company">
-        <input value={company} onChange={(e) => setCompany(e.target.value)} className={inputCls} />
-      </Field>
-      <Field label="Email">
-        <input value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
-      </Field>
-      <Field label="Stage">
-        <select value={stage} onChange={(e) => setStage(e.target.value as Lead["stage"])} className={inputCls}>
-          {LEAD_STAGES.map((s) => (
-            <option key={s} value={s}>
-              {STAGE_LABELS[s]}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <Field label="Value ($)">
-        <input value={value} onChange={(e) => setValue(e.target.value)} className={inputCls} placeholder="e.g. 5000" />
-      </Field>
-      <Field label="Next action date">
-        <input type="date" value={nextDate} onChange={(e) => setNextDate(e.target.value)} className={inputCls} />
-      </Field>
-      {categories && (
-        <Field label="Categories" full>
-          <CategoryMultiSelect all={categories} selected={selectedCats} onChange={setSelectedCats} />
-        </Field>
-      )}
-      <Field label="Next action" full>
-        <input value={nextAction} onChange={(e) => setNextAction(e.target.value)} className={inputCls} placeholder="e.g. Send proposal" />
-      </Field>
-      <div className="col-span-2 flex justify-end gap-2 mt-1">
-        <button type="button" onClick={onCancel} className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 px-3 py-1.5">
-          Cancel
-        </button>
-        <button type="submit" className="bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 text-sm font-medium px-3 py-1.5 rounded-md hover:bg-zinc-800 dark:hover:bg-white">
-          Create lead
-        </button>
-      </div>
-    </form>
-  );
-}
-
-function LeadCard({
-  lead,
-  isEditing,
-  categories,
-  catColor,
-  onStartEdit,
-  onCancelEdit,
-  onUpdate,
-  onDelete,
-}: {
-  lead: Lead;
-  isEditing: boolean;
-  categories?: string[];
-  catColor?: (name: string) => string;
-  onStartEdit: () => void;
-  onCancelEdit: () => void;
-  onUpdate: (patch: Partial<Lead>) => void;
-  onDelete: () => void;
-}) {
-  return (
-    <>
-      {isEditing && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="absolute inset-0 bg-black/50" onClick={onCancelEdit} />
-          <div className="relative w-full sm:max-w-lg max-h-[90vh] overflow-y-auto rounded-t-xl sm:rounded-xl bg-white dark:bg-zinc-950 shadow-xl">
-            <EditLeadCard
-              lead={lead}
-              categories={categories}
-              onSave={(patch) => { onUpdate(patch); onCancelEdit(); }}
-              onCancel={onCancelEdit}
-              onDelete={onDelete}
-            />
-          </div>
-        </div>
-      )}
-      <button
-        onClick={onStartEdit}
-        className="block w-full text-left bg-white dark:bg-zinc-950 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 px-4 py-3 transition-colors"
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
-            <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{lead.company || lead.name}</div>
-            {lead.company && <div className="text-xs text-zinc-500 mt-0.5">{lead.name}</div>}
-            {categories && lead.categories.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-1.5">
-                {lead.categories.map((cat) => (
-                  <span key={cat} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] font-medium ${catColor?.(cat) ?? ""}`}>
-                    <Tag size={9} /> {cat}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="flex flex-col items-end gap-1 shrink-0">
-            {lead.value_cents ? (
-              <span className="text-xs font-medium text-emerald-700 dark:text-emerald-300">{money(lead.value_cents)}</span>
-            ) : null}
-            {lead.next_action && (
-              <span className="text-xs text-zinc-400 dark:text-zinc-600 text-right max-w-[160px]">{lead.next_action}</span>
-            )}
-          </div>
-        </div>
-      </button>
-    </>
-  );
-}
-
-function EditLeadCard({
-  lead,
-  categories,
   onSave,
-  onCancel,
   onDelete,
+  onAttachmentCount,
 }: {
-  lead: Lead;
+  /** null = create */
+  lead: Lead | null;
   categories?: string[];
+  onClose: () => void;
+  onCreate: (form: NewLeadForm) => Promise<boolean>;
   onSave: (patch: Partial<Lead>) => void;
-  onCancel: () => void;
   onDelete: () => void;
+  onAttachmentCount: (n: number) => void;
 }) {
-  const [name, setName] = useState(lead.name);
-  const [company, setCompany] = useState(lead.company ?? "");
-  const [email, setEmail] = useState(lead.contact_email ?? "");
-  const [stage, setStage] = useState<Lead["stage"]>(lead.stage);
-  const [value, setValue] = useState(lead.value_cents ? (lead.value_cents / 100).toString() : "");
-  const [nextAction, setNextAction] = useState(lead.next_action ?? "");
-  const [nextDate, setNextDate] = useState(lead.next_action_date ?? "");
-  const [notes, setNotes] = useState(lead.notes ?? "");
-  const [selectedCats, setSelectedCats] = useState<string[]>(lead.categories);
+  const [name, setName] = useState(lead?.name ?? "");
+  const [company, setCompany] = useState(lead?.company ?? "");
+  const [email, setEmail] = useState(lead?.contact_email ?? "");
+  const [stage, setStage] = useState<Stage>(lead?.stage ?? "new");
+  const [value, setValue] = useState(lead?.value_cents ? (lead.value_cents / 100).toString() : "");
+  const [nextAction, setNextAction] = useState(lead?.next_action ?? "");
+  const [nextDate, setNextDate] = useState(lead?.next_action_date ?? "");
+  const [notes, setNotes] = useState(lead?.notes ?? "");
+  const [selectedCats, setSelectedCats] = useState<string[]>(lead?.categories ?? []);
+  const [saving, setSaving] = useState(false);
 
+  function parseCents(): number | null {
+    const n = parseFloat(value.replace(/[$,\s]/g, ""));
+    return Number.isFinite(n) ? Math.round(n * 100) : null;
+  }
+
+  async function submit() {
+    if (!name.trim() || saving) return;
+    const cents = value.trim() ? parseCents() : null;
+    if (lead) {
+      onSave({
+        name: name.trim(),
+        company: company || null,
+        contact_email: email || null,
+        stage,
+        value_cents: cents,
+        next_action: nextAction || null,
+        next_action_date: nextDate || null,
+        notes: notes || null,
+        ...(categories ? { categories: selectedCats } : {}),
+      });
+      return;
+    }
+    setSaving(true);
+    await onCreate({
+      name: name.trim(),
+      company: company.trim() || undefined,
+      contact_email: email.trim() || undefined,
+      stage,
+      value_cents: cents ?? undefined,
+      next_action: nextAction.trim() || undefined,
+      next_action_date: nextDate || undefined,
+      notes: notes.trim() || undefined,
+      categories: categories ? selectedCats : undefined,
+    });
+    setSaving(false);
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={lead ? "Edit lead" : "New lead"}
+      size="lg"
+      onSubmit={submit}
+      footer={
+        <>
+          {lead ? (
+            <Button variant="danger" onClick={onDelete}>
+              <Trash2 size={14} /> Delete
+            </Button>
+          ) : (
+            <span />
+          )}
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button variant="primary" type="submit" loading={saving} disabled={!name.trim()}>
+              {lead ? "Save" : "Create lead"}
+            </Button>
+          </div>
+        </>
+      }
+    >
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Name" required>
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Contact name" required autoFocus={!lead} />
+        </Field>
+        <Field label="Company">
+          <Input value={company} onChange={(e) => setCompany(e.target.value)} />
+        </Field>
+        <Field label="Email">
+          <Input type="text" inputMode="email" autoCapitalize="off" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </Field>
+        <Field label="Value">
+          <PrefixInput prefix="$" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} placeholder="5000" />
+        </Field>
+        <Field label="Stage" className="sm:col-span-2">
+          <Select value={stage} onChange={(e) => setStage(e.target.value as Stage)}>
+            {LEAD_STAGES.map((s) => (
+              <option key={s} value={s}>
+                {STAGE_LABELS[s]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Next action">
+          <Input value={nextAction} onChange={(e) => setNextAction(e.target.value)} placeholder="e.g. Send proposal" />
+        </Field>
+        <Field label="Next action date">
+          <Input type="date" value={nextDate} onChange={(e) => setNextDate(e.target.value)} />
+        </Field>
+        {categories && (
+          <FieldGroup label="Categories" className="sm:col-span-2">
+            <CategoryMultiSelect
+              all={Array.from(new Set([...categories, ...selectedCats]))}
+              selected={selectedCats}
+              onChange={setSelectedCats}
+            />
+          </FieldGroup>
+        )}
+        <Field label="Notes" className="sm:col-span-2">
+          <AutoTextarea value={notes} onChange={(e) => setNotes(e.target.value)} minRows={4} className={textareaClass} />
+        </Field>
+        <div className="sm:col-span-2">
+          {lead ? (
+            <Attachments leadId={lead.id} onCount={onAttachmentCount} />
+          ) : (
+            <FieldGroup label="Attachments">
+              <p className="text-xs text-ink-3">Create the lead first, then open it to add links and files.</p>
+            </FieldGroup>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Attachments ──────────────────────────────────────────────────────────────
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+const attachmentAction =
+  "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-3 transition-colors hover:bg-hover hover:text-ink md:h-7 md:w-7";
+
+function Attachments({ leadId, onCount }: { leadId: number; onCount: (n: number) => void }) {
   const [attachments, setAttachments] = useState<LeadAttachment[]>([]);
+  const [loading, setLoading] = useState(true);
   const [linkUrl, setLinkUrl] = useState("");
   const [linkLabel, setLinkLabel] = useState("");
+  const [addingLink, setAddingLink] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const shareHeaders = useShareHeaders();
+  const onCountRef = useRef(onCount);
+  onCountRef.current = onCount;
 
   useEffect(() => {
-    fetch(`/api/leads/${lead.id}/attachments`, { headers: shareHeaders })
-      .then((r) => r.ok ? r.json() : [])
-      .then(setAttachments);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lead.id]);
+    let cancelled = false;
+    fetch(`/api/leads/${leadId}/attachments`, { headers: shareHeaders })
+      .then((r) => (r.ok ? r.json() : []))
+      .catch(() => [])
+      .then((list: LeadAttachment[]) => {
+        if (cancelled) return;
+        setAttachments(list);
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadId]);
+
+  useEffect(() => {
+    if (!loading) onCountRef.current(attachments.length);
+  }, [attachments.length, loading]);
 
   async function addLink() {
     const url = linkUrl.trim();
-    if (!url) return;
-    const res = await fetch(`/api/leads/${lead.id}/attachments`, {
+    if (!url || addingLink) return;
+    setAddingLink(true);
+    const res = await fetch(`/api/leads/${leadId}/attachments`, {
       method: "POST",
       headers: { "content-type": "application/json", ...shareHeaders },
       body: JSON.stringify({ url, label: linkLabel.trim() || null }),
-    });
-    if (res.ok) {
+    }).catch(() => null);
+    if (res?.ok) {
       const created = await res.json();
       setAttachments((prev) => [...prev, created]);
       setLinkUrl("");
       setLinkLabel("");
+    } else {
+      toast("Could not add the link", { tone: "error" });
     }
+    setAddingLink(false);
   }
 
   async function uploadFile(file: File) {
     setUploading(true);
     const form = new FormData();
     form.append("file", file);
-    const res = await fetch(`/api/leads/${lead.id}/attachments`, {
+    const res = await fetch(`/api/leads/${leadId}/attachments`, {
       method: "POST",
       headers: shareHeaders,
       body: form,
-    });
-    if (res.ok) {
+    }).catch(() => null);
+    if (res?.ok) {
       const created = await res.json();
       setAttachments((prev) => [...prev, created]);
+    } else {
+      toast("Could not upload the file", { tone: "error" });
     }
     setUploading(false);
   }
 
   async function removeAttachment(id: number) {
-    await fetch(`/api/attachments/${id}`, { method: "DELETE", headers: shareHeaders });
+    const before = attachments;
     setAttachments((prev) => prev.filter((a) => a.id !== id));
+    const res = await fetch(`/api/attachments/${id}`, { method: "DELETE", headers: shareHeaders }).catch(() => null);
+    if (!res?.ok) {
+      setAttachments(before);
+      toast("Could not remove the attachment", { tone: "error" });
+    }
   }
 
-  function formatBytes(bytes: number) {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  /** Enter inside the link fields adds the link instead of saving the whole lead. */
+  function linkKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addLink();
+    }
   }
 
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        onSave({
-          name,
-          company: company || null,
-          contact_email: email || null,
-          stage,
-          value_cents: value ? Math.round(parseFloat(value) * 100) : null,
-          next_action: nextAction || null,
-          next_action_date: nextDate || null,
-          notes: notes || null,
-          ...(categories ? { categories: selectedCats } : {}),
-        });
-      }}
-      className="bg-white dark:bg-zinc-950 p-5 space-y-3"
-    >
-      <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="Name" />
-      <input value={company} onChange={(e) => setCompany(e.target.value)} className={inputCls} placeholder="Company" />
-      <input value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} placeholder="Email" />
-      <select value={stage} onChange={(e) => setStage(e.target.value as Lead["stage"])} className={inputCls}>
-        {LEAD_STAGES.map((s) => (
-          <option key={s} value={s}>
-            {STAGE_LABELS[s]}
-          </option>
-        ))}
-      </select>
-      {categories && (
-        <div>
-          <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5 flex items-center gap-1">
-            <Tag size={10} /> Categories
-          </div>
-          <CategoryMultiSelect
-            all={Array.from(new Set([...categories, ...selectedCats]))}
-            selected={selectedCats}
-            onChange={setSelectedCats}
-          />
+    <div className="border-t border-line pt-4">
+      <div className="mb-2 flex items-baseline gap-2">
+        <h3 className="text-[13px] font-semibold text-ink">Attachments</h3>
+        {attachments.length > 0 && <span className="text-xs tabular-nums text-ink-3">{attachments.length}</span>}
+        {loading && <Loader2 size={13} className="animate-spin self-center text-ink-3" />}
+      </div>
+
+      {attachments.length > 0 && (
+        <div className="mb-3 divide-y divide-line overflow-hidden rounded-xl border border-line">
+          {attachments.map((a) => (
+            <div key={a.id} className="flex items-center gap-2 py-1 pl-3 pr-1.5">
+              {a.type === "link" ? (
+                <Link2 size={14} className="shrink-0 text-ink-3" />
+              ) : (
+                <Paperclip size={14} className="shrink-0 text-ink-3" />
+              )}
+              <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{a.label || a.filename || a.url}</span>
+              {a.file_size ? <span className="shrink-0 text-xs tabular-nums text-ink-3">{formatBytes(a.file_size)}</span> : null}
+              {a.type === "link" ? (
+                <a
+                  href={a.url!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Open link"
+                  title="Open link"
+                  className={attachmentAction}
+                >
+                  <ExternalLink size={14} />
+                </a>
+              ) : (
+                <a
+                  href={`/api/attachments/${a.id}/file`}
+                  download={a.filename ?? undefined}
+                  aria-label="Download file"
+                  title="Download file"
+                  className={attachmentAction}
+                >
+                  <Download size={14} />
+                </a>
+              )}
+              <IconButton label="Remove attachment" size="sm" variant="danger" onClick={() => removeAttachment(a.id)}>
+                <X size={14} />
+              </IconButton>
+            </div>
+          ))}
         </div>
       )}
-      <input value={value} onChange={(e) => setValue(e.target.value)} className={inputCls} placeholder="Value ($)" />
-      <input value={nextAction} onChange={(e) => setNextAction(e.target.value)} className={inputCls} placeholder="Next action" />
-      <input type="date" value={nextDate} onChange={(e) => setNextDate(e.target.value)} className={inputCls} />
-      <AutoTextarea value={notes} onChange={(e) => setNotes(e.target.value)} minRows={4} className={`${inputCls} resize-none leading-relaxed`} placeholder="Notes" />
 
-      {/* Attachments */}
-      <div className="pt-1">
-        <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2">Attachments</div>
-
-        {attachments.length > 0 && (
-          <div className="space-y-1.5 mb-3">
-            {attachments.map((a) => (
-              <div key={a.id} className="flex items-center gap-2 rounded-md bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-2.5 py-1.5">
-                {a.type === "link" ? (
-                  <Link2 size={12} className="text-zinc-400 shrink-0" />
-                ) : (
-                  <Paperclip size={12} className="text-zinc-400 shrink-0" />
-                )}
-                <span className="flex-1 text-xs text-zinc-700 dark:text-zinc-300 truncate">
-                  {a.label || a.filename || a.url}
-                </span>
-                {a.file_size && (
-                  <span className="text-[10px] text-zinc-400 shrink-0">{formatBytes(a.file_size)}</span>
-                )}
-                {a.type === "link" ? (
-                  <a
-                    href={a.url!}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 shrink-0"
-                  >
-                    <ExternalLink size={12} />
-                  </a>
-                ) : (
-                  <a
-                    href={`/api/attachments/${a.id}/file`}
-                    download={a.filename ?? undefined}
-                    onClick={(e) => e.stopPropagation()}
-                    className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 shrink-0"
-                  >
-                    <Download size={12} />
-                  </a>
-                )}
-                <button
-                  type="button"
-                  onClick={() => removeAttachment(a.id)}
-                  className="text-zinc-400 hover:text-red-500 dark:hover:text-red-400 shrink-0"
-                >
-                  <X size={12} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Add link */}
-        <div className="flex gap-1.5 mb-2">
-          <input
-            type="url"
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_10rem_auto] sm:items-end">
+        <Field label="Link URL">
+          <Input
+            type="text"
+            inputMode="url"
+            autoCapitalize="off"
             value={linkUrl}
             onChange={(e) => setLinkUrl(e.target.value)}
-            placeholder="Paste a link…"
-            className={`${inputCls} flex-1`}
+            onKeyDown={linkKeyDown}
+            placeholder="Paste a link"
           />
-          <input
-            value={linkLabel}
-            onChange={(e) => setLinkLabel(e.target.value)}
-            placeholder="Label"
-            className={`${inputCls} w-24`}
-          />
-          <button
-            type="button"
-            onClick={addLink}
-            disabled={!linkUrl.trim()}
-            className="shrink-0 bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 text-xs px-2.5 py-1.5 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800 disabled:opacity-40 inline-flex items-center gap-1"
-          >
-            <Link2 size={11} /> Add
-          </button>
-        </div>
-
-        {/* Upload file */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) uploadFile(file);
-            e.target.value = "";
-          }}
-        />
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-          className="w-full border border-dashed border-zinc-300 dark:border-zinc-700 rounded-md py-2 text-xs text-zinc-500 hover:border-zinc-400 dark:hover:border-zinc-600 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors inline-flex items-center justify-center gap-1.5 disabled:opacity-50"
-        >
-          <Upload size={12} />
-          {uploading ? "Uploading…" : "Upload file"}
-        </button>
+        </Field>
+        <Field label="Link label">
+          <Input value={linkLabel} onChange={(e) => setLinkLabel(e.target.value)} onKeyDown={linkKeyDown} placeholder="Optional" />
+        </Field>
+        <Button onClick={addLink} disabled={!linkUrl.trim()} loading={addingLink} className="md:h-9">
+          <Link2 size={14} /> Add link
+        </Button>
       </div>
 
-      <div className="flex justify-between items-center pt-1">
-        <button type="button" onClick={onDelete} className="text-xs text-red-600 dark:text-red-400 hover:text-red-500 dark:hover:text-red-300 inline-flex items-center gap-1">
-          <Trash2 size={12} /> Delete
-        </button>
-        <div className="flex gap-2">
-          <button type="button" onClick={onCancel} className="text-xs text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 px-2 py-1">
-            Cancel
-          </button>
-          <button type="submit" className="bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 text-xs font-medium px-2.5 py-1 rounded">
-            Save
-          </button>
-        </div>
-      </div>
-    </form>
-  );
-}
-
-const inputCls =
-  "w-full bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-800 text-sm text-zinc-900 dark:text-zinc-100 px-2.5 py-1.5 rounded outline-none focus:border-zinc-500 dark:focus:border-zinc-600 placeholder:text-zinc-400 dark:placeholder:text-zinc-600";
-
-function Field({ label, full, children }: { label: string; full?: boolean; children: React.ReactNode }) {
-  return (
-    <label className={`block ${full ? "col-span-2" : ""}`}>
-      <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">{label}</div>
-      {children}
-    </label>
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) uploadFile(file);
+          e.target.value = "";
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        disabled={uploading}
+        className="mt-3 inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-line-strong text-[13px] text-ink-3 transition-colors hover:border-ink-4 hover:bg-hover hover:text-ink disabled:pointer-events-none disabled:opacity-50"
+      >
+        {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+        {uploading ? "Uploading" : "Upload file"}
+      </button>
+    </div>
   );
 }

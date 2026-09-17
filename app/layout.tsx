@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AdminShell } from "@/components/admin-shell";
+import { UIHost } from "@/components/ui/host";
 import { db } from "@/lib/db";
 
 /**
@@ -75,8 +76,9 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>
-      <body className="min-h-full bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+      <body className="min-h-full bg-shell text-ink">
         <AdminShell hiddenBusinessIds={hiddenBusinessIds()}>{children}</AdminShell>
+        <UIHost />
       </body>
     </html>
   );

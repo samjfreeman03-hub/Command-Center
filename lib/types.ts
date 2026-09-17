@@ -25,6 +25,8 @@ export type Lead = {
   notes: string | null;
   /** Custom user-defined category names (a lead can belong to several). */
   categories: string[];
+  /** Number of links/files attached. Present on list queries only. */
+  attachment_count?: number;
   created_at: number;
   updated_at: number;
 };
@@ -313,4 +315,14 @@ export type OutreachTarget = {
   notes: string | null;
   created_at: number;
   updated_at: number;
+};
+
+/** One global-search result (see db.search). Deep-links to /b/<business_id>?tab=<tab>&open=<id>. */
+export type SearchHit = {
+  type: "initiative" | "todo" | "lead" | "contact" | "note" | "event" | "outreach";
+  id: number;
+  business_id: string;
+  title: string;
+  subtitle: string;
+  tab: string;
 };

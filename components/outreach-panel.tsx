@@ -1,14 +1,24 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import type { LucideIcon } from "lucide-react";
 import type { OutreachTarget, OutreachStatus, OutreachDrafts, OutreachSignals, CandidateContact } from "@/lib/types";
 import { OUTREACH_STATUSES } from "@/lib/types";
 import {
-  Plus, Sparkles, Copy, Check, ExternalLink, Trash2, Loader2, Clock, Send, RotateCcw, Search, Wand2, UserSearch, Users, Mail, ShieldCheck, Download, PenLine,
+  Plus, Sparkles, Copy, Check, ExternalLink, Trash2, Loader2, Clock, Send, RotateCcw, Search, UserSearch, Users, Mail, ShieldCheck, Download, PenLine, Target, ChevronDown, StickyNote, History,
 } from "lucide-react";
 import { useShareHeaders } from "@/lib/share-context";
 import { getOutreachConfig } from "@/lib/outreach-config";
 import { AutoTextarea } from "@/components/auto-textarea";
+import { Button, IconButton } from "@/components/ui/button";
+import { Input, Select, Field, textareaClass } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
+import { confirmDialog, toast } from "@/components/ui/host";
+import { Badge, Card, EmptyState, SectionHeader, type BadgeTone } from "@/components/ui/display";
+import { Segmented } from "@/components/ui/segmented";
+import { usePanelState } from "@/lib/panel-cache";
+import { brandVars, getBusiness } from "@/lib/businesses";
+import { cn } from "@/lib/cn";
 
 const EMPTY_FORM = {
   brand_name: "",
@@ -40,21 +50,36 @@ const ROLE_LABELS: Record<CandidateContact["role_category"], string> = {
   "other": "Other",
 };
 
-const ROLE_COLORS: Record<CandidateContact["role_category"], string> = {
-  "college-or-next-gen": "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300",
-  "influencer-or-partnerships": "bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300",
-  "social-or-community": "bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300",
-  "experiential": "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300",
-  "brand-marketing-exec": "bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300",
-  "other": "bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400",
+const ROLE_TONES: Record<CandidateContact["role_category"], BadgeTone> = {
+  "college-or-next-gen": "green",
+  "influencer-or-partnerships": "violet",
+  "social-or-community": "blue",
+  "experiential": "amber",
+  "brand-marketing-exec": "neutral",
+  "other": "neutral",
 };
+
+const STATUS_TONES: Record<OutreachStatus, BadgeTone> = {
+  queued: "neutral",
+  drafted: "violet",
+  sent: "blue",
+  replied: "green",
+  converted: "amber",
+  declined: "red",
+  dead: "neutral",
+};
+
+type SentHistoryEntry = { at: number; follow_up_n: number; text: string; template?: string };
 
 export function OutreachPanel({
   businessId,
   initial,
+  openId,
 }: {
   businessId: string;
   initial: OutreachTarget[];
+  /** Deep link: switch to a view that shows this target, expand it, and scroll to it. */
+  openId?: number;
 }) {
   const cfg = getOutreachConfig(businessId);
   const categorySuggestions = cfg?.categories ?? [];
@@ -62,7 +87,7 @@ export function OutreachPanel({
   const templateBLabel = cfg?.templateBLabel ?? "Template B";
   const senders = cfg?.senders ?? ["Sam"];
   const [view, setView] = useState<ViewMode>("today");
-  const [targets, setTargets] = useState<OutreachTarget[]>(initial);
+  const [targets, setTargets] = usePanelState<OutreachTarget[]>("outreach", initial);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [filter, setFilter] = useState<OutreachStatus | "all">("all");
@@ -136,9 +161,10 @@ export function OutreachPanel({
     });
     if (res.status === 409) {
       const data: { existing?: OutreachTarget } = await res.json().catch(() => ({}));
-      alert(
+      toast(
         `Already in your queue: ${form.person_name} at ${form.brand_name}` +
-        (data.existing ? ` (status: ${data.existing.status})` : "")
+        (data.existing ? ` (status: ${data.existing.status})` : ""),
+        { tone: "error" }
       );
       if (data.existing) setExpandedId(data.existing.id);
       return;
@@ -165,7 +191,7 @@ export function OutreachPanel({
         setExpandedId(target.id);
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(`Draft failed: ${err.error ?? res.statusText}`);
+        toast(`Draft failed: ${err.error ?? res.statusText}`, { tone: "error" });
       }
     } finally {
       setDraftingId(null);
@@ -185,7 +211,7 @@ export function OutreachPanel({
         setExpandedId(target.id);
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(`Enrich failed: ${err.error ?? res.statusText}`);
+        toast(`Enrich failed: ${err.error ?? res.statusText}`, { tone: "error" });
       }
     } finally {
       setEnrichingId(null);
@@ -205,7 +231,7 @@ export function OutreachPanel({
         setFollowupDrafts((prev) => ({ ...prev, [target.id]: data }));
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(`Follow-up draft failed: ${err.error ?? res.statusText}`);
+        toast(`Follow-up draft failed: ${err.error ?? res.statusText}`, { tone: "error" });
       }
     } finally {
       setDraftingId(null);
@@ -296,7 +322,11 @@ export function OutreachPanel({
   }
 
   async function resetCadence(id: number) {
-    if (!confirm("Reset this target's cadence? It'll go back to queued.")) return;
+    if (!(await confirmDialog({
+      title: "Reset this target's cadence?",
+      description: "It will go back to queued.",
+      confirmLabel: "Reset",
+    }))) return;
     const res = await fetch(`/api/outreach/${id}/action`, {
       method: "POST",
       headers: { "content-type": "application/json", ...shareHeaders },
@@ -334,7 +364,7 @@ export function OutreachPanel({
         setSelectedKeys(defaults);
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(`Generate failed: ${err.error ?? res.statusText}`);
+        toast(`Generate failed: ${err.error ?? res.statusText}`, { tone: "error" });
       }
     } finally {
       setGeneratingCandidates(false);
@@ -398,7 +428,9 @@ export function OutreachPanel({
       setSelectedKeys(new Set());
       setShowCandidates(false);
       if (skipped > 0) {
-        alert(`Added ${newTargets.length} new target${newTargets.length === 1 ? "" : "s"}. Skipped ${skipped} duplicate${skipped === 1 ? "" : "s"} already in your queue.`);
+        toast(`Added ${newTargets.length} new target${newTargets.length === 1 ? "" : "s"}, skipped ${skipped} duplicate${skipped === 1 ? "" : "s"} already in your queue`, { tone: "success" });
+      } else if (newTargets.length > 0) {
+        toast(`Added ${newTargets.length} new target${newTargets.length === 1 ? "" : "s"}`, { tone: "success" });
       }
     } finally {
       setBulkAdding(false);
@@ -449,7 +481,7 @@ export function OutreachPanel({
         setExpandedId(target.id);
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(`Find contacts failed: ${err.error ?? res.statusText}`);
+        toast(`Find contacts failed: ${err.error ?? res.statusText}`, { tone: "error" });
       }
     } finally {
       setFindingContactsId(null);
@@ -495,7 +527,9 @@ export function OutreachPanel({
     }
     setTargets((prev) => [...newTargets, ...prev]);
     if (skipped > 0) {
-      alert(`Added ${newTargets.length} new contact${newTargets.length === 1 ? "" : "s"}. Skipped ${skipped} duplicate${skipped === 1 ? "" : "s"} (already in queue).`);
+      toast(`Added ${newTargets.length} new contact${newTargets.length === 1 ? "" : "s"}, skipped ${skipped} duplicate${skipped === 1 ? "" : "s"} already in your queue`, { tone: "success" });
+    } else if (newTargets.length > 0) {
+      toast(`Added ${newTargets.length} new contact${newTargets.length === 1 ? "" : "s"}`, { tone: "success" });
     }
     // Retire the original placeholder if it was one
     if (target.person_name === PLACEHOLDER_NAME) {
@@ -524,13 +558,14 @@ export function OutreachPanel({
     // Cost ≈ ~5 Apollo credits per brand (1 org search + 1 enrich + ~5 people unlocks).
     // On Pro plan ($99/4000 credits) that's ~$0.025 × 5 = ~$0.13 per brand.
     const costEst = (placeholders.length * 0.15).toFixed(2);
-    if (!confirm(
-      `Backfill contacts for ${placeholders.length} placeholder brand${placeholders.length === 1 ? "" : "s"}?\n\n` +
-      `• High + medium confidence contacts will be auto-added as new targets\n` +
-      `• Placeholders will be marked dead (audit kept in notes)\n` +
-      `• Estimated cost: ~$${costEst} in Apollo credits (Pro plan)\n\n` +
-      `Runs sequentially, ~${placeholders.length * 8}s total (~8s per brand on Apollo)`
-    )) return;
+    if (!(await confirmDialog({
+      title: `Backfill contacts for ${placeholders.length} placeholder brand${placeholders.length === 1 ? "" : "s"}?`,
+      description:
+        `High and medium confidence contacts will be added as new targets, and the placeholders will be marked dead (audit kept in notes). ` +
+        `Estimated cost: about $${costEst} in Apollo credits (Pro plan). ` +
+        `Runs one brand at a time, about ${placeholders.length * 8}s in total.`,
+      confirmLabel: "Backfill",
+    }))) return;
 
     setBulkBackfilling(true);
     setBackfillProgress({ done: 0, total: placeholders.length, added: 0 });
@@ -595,7 +630,12 @@ export function OutreachPanel({
   }
 
   async function remove(id: number) {
-    if (!confirm("Delete this outreach target?")) return;
+    if (!(await confirmDialog({
+      title: "Delete this outreach target?",
+      description: "Its drafts, signals and send history go with it.",
+      confirmLabel: "Delete",
+      destructive: true,
+    }))) return;
     setTargets((prev) => prev.filter((t) => t.id !== id));
     setExpandedId(null);
     await fetch(`/api/outreach/${id}`, { method: "DELETE", headers: shareHeaders });
@@ -603,6 +643,7 @@ export function OutreachPanel({
 
   function copy(text: string, key: string) {
     navigator.clipboard.writeText(text);
+    toast("Copied");
     setCopiedKey(key);
     setTimeout(() => setCopiedKey(null), 1500);
   }
@@ -628,182 +669,252 @@ export function OutreachPanel({
     OUTREACH_STATUSES.map((s) => [s.value, targets.filter((t) => t.status === s.value).length])
   );
 
+  // Deep link: show the target, expand it, scroll to it, and flash a ring.
+  const [highlightId, setHighlightId] = useState<number | null>(null);
+  useEffect(() => {
+    if (openId == null) return;
+    const target = targets.find((t) => t.id === openId);
+    if (!target) return;
+    const inToday = newTargets.some((t) => t.id === openId);
+    if (!(view === "today" && inToday)) {
+      setView("all");
+      if (filter !== "all" && filter !== target.status) setFilter("all");
+    }
+    setExpandedId(openId);
+    setHighlightId(openId);
+    const scrollTimer = setTimeout(() => {
+      document
+        .getElementById(`outreach-target-${openId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 80);
+    const ringTimer = setTimeout(() => setHighlightId(null), 2200);
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(ringTimer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId]);
+
+  const todayCount = newTargets.length + followupsDue.length;
+  const business = getBusiness(businessId);
+  const brandStyle = business ? brandVars(business) : undefined;
+  const placeholders = targets.filter((t) => t.person_name === PLACEHOLDER_NAME && t.status !== "dead");
+
+  function openAdd() {
+    setShowCandidates(false);
+    setShowAdd(true);
+  }
+  function openCandidates() {
+    setShowAdd(false);
+    setShowCandidates(true);
+  }
+
+  function renderTargetCard(t: OutreachTarget) {
+    return (
+      <TargetCard
+        key={t.id}
+        target={t}
+        expanded={expandedId === t.id}
+        highlighted={highlightId === t.id}
+        drafting={draftingId === t.id}
+        enriching={enrichingId === t.id}
+        findingContacts={findingContactsId === t.id}
+        foundContacts={foundContacts[t.id]}
+        selectedFound={selectedFound[t.id]}
+        copiedKey={copiedKey}
+        isPlaceholder={t.person_name === PLACEHOLDER_NAME}
+        templateALabel={templateALabel}
+        templateBLabel={templateBLabel}
+        emailSignature={emailSignature}
+        onToggle={() => setExpandedId((cur) => (cur === t.id ? null : t.id))}
+        onDraft={() => draft(t)}
+        onEnrich={() => enrich(t)}
+        onFindContacts={() => findContacts(t)}
+        onToggleFoundContact={(idx) => toggleFoundContact(t.id, idx)}
+        onAddFoundContacts={() => addFoundContacts(t)}
+        onMarkSent={(template, text) => markSent(t, template, text)}
+        onMarkReplied={() => markReplied(t.id)}
+        onMarkStatus={(s) => markStatusGeneric(t.id, s)}
+        onUnsetStatus={() => unsetStatus(t)}
+        onCopy={copy}
+        onDelete={() => remove(t.id)}
+      />
+    );
+  }
+
   return (
-    <div className="space-y-5">
-      {/* View toggle + Add */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="inline-flex items-center rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-0.5">
-          <ViewBtn active={view === "today"} onClick={() => setView("today")}>
-            Today {newTargets.length + followupsDue.length > 0 && (
-              <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-semibold rounded-full bg-violet-100 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300">
-                {newTargets.length + followupsDue.length}
-              </span>
-            )}
-          </ViewBtn>
-          <ViewBtn active={view === "all"} onClick={() => setView("all")}>
-            All targets <span className="ml-1.5 opacity-50 text-xs">{targets.length}</span>
-          </ViewBtn>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowSignature((v) => !v)}
-            className={`text-sm font-medium px-3 py-1.5 rounded-md border inline-flex items-center gap-1.5 transition-colors ${
-              showSignature
-                ? "border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
-                : "border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            }`}
+    <div>
+      {/* Toolbar: view toggle on the left, actions on the right */}
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <Segmented<ViewMode>
+          value={view}
+          onChange={setView}
+          options={[
+            {
+              value: "today",
+              label: (
+                <>
+                  Today
+                  {todayCount > 0 && <span className="text-[11px] tabular-nums text-ink-3">{todayCount}</span>}
+                </>
+              ),
+            },
+            {
+              value: "all",
+              label: (
+                <>
+                  All targets
+                  <span className="text-[11px] tabular-nums text-ink-3">{targets.length}</span>
+                </>
+              ),
+            },
+          ]}
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="ghost"
+            onClick={() => setShowSignature(true)}
             title="Email signature appended to Gmail drafts"
           >
             <PenLine size={14} />
             Signature{emailSignature.trim() ? "" : " · off"}
-          </button>
-          <button
-            onClick={() => { setShowCandidates((v) => !v); setShowAdd(false); }}
-            className="text-sm font-medium px-3 py-1.5 rounded-md border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 inline-flex items-center gap-1.5"
-          >
-            <Wand2 size={14} />
+          </Button>
+          <Button variant="brand" onClick={openCandidates}>
+            <Sparkles size={14} />
             Suggest brands
-          </button>
-          <button
-            onClick={() => { setShowAdd((v) => !v); setShowCandidates(false); }}
-            className="bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 text-sm font-medium px-3 py-1.5 rounded-md hover:bg-zinc-800 dark:hover:bg-white inline-flex items-center gap-1.5"
-          >
+          </Button>
+          <Button variant="primary" onClick={openAdd}>
             <Plus size={14} />
             Add target
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Email signature editor */}
-      {showSignature && (
-        <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 bg-zinc-50 dark:bg-zinc-900/50 space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <div className="text-sm font-medium text-zinc-700 dark:text-zinc-300 inline-flex items-center gap-1.5">
-              <PenLine size={13} /> Email signature
-            </div>
-            <button onClick={() => setShowSignature(false)} className="text-xs text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200">Done</button>
-          </div>
-          <p className="text-xs text-zinc-500 leading-relaxed">
-            Appended to the bottom of every <span className="font-medium">Open in Gmail</span> draft for {cfg?.name ?? "this business"}.
-            Gmail can&apos;t auto-add your saved signature when a draft is pre-filled, so this fills the gap. Plain text only (no logos/formatting).
-          </p>
-          <textarea
+      <Modal
+        open={showSignature}
+        onClose={() => setShowSignature(false)}
+        title="Email signature"
+        description={`Appended to the bottom of every Open in Gmail draft for ${cfg?.name ?? "this business"}.`}
+        footer={
+          <>
+            <span className="text-xs text-ink-3">
+              {emailSignature.trim() ? "Signature is on." : "Leave empty to turn off."}
+            </span>
+            <Button variant="primary" onClick={() => setShowSignature(false)}>Done</Button>
+          </>
+        }
+      >
+        <Field
+          label="Signature"
+          hint="Saves automatically on this device. Plain text only, no logos or formatting. Gmail can't add your saved signature when a draft is pre-filled, so this fills the gap."
+        >
+          <AutoTextarea
             value={emailSignature}
             onChange={(e) => saveSignature(e.target.value)}
             placeholder={"Sam Freeman\nCo-Founder & Managing Partner, MTRNM\nmtrnm.co · @mtrnm_"}
-            rows={4}
-            className="w-full px-2.5 py-2 text-sm rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 resize-y font-mono"
+            minRows={4}
+            className={cn(textareaClass, "font-mono")}
           />
-          <p className="text-[11px] text-zinc-400">Saves automatically on this device. {emailSignature.trim() ? "Signature is on." : "Leave empty to turn off."}</p>
-        </div>
-      )}
+        </Field>
+      </Modal>
 
-      {/* Add form */}
-      {showAdd && <AddTargetForm form={form} setField={setField} categories={categorySuggestions} onSubmit={add} onCancel={() => { setShowAdd(false); setForm(EMPTY_FORM); }} />}
+      {/* Add target */}
+      <AddTargetModal
+        open={showAdd}
+        form={form}
+        setField={setField}
+        categories={categorySuggestions}
+        onSubmit={add}
+        onClose={() => setShowAdd(false)}
+        onCancel={() => { setShowAdd(false); setForm(EMPTY_FORM); }}
+      />
 
-      {/* Candidate generator */}
-      {showCandidates && (
-        <CandidateGenerator
-          form={candidatesForm}
-          setForm={setCandidatesForm}
-          onGenerate={generateCandidates}
-          generating={generatingCandidates}
-          candidates={candidates}
-          selectedKeys={selectedKeys}
-          onToggleKey={toggleKey}
-          onToggleAllBrand={toggleAllBrandContacts}
-          onAddSelected={addSelectedCandidates}
-          bulkAdding={bulkAdding}
-          onCancel={() => { setShowCandidates(false); setCandidates([]); setSelectedKeys(new Set()); }}
-        />
-      )}
+      {/* Suggest brands */}
+      <CandidateGenerator
+        open={showCandidates}
+        brandStyle={brandStyle}
+        categories={categorySuggestions}
+        form={candidatesForm}
+        setForm={setCandidatesForm}
+        onGenerate={generateCandidates}
+        generating={generatingCandidates}
+        candidates={candidates}
+        selectedKeys={selectedKeys}
+        onToggleKey={toggleKey}
+        onToggleAllBrand={toggleAllBrandContacts}
+        onAddSelected={addSelectedCandidates}
+        bulkAdding={bulkAdding}
+        onClose={() => setShowCandidates(false)}
+      />
 
       {/* TODAY view */}
       {view === "today" && (
         <div className="space-y-6">
           {newTargets.length === 0 && followupsDue.length === 0 && (
-            <div className="text-center py-16 text-zinc-400 text-sm border border-dashed border-zinc-200 dark:border-zinc-800 rounded-lg">
-              <div className="text-2xl mb-2">🎯</div>
-              <p>Nothing in today's queue.</p>
-              <p className="mt-1 opacity-75">Add a target to start, or switch to All targets.</p>
-            </div>
+            <Card>
+              <EmptyState
+                icon={<Target size={18} />}
+                title="Nothing in today's queue"
+                body="Add a target to start, let AI suggest brands, or switch to All targets."
+                action={
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    <Button variant="brand" onClick={openCandidates}><Sparkles size={14} /> Suggest brands</Button>
+                    <Button onClick={openAdd}><Plus size={14} /> Add target</Button>
+                  </div>
+                }
+              />
+            </Card>
           )}
 
           {newTargets.length > 0 && (
-            <section className="space-y-2">
+            <section>
               <SectionHeader
                 title="To send today"
                 count={newTargets.length}
                 hint="Generate drafts, copy, send on LinkedIn, then mark sent."
               />
-              {newTargets.map((t) => (
-                <TargetCard
-                  key={t.id}
-                  target={t}
-                  expanded={expandedId === t.id}
-                  drafting={draftingId === t.id}
-                  enriching={enrichingId === t.id}
-                  findingContacts={findingContactsId === t.id}
-                  foundContacts={foundContacts[t.id]}
-                  selectedFound={selectedFound[t.id]}
-                  copiedKey={copiedKey}
-                  isPlaceholder={t.person_name === PLACEHOLDER_NAME}
-                  templateALabel={templateALabel}
-                  templateBLabel={templateBLabel}
-                  emailSignature={emailSignature}
-                  onToggle={() => setExpandedId((cur) => (cur === t.id ? null : t.id))}
-                  onDraft={() => draft(t)}
-                  onEnrich={() => enrich(t)}
-                  onFindContacts={() => findContacts(t)}
-                  onToggleFoundContact={(idx) => toggleFoundContact(t.id, idx)}
-                  onAddFoundContacts={() => addFoundContacts(t)}
-                  onMarkSent={(template, text) => markSent(t, template, text)}
-                  onMarkReplied={() => markReplied(t.id)}
-                  onMarkStatus={(s) => markStatusGeneric(t.id, s)}
-                  onUnsetStatus={() => unsetStatus(t)}
-                  onCopy={copy}
-                  onDelete={() => remove(t.id)}
-                />
-              ))}
+              <div className="space-y-2">{newTargets.map(renderTargetCard)}</div>
             </section>
           )}
 
           {followupsDue.length > 0 && (
-            <section className="space-y-2">
+            <section>
               <SectionHeader
                 title="Follow-ups due"
                 count={followupsDue.length}
-                hint="Day 3 / 7 / 14 cadence — generate a bump and send."
-                rightSlot={
+                hint="Day 3, 7 and 14 cadence. Generate a bump and send."
+                action={
                   senders.length > 1 ? (
-                    <div className="inline-flex items-center gap-1 text-xs text-zinc-500">
-                      <span>Sign as:</span>
-                      <select
+                    <div className="flex shrink-0 items-center gap-2 text-xs text-ink-3">
+                      <span>Sign as</span>
+                      <Segmented<"Sam" | "Tyler">
+                        size="sm"
                         value={followupSender}
-                        onChange={(e) => setFollowupSender(e.target.value as "Sam" | "Tyler")}
-                        className="px-1.5 py-0.5 rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-xs"
-                      >
-                        {senders.map((s) => <option key={s} value={s}>{s}</option>)}
-                      </select>
+                        onChange={setFollowupSender}
+                        options={senders.map((s) => ({ value: s, label: s }))}
+                      />
                     </div>
                   ) : undefined
                 }
               />
-              {followupsDue.map((t) => (
-                <FollowupCard
-                  key={t.id}
-                  target={t}
-                  drafting={draftingId === t.id}
-                  draft={followupDrafts[t.id]}
-                  copiedKey={copiedKey}
-                  onGenerate={() => generateFollowup(t)}
-                  onMarkSent={(text) => markFollowupSent(t, text)}
-                  onMarkReplied={() => markReplied(t.id)}
-                  onMarkStatus={(s) => markStatusGeneric(t.id, s)}
-                  onCopy={copy}
-                  onResetCadence={() => resetCadence(t.id)}
-                />
-              ))}
+              <div className="space-y-2">
+                {followupsDue.map((t) => (
+                  <FollowupCard
+                    key={t.id}
+                    target={t}
+                    drafting={draftingId === t.id}
+                    draft={followupDrafts[t.id]}
+                    copiedKey={copiedKey}
+                    onGenerate={() => generateFollowup(t)}
+                    onMarkSent={(text) => markFollowupSent(t, text)}
+                    onMarkReplied={() => markReplied(t.id)}
+                    onMarkStatus={(s) => markStatusGeneric(t.id, s)}
+                    onCopy={copy}
+                    onResetCadence={() => resetCadence(t.id)}
+                  />
+                ))}
+              </div>
             </section>
           )}
         </div>
@@ -813,105 +924,89 @@ export function OutreachPanel({
       {view === "all" && (
         <div className="space-y-3">
           {/* Bulk backfill banner */}
-          {(() => {
-            const placeholders = targets.filter(
-              (t) => t.person_name === PLACEHOLDER_NAME && t.status !== "dead"
-            );
-            if (placeholders.length === 0 && !backfillProgress) return null;
-            return (
-              <div className="border border-amber-200 dark:border-amber-900/40 rounded-lg p-3 bg-amber-50/40 dark:bg-amber-950/15 flex items-center justify-between gap-3 flex-wrap">
-                <div className="text-sm text-zinc-700 dark:text-zinc-300">
-                  {backfillProgress ? (
-                    <span>
-                      <Loader2 size={12} className="inline animate-spin mr-1.5" />
-                      Backfilling {backfillProgress.done} / {backfillProgress.total} brands ·{" "}
-                      <span className="font-medium text-emerald-700 dark:text-emerald-400">
-                        {backfillProgress.added} contacts added
-                      </span>
+          {(placeholders.length > 0 || backfillProgress) && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-raised px-4 py-3 shadow-card">
+              <div className="text-[13px] text-ink-2">
+                {backfillProgress ? (
+                  <span className="inline-flex flex-wrap items-center gap-1.5">
+                    <Loader2 size={13} className={cn("text-ink-3", bulkBackfilling && "animate-spin")} />
+                    <span className="tabular-nums">
+                      Backfilling {backfillProgress.done} / {backfillProgress.total} brands
                     </span>
-                  ) : (
+                    <span className="text-ink-4">·</span>
+                    <span className="font-medium tabular-nums text-emerald-600 dark:text-emerald-400">
+                      {backfillProgress.added} contacts added
+                    </span>
+                  </span>
+                ) : (
+                  <span className="inline-flex flex-wrap items-center gap-1.5">
+                    <Users size={14} className="text-amber-600 dark:text-amber-400" />
                     <span>
-                      <Users size={13} className="inline mr-1.5 text-amber-700 dark:text-amber-400" />
-                      <span className="font-medium">{placeholders.length}</span> brand
+                      <span className="font-medium tabular-nums text-ink">{placeholders.length}</span> brand
                       {placeholders.length === 1 ? "" : "s"} added without a contact yet.
                     </span>
-                  )}
-                </div>
-                {!backfillProgress && (
-                  <button
-                    onClick={bulkBackfill}
-                    disabled={bulkBackfilling}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
-                  >
-                    <UserSearch size={13} />
-                    Backfill all contacts (~${(placeholders.length * 0.15).toFixed(2)})
-                  </button>
+                  </span>
                 )}
               </div>
-            );
-          })()}
+              {!backfillProgress && (
+                <Button onClick={bulkBackfill} disabled={bulkBackfilling}>
+                  <UserSearch size={14} />
+                  Backfill all contacts (~${(placeholders.length * 0.15).toFixed(2)})
+                </Button>
+              )}
+            </div>
+          )}
 
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <FilterChip active={filter === "all"} onClick={() => setFilter("all")}>
-                All <span className="opacity-50">{targets.length}</span>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-1">
+              <FilterChip active={filter === "all"} count={targets.length} onClick={() => setFilter("all")}>
+                All
               </FilterChip>
               {OUTREACH_STATUSES.map((s) => (
                 <FilterChip
                   key={s.value}
                   active={filter === s.value}
+                  count={counts[s.value] ?? 0}
                   onClick={() => setFilter(s.value)}
                 >
-                  {s.label} <span className="opacity-50">{counts[s.value] ?? 0}</span>
+                  {s.label}
                 </FilterChip>
               ))}
             </div>
             <a
               href={`/api/outreach/export?business_id=${businessId}`}
               download
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800"
+              className={linkButtonSecondary}
               title="Download all outreach targets as CSV"
             >
-              <Download size={11} /> Export CSV
+              <Download size={13} /> Export CSV
             </a>
           </div>
 
           {filtered.length === 0 ? (
-            <div className="text-center py-12 text-zinc-400 text-sm">
-              {targets.length === 0 ? "No outreach targets yet. Add one to get started." : "No targets match this filter."}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {filtered.map((t) => (
-                <TargetCard
-                  key={t.id}
-                  target={t}
-                  expanded={expandedId === t.id}
-                  drafting={draftingId === t.id}
-                  enriching={enrichingId === t.id}
-                  findingContacts={findingContactsId === t.id}
-                  foundContacts={foundContacts[t.id]}
-                  selectedFound={selectedFound[t.id]}
-                  copiedKey={copiedKey}
-                  isPlaceholder={t.person_name === PLACEHOLDER_NAME}
-                  templateALabel={templateALabel}
-                  templateBLabel={templateBLabel}
-                  emailSignature={emailSignature}
-                  onToggle={() => setExpandedId((cur) => (cur === t.id ? null : t.id))}
-                  onDraft={() => draft(t)}
-                  onEnrich={() => enrich(t)}
-                  onFindContacts={() => findContacts(t)}
-                  onToggleFoundContact={(idx) => toggleFoundContact(t.id, idx)}
-                  onAddFoundContacts={() => addFoundContacts(t)}
-                  onMarkSent={(template, text) => markSent(t, template, text)}
-                  onMarkReplied={() => markReplied(t.id)}
-                  onMarkStatus={(s) => markStatusGeneric(t.id, s)}
-                  onUnsetStatus={() => unsetStatus(t)}
-                  onCopy={copy}
-                  onDelete={() => remove(t.id)}
+            <Card>
+              {targets.length === 0 ? (
+                <EmptyState
+                  icon={<Target size={18} />}
+                  title="No outreach targets yet"
+                  body="Add your first target by hand, or let AI suggest brands and contacts."
+                  action={
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      <Button variant="brand" onClick={openCandidates}><Sparkles size={14} /> Suggest brands</Button>
+                      <Button onClick={openAdd}><Plus size={14} /> Add target</Button>
+                    </div>
+                  }
                 />
-              ))}
-            </div>
+              ) : (
+                <EmptyState
+                  icon={<Search size={18} />}
+                  title="No targets match this filter"
+                  action={<Button onClick={() => setFilter("all")}>Show all targets</Button>}
+                />
+              )}
+            </Card>
+          ) : (
+            <div className="space-y-2">{filtered.map(renderTargetCard)}</div>
           )}
         </div>
       )}
@@ -920,63 +1015,78 @@ export function OutreachPanel({
 }
 
 // ─────────────────────────────────────────────────────────────
-// Sub-components
+// Local helpers (candidates for components/ui)
 // ─────────────────────────────────────────────────────────────
 
-function SectionHeader({
-  title, count, hint, rightSlot,
-}: { title: string; count: number; hint?: string; rightSlot?: React.ReactNode }) {
+/** Anchor styled like <Button variant="secondary" size="sm">, for real links and downloads. */
+const linkButtonSecondary =
+  "inline-flex h-8 md:h-7 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-line-strong bg-raised px-2.5 " +
+  "text-xs font-medium text-ink shadow-card transition-colors hover:bg-sunken";
+
+/** Anchor styled like a small ghost <IconButton>. */
+function IconLink({
+  href, label, external, children,
+}: { href: string; label: string; external?: boolean; children: React.ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 mb-1">
-      <div>
-        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-          {title}
-          <span className="ml-2 text-xs font-normal text-zinc-400">{count}</span>
-        </h3>
-        {hint && <p className="text-xs text-zinc-500 mt-0.5">{hint}</p>}
+    <a
+      href={href}
+      aria-label={label}
+      title={label}
+      {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-3 transition-colors hover:bg-hover hover:text-ink md:h-7 md:w-7"
+    >
+      {children}
+    </a>
+  );
+}
+
+/** Sub-section label inside an expanded card. */
+function SubLabel({
+  icon: Icon, children, hint, action,
+}: { icon?: LucideIcon; children: React.ReactNode; hint?: React.ReactNode; action?: React.ReactNode }) {
+  return (
+    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+      <div className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-ink">
+        {Icon && <Icon size={13} className="text-ink-3" />}
+        {children}
+        {hint && <span className="font-normal text-ink-3">{hint}</span>}
       </div>
-      {rightSlot}
+      {action}
     </div>
   );
 }
 
-function ViewBtn({
-  active, onClick, children,
-}: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors inline-flex items-center ${
-        active
-          ? "bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 shadow-sm"
-          : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
 function FilterChip({
-  active, onClick, children,
-}: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  active, count, onClick, children,
+}: { active: boolean; count: number; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-        active
-          ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900"
-          : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900"
-      }`}
+      aria-pressed={active}
+      className={cn(
+        "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors md:h-7",
+        active ? "bg-inverse text-on-inverse" : "text-ink-3 hover:bg-hover hover:text-ink"
+      )}
     >
       {children}
+      <span className="text-[11px] tabular-nums opacity-60">{count}</span>
     </button>
   );
 }
 
-function AddTargetForm({
-  form, setField, categories, onSubmit, onCancel,
+const checkboxClass = "mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-ink";
+
+// ─────────────────────────────────────────────────────────────
+// Sub-components
+// ─────────────────────────────────────────────────────────────
+
+function AddTargetModal({
+  open, form, setField, categories, onSubmit, onClose, onCancel,
 }: {
+  open: boolean;
+  /** Esc, backdrop or X: hide but keep what was typed. Cancel clears the form. */
+  onClose: () => void;
   form: typeof EMPTY_FORM;
   setField: <K extends keyof typeof EMPTY_FORM>(k: K, v: (typeof EMPTY_FORM)[K]) => void;
   categories: string[];
@@ -984,63 +1094,90 @@ function AddTargetForm({
   onCancel: () => void;
 }) {
   return (
-    <form onSubmit={onSubmit} className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 space-y-3 bg-zinc-50 dark:bg-zinc-900/50">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Input label="Brand name *" value={form.brand_name} onChange={(v) => setField("brand_name", v)} placeholder="Bubble" />
-        <Input label="Person name *" value={form.person_name} onChange={(v) => setField("person_name", v)} placeholder="Shai Eisenman" />
-        <Input label="Person title" value={form.person_title} onChange={(v) => setField("person_title", v)} placeholder="Founder & CEO" />
-        <Input label="LinkedIn URL" value={form.linkedin_url} onChange={(v) => setField("linkedin_url", v)} placeholder="https://linkedin.com/in/…" />
-        <div>
-          <label className="text-xs text-zinc-500 mb-1 block">Category</label>
-          <input
-            list="category-list"
-            value={form.brand_category}
-            onChange={(e) => setField("brand_category", e.target.value)}
-            placeholder={categories[0] ?? "category"}
-            className="w-full px-2.5 py-1.5 text-sm rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100"
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Add target"
+      description="One person at one brand. You can enrich and draft right after."
+      onSubmit={onSubmit}
+      footer={
+        <>
+          <span />
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={onCancel}>Cancel</Button>
+            <Button
+              variant="primary"
+              type="submit"
+              disabled={!form.brand_name.trim() || !form.person_name.trim()}
+            >
+              Add target
+            </Button>
+          </div>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Brand name" required>
+            <Input value={form.brand_name} onChange={(e) => setField("brand_name", e.target.value)} placeholder="Bubble" autoFocus />
+          </Field>
+          <Field label="Person name" required>
+            <Input value={form.person_name} onChange={(e) => setField("person_name", e.target.value)} placeholder="Shai Eisenman" />
+          </Field>
+          <Field label="Person title">
+            <Input value={form.person_title} onChange={(e) => setField("person_title", e.target.value)} placeholder="Founder & CEO" />
+          </Field>
+          <Field label="LinkedIn URL">
+            <Input value={form.linkedin_url} onChange={(e) => setField("linkedin_url", e.target.value)} placeholder="https://linkedin.com/in/…" />
+          </Field>
+          <Field label="Category">
+            <Input
+              list="outreach-add-category-list"
+              value={form.brand_category}
+              onChange={(e) => setField("brand_category", e.target.value)}
+              placeholder={categories[0] ?? "category"}
+            />
+            <datalist id="outreach-add-category-list">
+              {categories.map((c) => <option key={c} value={c} />)}
+            </datalist>
+          </Field>
+          <Field label="Size">
+            <Select
+              value={form.brand_size}
+              onChange={(e) => setField("brand_size", e.target.value as typeof form.brand_size)}
+            >
+              <option value="">Not set</option>
+              <option value="enterprise">Enterprise</option>
+              <option value="midsize">Midsize</option>
+              <option value="emerging">Emerging</option>
+            </Select>
+          </Field>
+        </div>
+        <Field label="Notes" hint="Optional. Anything the drafter should know.">
+          <AutoTextarea
+            value={form.notes}
+            onChange={(e) => setField("notes", e.target.value)}
+            minRows={3}
+            className={textareaClass}
           />
-          <datalist id="category-list">
-            {categories.map((c) => <option key={c} value={c} />)}
-          </datalist>
-        </div>
-        <div>
-          <label className="text-xs text-zinc-500 mb-1 block">Size</label>
-          <select
-            value={form.brand_size}
-            onChange={(e) => setField("brand_size", e.target.value as typeof form.brand_size)}
-            className="w-full px-2.5 py-1.5 text-sm rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100"
-          >
-            <option value="">—</option>
-            <option value="enterprise">Enterprise</option>
-            <option value="midsize">Midsize</option>
-            <option value="emerging">Emerging</option>
-          </select>
-        </div>
+        </Field>
       </div>
-      <AutoTextarea
-        value={form.notes}
-        onChange={(e) => setField("notes", e.target.value)}
-        placeholder="Notes (optional) — anything the drafter should know"
-        minRows={3}
-        className="w-full px-2.5 py-1.5 text-sm leading-relaxed rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 resize-none"
-      />
-      <div className="flex items-center gap-2">
-        <button type="submit" className="bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 text-sm font-medium px-3 py-1.5 rounded-md">
-          Add
-        </button>
-        <button type="button" onClick={onCancel} className="text-sm text-zinc-500 px-3 py-1.5">
-          Cancel
-        </button>
-      </div>
-    </form>
+    </Modal>
   );
 }
 
+type CandidatesForm = { category: string; size: "" | "enterprise" | "midsize" | "emerging"; count: number; focus: string };
+
 function CandidateGenerator({
-  form, setForm, onGenerate, generating, candidates, selectedKeys, onToggleKey, onToggleAllBrand, onAddSelected, bulkAdding, onCancel,
+  open, brandStyle, categories, form, setForm, onGenerate, generating, candidates, selectedKeys,
+  onToggleKey, onToggleAllBrand, onAddSelected, bulkAdding, onClose,
 }: {
-  form: { category: string; size: "" | "enterprise" | "midsize" | "emerging"; count: number; focus: string };
-  setForm: React.Dispatch<React.SetStateAction<{ category: string; size: "" | "enterprise" | "midsize" | "emerging"; count: number; focus: string }>>;
+  open: boolean;
+  /** The modal is portaled outside the workspace's brand scope, so it re-creates one. */
+  brandStyle?: React.CSSProperties;
+  categories: string[];
+  form: CandidatesForm;
+  setForm: React.Dispatch<React.SetStateAction<CandidatesForm>>;
   onGenerate: (e: React.FormEvent) => void;
   generating: boolean;
   candidates: Candidate[];
@@ -1049,112 +1186,128 @@ function CandidateGenerator({
   onToggleAllBrand: (brandIdx: number, c: Candidate) => void;
   onAddSelected: () => void;
   bulkAdding: boolean;
-  onCancel: () => void;
+  onClose: () => void;
 }) {
   const totalContactsFound = candidates.reduce((s, c) => s + (c.contacts?.length ?? 0), 0);
+  const hasCandidates = candidates.length > 0;
 
   return (
-    <div className="border border-violet-200 dark:border-violet-900/40 rounded-lg p-4 space-y-3 bg-violet-50/40 dark:bg-violet-950/10">
-      <div className="flex items-center gap-2 text-sm font-semibold text-violet-900 dark:text-violet-200">
-        <Wand2 size={14} /> Suggest brand candidates + contacts
-      </div>
-      <p className="text-xs text-zinc-600 dark:text-zinc-400 -mt-1">
-        Generates brands AND web-searches for 2–4 specific LinkedIn contacts per brand (college / influencer / social / experiential / brand exec). Takes ~30–90 seconds.
-      </p>
-      <form onSubmit={onGenerate} className="space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div>
-            <label className="text-xs text-zinc-500 mb-1 block">Category (optional)</label>
-            <input
-              list="category-list"
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="xl"
+      title="Suggest brands"
+      description="Generates brands, then searches for 2 to 4 specific contacts per brand (college, influencer, social, experiential, brand exec). Takes about 30 to 90 seconds."
+      onSubmit={onGenerate}
+      footer={
+        <div className="brand-scope contents" style={brandStyle}>
+          <div className="min-w-0 text-xs text-ink-3">
+            {hasCandidates && (
+              <span className="tabular-nums">
+                <span className="font-medium text-ink">{candidates.length}</span> brand{candidates.length === 1 ? "" : "s"} ·{" "}
+                <span className="font-medium text-ink">{totalContactsFound}</span> contact{totalContactsFound === 1 ? "" : "s"} found ·{" "}
+                <span className="font-medium text-ink">{selectedKeys.size}</span> selected
+              </span>
+            )}
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+            <Button variant="ghost" onClick={onClose}>{hasCandidates ? "Close" : "Cancel"}</Button>
+            {hasCandidates ? (
+              <>
+                <Button variant="brand" type="submit" loading={generating}>
+                  {!generating && <Sparkles size={13} />}
+                  Regenerate
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={onAddSelected}
+                  disabled={selectedKeys.size === 0}
+                  loading={bulkAdding}
+                >
+                  {!bulkAdding && <Plus size={14} />}
+                  Add {selectedKeys.size} as target{selectedKeys.size === 1 ? "" : "s"}
+                </Button>
+              </>
+            ) : (
+              <Button variant="brand" type="submit" loading={generating}>
+                {!generating && <Sparkles size={13} />}
+                Generate candidates
+              </Button>
+            )}
+          </div>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <Field label="Category" hint="Optional">
+            <Input
+              list="outreach-suggest-category-list"
               value={form.category}
               onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
-              placeholder="any"
-              className="w-full px-2.5 py-1.5 text-sm rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900"
+              placeholder="Any"
             />
-          </div>
-          <div>
-            <label className="text-xs text-zinc-500 mb-1 block">Size</label>
-            <select
+            <datalist id="outreach-suggest-category-list">
+              {categories.map((c) => <option key={c} value={c} />)}
+            </datalist>
+          </Field>
+          <Field label="Size">
+            <Select
               value={form.size}
               onChange={(e) => setForm((f) => ({ ...f, size: e.target.value as typeof form.size }))}
-              className="w-full px-2.5 py-1.5 text-sm rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900"
             >
               <option value="">Any</option>
               <option value="enterprise">Enterprise</option>
               <option value="midsize">Midsize</option>
               <option value="emerging">Emerging</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-xs text-zinc-500 mb-1 block"># of brands</label>
-            <input
+            </Select>
+          </Field>
+          <Field label="Number of brands">
+            <Input
               type="number"
               min={3}
               max={20}
               value={form.count}
               onChange={(e) => setForm((f) => ({ ...f, count: Number(e.target.value) }))}
-              className="w-full px-2.5 py-1.5 text-sm rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900"
             />
-          </div>
+          </Field>
         </div>
-        <div>
-          <label className="text-xs text-zinc-500 mb-1 block">Describe what you&apos;re looking for (optional)</label>
-          <textarea
+        <Field label="Describe what you're looking for" hint="Optional. This brief is weighted above the category filter.">
+          <AutoTextarea
             value={form.focus}
             onChange={(e) => setForm((f) => ({ ...f, focus: e.target.value }))}
-            placeholder={'Not sure of the exact category? Describe it in your own words, e.g. "brands that sponsor music festivals and would want to reach a wealthy international crowd in their 20s, ideally ones expanding into Europe" — the more context, the better the matches.'}
-            rows={3}
-            className="w-full px-2.5 py-2 text-sm rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 resize-y placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
+            placeholder={'Not sure of the exact category? Describe it in your own words, e.g. "brands that sponsor music festivals and would want to reach a wealthy international crowd in their 20s, ideally ones expanding into Europe". The more context, the better the matches.'}
+            minRows={3}
+            className={textareaClass}
           />
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="submit"
-            disabled={generating}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50"
-          >
-            {generating ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-            {candidates.length > 0 ? "Regenerate" : "Generate candidates"}
-          </button>
-          <button type="button" onClick={onCancel} className="text-sm text-zinc-500 px-3 py-1.5">
-            Close
-          </button>
-        </div>
-      </form>
+        </Field>
 
-      {candidates.length > 0 && (
-        <div className="space-y-2 pt-3 border-t border-violet-200 dark:border-violet-900/40">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="text-xs text-zinc-600 dark:text-zinc-400">
-              <span className="font-medium text-zinc-900 dark:text-zinc-100">{candidates.length}</span> brand{candidates.length === 1 ? "" : "s"} ·{" "}
-              <span className="font-medium text-zinc-900 dark:text-zinc-100">{totalContactsFound}</span> contact{totalContactsFound === 1 ? "" : "s"} found ·{" "}
-              <span className="font-medium text-emerald-700 dark:text-emerald-400">{selectedKeys.size}</span> selected
+        {generating && (
+          <div className="flex items-center gap-2 rounded-lg bg-sunken px-3 py-2.5 text-[13px] text-ink-2">
+            <Loader2 size={14} className="animate-spin text-ink-3" />
+            Finding brands and contacts. This can take up to 90 seconds.
+          </div>
+        )}
+
+        {hasCandidates && (
+          <div className="border-t border-line pt-4">
+            <SectionHeader title="Results" count={candidates.length} hint="Tick the contacts you want to add." />
+            <div className="space-y-3">
+              {candidates.map((c, brandIdx) => (
+                <CandidateBrandCard
+                  key={brandIdx}
+                  brandIdx={brandIdx}
+                  candidate={c}
+                  selectedKeys={selectedKeys}
+                  onToggleKey={onToggleKey}
+                  onToggleAllBrand={() => onToggleAllBrand(brandIdx, c)}
+                />
+              ))}
             </div>
-            <button
-              onClick={onAddSelected}
-              disabled={selectedKeys.size === 0 || bulkAdding}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
-            >
-              {bulkAdding ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
-              Add {selectedKeys.size} as target{selectedKeys.size === 1 ? "" : "s"}
-            </button>
           </div>
-          <div className="space-y-3">
-            {candidates.map((c, brandIdx) => (
-              <CandidateBrandCard
-                key={brandIdx}
-                brandIdx={brandIdx}
-                candidate={c}
-                selectedKeys={selectedKeys}
-                onToggleKey={onToggleKey}
-                onToggleAllBrand={() => onToggleAllBrand(brandIdx, c)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 
@@ -1176,54 +1329,54 @@ function CandidateBrandCard({
   const placeholderSelected = selectedKeys.has(placeholderKey);
 
   return (
-    <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg bg-white dark:bg-zinc-900 overflow-hidden">
-      <div className="px-3 py-2.5 border-b border-zinc-100 dark:border-zinc-800 flex items-start gap-2">
+    <div className="overflow-hidden rounded-xl border border-line bg-raised">
+      <div className="flex items-start gap-3 border-b border-line bg-sunken/60 px-4 py-3">
         <input
           type="checkbox"
           checked={allBrandSelected}
           ref={(el) => { if (el) el.indeterminate = !allBrandSelected && someBrandSelected; }}
           onChange={onToggleAllBrand}
-          className="mt-1"
-          title="Select / deselect all contacts at this brand"
+          className={checkboxClass}
+          aria-label={`Select all contacts at ${c.brand_name}`}
+          title="Select or deselect all contacts at this brand"
         />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-baseline gap-2 flex-wrap">
-            <span className="font-semibold text-sm text-zinc-900 dark:text-zinc-100">{c.brand_name}</span>
-            <span className="text-xs text-zinc-500">{c.category}</span>
-            <span className="text-xs text-zinc-400">· {c.size}</span>
-            {contacts.length === 0 && (
-              <span className="text-xs text-amber-700 dark:text-amber-400 italic">No contacts found</span>
-            )}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-sm font-medium text-ink">{c.brand_name}</span>
+            {c.category && <Badge>{c.category}</Badge>}
+            {c.size && <Badge className="capitalize">{c.size}</Badge>}
+            {contacts.length === 0 && <Badge tone="amber">No contacts found</Badge>}
           </div>
-          <div className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5">{c.why_fit}</div>
+          <div className="mt-1 text-xs leading-relaxed text-ink-2">{c.why_fit}</div>
           {c.seasonality_hook && (
-            <div className="text-xs text-zinc-500 mt-1 italic">Hook: {c.seasonality_hook}</div>
+            <div className="mt-1 text-xs leading-relaxed text-ink-3">Hook: {c.seasonality_hook}</div>
           )}
         </div>
       </div>
 
       {contacts.length > 0 ? (
-        <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+        <div className="divide-y divide-line">
           {contacts.map((contact, ci) => {
             const key = `${brandIdx}:${ci}`;
             const checked = selectedKeys.has(key);
             return (
               <label
                 key={ci}
-                className={`flex items-start gap-2 px-3 py-2 cursor-pointer transition-colors ${
-                  checked ? "bg-emerald-50/40 dark:bg-emerald-950/15" : "hover:bg-zinc-50 dark:hover:bg-zinc-800/40"
-                }`}
+                className={cn(
+                  "flex cursor-pointer items-start gap-3 px-4 py-2.5 transition-colors",
+                  checked ? "bg-sunken/70" : "hover:bg-hover"
+                )}
               >
                 <input
                   type="checkbox"
                   checked={checked}
                   onChange={() => onToggleKey(key)}
-                  className="mt-1"
+                  className={checkboxClass}
                 />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline gap-2 flex-wrap">
-                    <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{contact.name}</span>
-                    <span className="text-xs text-zinc-600 dark:text-zinc-400">{contact.title}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="text-sm font-medium text-ink">{contact.name}</span>
+                    <span className="text-xs text-ink-3">{contact.title}</span>
                   </div>
                   <ContactMeta contact={contact} />
                 </div>
@@ -1232,14 +1385,14 @@ function CandidateBrandCard({
           })}
         </div>
       ) : (
-        <label className="flex items-start gap-2 px-3 py-2 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/40">
+        <label className="flex cursor-pointer items-start gap-3 px-4 py-2.5 transition-colors hover:bg-hover">
           <input
             type="checkbox"
             checked={placeholderSelected}
             onChange={() => onToggleKey(placeholderKey)}
-            className="mt-1"
+            className={checkboxClass}
           />
-          <span className="text-xs text-zinc-500">
+          <span className="text-xs text-ink-3">
             Add this brand as a placeholder (you&apos;ll add the contact manually later)
           </span>
         </label>
@@ -1248,30 +1401,15 @@ function CandidateBrandCard({
   );
 }
 
-function Input({
-  label, value, onChange, placeholder,
-}: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
-  return (
-    <div>
-      <label className="text-xs text-zinc-500 mb-1 block">{label}</label>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full px-2.5 py-1.5 text-sm rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100"
-      />
-    </div>
-  );
-}
-
 function TargetCard({
-  target, expanded, drafting, enriching, findingContacts, foundContacts, selectedFound, copiedKey, isPlaceholder,
+  target, expanded, highlighted, drafting, enriching, findingContacts, foundContacts, selectedFound, copiedKey, isPlaceholder,
   templateALabel, templateBLabel, emailSignature,
   onToggle, onDraft, onEnrich, onFindContacts, onToggleFoundContact, onAddFoundContacts,
   onMarkSent, onMarkReplied, onMarkStatus, onUnsetStatus, onCopy, onDelete,
 }: {
   target: OutreachTarget;
   expanded: boolean;
+  highlighted: boolean;
   drafting: boolean;
   enriching: boolean;
   findingContacts: boolean;
@@ -1298,124 +1436,142 @@ function TargetCard({
   const status = OUTREACH_STATUSES.find((s) => s.value === target.status);
   const drafts: OutreachDrafts | null = target.drafts_json ? JSON.parse(target.drafts_json) : null;
   const signals: OutreachSignals | null = target.signals_json ? JSON.parse(target.signals_json) : null;
+  const history: SentHistoryEntry[] = target.sent_history_json ? JSON.parse(target.sent_history_json) : [];
+  const canMarkSent = target.status !== "sent" && target.status !== "replied";
 
   return (
-    <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg bg-white dark:bg-zinc-900 overflow-hidden">
-      <div className="px-4 py-3 flex items-center gap-3">
-        <button onClick={onToggle} className="flex-1 text-left min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium text-zinc-900 dark:text-zinc-100 truncate">{target.brand_name}</span>
-            <span className="text-zinc-400">·</span>
-            <span className="text-sm text-zinc-600 dark:text-zinc-400 truncate">
-              {target.person_name}{target.person_title ? ` — ${target.person_title}` : ""}
-            </span>
-          </div>
-          <div className="flex items-center gap-2 mt-0.5 text-xs text-zinc-500">
-            {status && (
-              <span className={`px-1.5 py-0.5 rounded ${status.color}`}>{status.label}</span>
-            )}
-            {target.brand_category && <span>{target.brand_category}</span>}
-            {target.brand_size && <span className="opacity-75">· {target.brand_size}</span>}
-            {signals && signals.signals.length > 0 && (
-              <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
-                <Search size={9} /> {signals.signals.length} signal{signals.signals.length === 1 ? "" : "s"}
+    <div
+      id={`outreach-target-${target.id}`}
+      className={cn(
+        "scroll-mt-28 overflow-hidden rounded-xl border bg-raised shadow-card transition-[box-shadow,border-color] duration-300",
+        highlighted ? "border-brand ring-[3px] ring-brand/25" : "border-line"
+      )}
+    >
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          className="group flex min-w-0 flex-1 basis-60 items-start gap-2 text-left"
+        >
+          <ChevronDown
+            size={14}
+            className={cn("mt-1 shrink-0 text-ink-4 transition-transform group-hover:text-ink-3", !expanded && "-rotate-90")}
+          />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className={cn("truncate text-sm font-medium", target.status === "dead" ? "text-ink-3" : "text-ink")}>
+                {target.brand_name}
               </span>
-            )}
+              {status && (
+                <Badge tone={STATUS_TONES[target.status]} className={target.status === "dead" ? "opacity-60" : undefined}>
+                  {status.label}
+                </Badge>
+              )}
+              {target.brand_category && <Badge>{target.brand_category}</Badge>}
+              {target.brand_size && <Badge className="capitalize">{target.brand_size}</Badge>}
+              {signals && signals.signals.length > 0 && (
+                <Badge tone="green">
+                  <Search size={10} /> {signals.signals.length} signal{signals.signals.length === 1 ? "" : "s"}
+                </Badge>
+              )}
+            </div>
+            <div className="mt-0.5 truncate text-xs text-ink-3">
+              {target.person_name}{target.person_title ? ` · ${target.person_title}` : ""}
+            </div>
           </div>
         </button>
-        {target.linkedin_url && (
-          <a
-            href={target.linkedin_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 p-1.5 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            title="Open LinkedIn"
+
+        <div className="flex shrink-0 flex-wrap items-center gap-1">
+          {target.linkedin_url && (
+            <IconLink href={target.linkedin_url} label="Open LinkedIn" external>
+              <ExternalLink size={14} />
+            </IconLink>
+          )}
+          {target.person_email && (
+            <IconLink href={`mailto:${target.person_email}`} label={`Email: ${target.person_email}`}>
+              <Mail size={14} />
+            </IconLink>
+          )}
+          <Button
+            size="sm"
+            variant={isPlaceholder ? "primary" : "ghost"}
+            onClick={onFindContacts}
+            disabled={drafting || enriching}
+            loading={findingContacts}
+            title={isPlaceholder ? "Find real contacts at this brand (placeholder)" : "Find more contacts at this brand"}
           >
-            <ExternalLink size={14} />
-          </a>
-        )}
-        {target.person_email && (
-          <a
-            href={`mailto:${target.person_email}`}
-            className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 p-1.5 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            title={`Email: ${target.person_email}`}
+            {!findingContacts && <UserSearch size={13} />}
+            {isPlaceholder ? "Find contacts" : "Contacts"}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onEnrich}
+            disabled={drafting || findingContacts}
+            loading={enriching}
+            title={signals ? "Refresh signals" : "Search web for brand signals"}
           >
-            <Mail size={14} />
-          </a>
-        )}
-        <button
-          onClick={onFindContacts}
-          disabled={findingContacts || drafting || enriching}
-          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md disabled:opacity-50 ${
-            isPlaceholder
-              ? "bg-amber-600 text-white hover:bg-amber-700"
-              : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-          }`}
-          title={isPlaceholder ? "Find real contacts at this brand (placeholder)" : "Find more contacts at this brand"}
-        >
-          {findingContacts ? <Loader2 size={12} className="animate-spin" /> : <UserSearch size={12} />}
-          {isPlaceholder ? "Find contacts" : "Contacts"}
-        </button>
-        <button
-          onClick={onEnrich}
-          disabled={enriching || drafting || findingContacts}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50"
-          title={signals ? "Refresh signals" : "Search web for brand signals"}
-        >
-          {enriching ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
-          {signals ? "Refresh" : "Enrich"}
-        </button>
-        <button
-          onClick={onDraft}
-          disabled={drafting || enriching || findingContacts || isPlaceholder}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50"
-          title={isPlaceholder ? "Find a real contact first" : undefined}
-        >
-          {drafting ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-          {drafts ? "Redraft" : "Draft"}
-        </button>
+            {!enriching && <Search size={13} />}
+            {signals ? "Refresh" : "Enrich"}
+          </Button>
+          <Button
+            size="sm"
+            variant="brand"
+            onClick={onDraft}
+            disabled={enriching || findingContacts || isPlaceholder}
+            loading={drafting}
+            title={isPlaceholder ? "Find a real contact first" : undefined}
+          >
+            {!drafting && <Sparkles size={13} />}
+            {drafts ? "Redraft" : "Draft"}
+          </Button>
+        </div>
       </div>
 
       {expanded && (
-        <div className="border-t border-zinc-200 dark:border-zinc-800 p-4 space-y-4 bg-zinc-50/50 dark:bg-zinc-950/30">
-          {/* Found contacts section */}
+        <div className="space-y-5 border-t border-line bg-sunken/50 p-4">
+          {/* Contacts found */}
           {foundContacts && foundContacts.length > 0 && (
-            <div className="border border-amber-200 dark:border-amber-900/40 rounded-md bg-amber-50/40 dark:bg-amber-950/15 p-3 space-y-2">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div className="text-xs font-semibold text-amber-900 dark:text-amber-200">
-                  <UserSearch size={12} className="inline mr-1" /> Found {foundContacts.length} contact{foundContacts.length === 1 ? "" : "s"} at {target.brand_name}
-                </div>
-                <button
-                  onClick={onAddFoundContacts}
-                  disabled={!selectedFound || selectedFound.size === 0}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
-                >
-                  <Plus size={12} /> Add {selectedFound?.size ?? 0} as targets
-                  {isPlaceholder && " (retire placeholder)"}
-                </button>
-              </div>
-              <div className="space-y-1">
+            <div>
+              <SubLabel
+                icon={UserSearch}
+                hint={`${foundContacts.length} at ${target.brand_name}`}
+                action={
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={onAddFoundContacts}
+                    disabled={!selectedFound || selectedFound.size === 0}
+                  >
+                    <Plus size={13} /> Add {selectedFound?.size ?? 0} as targets
+                    {isPlaceholder && " (retire placeholder)"}
+                  </Button>
+                }
+              >
+                Contacts found
+              </SubLabel>
+              <div className="divide-y divide-line overflow-hidden rounded-lg border border-line bg-raised">
                 {foundContacts.map((c, idx) => {
                   const checked = selectedFound?.has(idx) ?? false;
                   return (
                     <label
                       key={idx}
-                      className={`flex items-start gap-2 p-2 rounded-md cursor-pointer transition-colors ${
-                        checked
-                          ? "bg-emerald-50/60 dark:bg-emerald-950/20"
-                          : "bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800/40"
-                      }`}
+                      className={cn(
+                        "flex cursor-pointer items-start gap-3 px-3 py-2.5 transition-colors",
+                        checked ? "bg-sunken/70" : "hover:bg-hover"
+                      )}
                     >
                       <input
                         type="checkbox"
                         checked={checked}
                         onChange={() => onToggleFoundContact(idx)}
-                        className="mt-1"
+                        className={checkboxClass}
                       />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-baseline gap-2 flex-wrap">
-                          <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{c.name}</span>
-                          <span className="text-xs text-zinc-600 dark:text-zinc-400">{c.title}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-baseline gap-x-2">
+                          <span className="text-sm font-medium text-ink">{c.name}</span>
+                          <span className="text-xs text-ink-3">{c.title}</span>
                         </div>
                         <ContactMeta contact={c} />
                       </div>
@@ -1426,50 +1582,67 @@ function TargetCard({
             </div>
           )}
 
+          {/* Signals */}
           {signals && (
-            <details className="text-xs" open={!drafts}>
-              <summary className="cursor-pointer text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 font-medium">
-                Signals ({signals.signals.length})
-                <span className="ml-2 font-normal opacity-60">
-                  fetched {new Date(signals.fetched_at).toLocaleDateString()}
+            <details className="group/signals text-xs" open={!drafts}>
+              <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-semibold text-ink [&::-webkit-details-marker]:hidden">
+                <ChevronDown size={13} className="-rotate-90 text-ink-3 transition-transform group-open/signals:rotate-0" />
+                Signals
+                <span className="font-normal tabular-nums text-ink-3">{signals.signals.length}</span>
+                <span className="font-normal text-ink-3">
+                  · fetched {new Date(signals.fetched_at).toLocaleDateString()}
                 </span>
               </summary>
-              <div className="mt-2 space-y-1.5 pl-2 border-l-2 border-emerald-200 dark:border-emerald-900/40">
+              <div className="mt-2 space-y-2 rounded-lg border border-line bg-raised p-3">
                 {signals.signals.length === 0 ? (
-                  <p className="text-zinc-500 italic">No recent public signals found.</p>
+                  <p className="text-ink-3">No recent public signals found.</p>
                 ) : (
                   signals.signals.map((s, i) => (
-                    <div key={i}>
-                      <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 mr-2">
-                        {s.type}
+                    <div key={i} className="flex items-start gap-2 leading-relaxed">
+                      <Badge tone="green" className="mt-px shrink-0 capitalize">{s.type}</Badge>
+                      <span className="text-[13px] text-ink-2">
+                        {s.summary}
+                        {s.source && (
+                          <a
+                            href={s.source}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-label="Open source"
+                            title="Open source"
+                            className="ml-1.5 inline-flex translate-y-px text-ink-3 hover:text-ink"
+                          >
+                            <ExternalLink size={12} />
+                          </a>
+                        )}
                       </span>
-                      <span className="text-zinc-700 dark:text-zinc-300">{s.summary}</span>
-                      {s.source && (
-                        <a href={s.source} target="_blank" rel="noopener noreferrer" className="ml-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 inline-flex items-baseline">
-                          <ExternalLink size={9} />
-                        </a>
-                      )}
                     </div>
                   ))
                 )}
                 {signals.summary_for_drafter && signals.signals.length > 0 && (
-                  <p className="mt-2 pt-2 border-t border-emerald-200 dark:border-emerald-900/40 italic text-zinc-500">
-                    Drafter hook: {signals.summary_for_drafter}
+                  <p className="border-t border-line pt-2 leading-relaxed text-ink-3">
+                    <span className="font-medium text-ink-2">Drafter hook:</span> {signals.summary_for_drafter}
                   </p>
                 )}
                 {signals.fit_rationale && (
-                  <p className="mt-2 pt-2 border-t border-emerald-200 dark:border-emerald-900/40 text-zinc-600 dark:text-zinc-400">
-                    <span className="font-semibold">Why it&apos;s a fit:</span> {signals.fit_rationale}
+                  <p className="border-t border-line pt-2 leading-relaxed text-ink-3">
+                    <span className="font-medium text-ink-2">Why it&apos;s a fit:</span> {signals.fit_rationale}
                   </p>
                 )}
               </div>
             </details>
           )}
+
+          {/* Drafts */}
           {!drafts && (
-            <div className="text-sm text-zinc-500">
-              No drafts yet — {signals ? "" : "click "}
-              {!signals && <><span className="inline-flex items-center gap-1 font-medium"><Search size={11} /> Enrich</span> to ground in real signals (optional), then </>}
-              click <span className="inline-flex items-center gap-1 font-medium"><Sparkles size={11} /> Draft</span> to generate Template A + B and a cold email.
+            <div className="text-[13px] leading-relaxed text-ink-3">
+              No drafts yet.{" "}
+              {!signals && (
+                <>
+                  Click <span className="inline-flex items-center gap-1 font-medium text-ink-2"><Search size={12} /> Enrich</span> to ground in real signals (optional), then{" "}
+                </>
+              )}
+              {signals ? "Click" : "click"}{" "}
+              <span className="inline-flex items-center gap-1 font-medium text-ink-2"><Sparkles size={12} /> Draft</span> to generate {templateALabel}, {templateBLabel} and a cold email.
             </div>
           )}
           {drafts && (
@@ -1481,7 +1654,7 @@ function TargetCard({
                 keyPrefix={`a-${target.id}`}
                 copiedKey={copiedKey}
                 onCopy={onCopy}
-                onMarkSent={target.status !== "sent" && target.status !== "replied" ? (text) => onMarkSent("A", text) : undefined}
+                onMarkSent={canMarkSent ? (text) => onMarkSent("A", text) : undefined}
               />
               <DraftBlock
                 label={templateBLabel}
@@ -1490,7 +1663,7 @@ function TargetCard({
                 keyPrefix={`b-${target.id}`}
                 copiedKey={copiedKey}
                 onCopy={onCopy}
-                onMarkSent={target.status !== "sent" && target.status !== "replied" ? (text) => onMarkSent("B", text) : undefined}
+                onMarkSent={canMarkSent ? (text) => onMarkSent("B", text) : undefined}
               />
               {drafts.email ? (
                 <EmailDraftBlock
@@ -1501,21 +1674,41 @@ function TargetCard({
                   keyPrefix={`e-${target.id}`}
                   copiedKey={copiedKey}
                   onCopy={onCopy}
-                  onMarkSent={target.status !== "sent" && target.status !== "replied" ? (text) => onMarkSent("Email", text) : undefined}
+                  onMarkSent={canMarkSent ? (text) => onMarkSent("Email", text) : undefined}
                 />
               ) : (
-                <p className="text-[11px] text-zinc-400 italic">
-                  These drafts predate the email variant. Click <span className="inline-flex items-center gap-0.5 font-medium not-italic"><Sparkles size={10} /> Redraft</span> to generate Template A + B and a cold email together.
+                <p className="text-xs leading-relaxed text-ink-3">
+                  These drafts predate the email variant. Click{" "}
+                  <span className="inline-flex items-center gap-1 font-medium text-ink-2"><Sparkles size={12} /> Redraft</span>{" "}
+                  to generate both templates and a cold email together.
                 </p>
               )}
               {drafts.reasoning && (
-                <p className="text-xs text-zinc-500 italic">Why: {drafts.reasoning}</p>
+                <p className="text-xs leading-relaxed text-ink-3">
+                  <span className="font-medium text-ink-2">Why:</span> {drafts.reasoning}
+                </p>
               )}
             </>
           )}
 
-          <div className="flex items-center gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-800 flex-wrap">
-            <span className="text-xs text-zinc-500 mr-1">Status:</span>
+          {/* Notes */}
+          {target.notes && target.notes.trim() && (
+            <div>
+              <SubLabel icon={StickyNote}>Notes</SubLabel>
+              <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink-2">{target.notes}</p>
+            </div>
+          )}
+
+          {/* History */}
+          {history.length > 0 && (
+            <div>
+              <SubLabel icon={History} hint={String(history.length)}>History</SubLabel>
+              <SentHistoryList history={history} />
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
+            <span className="mr-1 text-xs text-ink-3">Status</span>
             <StatusButton
               active={target.status === "replied"}
               onClick={() => (target.status === "replied" ? onUnsetStatus() : onMarkReplied())}
@@ -1534,16 +1727,28 @@ function TargetCard({
             >
               Dead
             </StatusButton>
-            <button
-              onClick={onDelete}
-              className="ml-auto text-zinc-400 hover:text-rose-600 p-1 rounded"
-              title="Delete"
-            >
+            <IconButton size="sm" variant="danger" label="Delete target" onClick={onDelete} className="ml-auto">
               <Trash2 size={14} />
-            </button>
+            </IconButton>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function SentHistoryList({ history }: { history: SentHistoryEntry[] }) {
+  return (
+    <div className="space-y-2 border-l-2 border-line pl-3">
+      {history.map((h, i) => (
+        <div key={i} className="text-xs">
+          <div className="font-medium text-ink-2">
+            {h.follow_up_n === 0 ? `First send${h.template ? ` (Template ${h.template})` : ""}` : `Follow-up #${h.follow_up_n}`}
+            <span className="ml-2 font-normal tabular-nums text-ink-3">{new Date(h.at).toLocaleDateString()}</span>
+          </div>
+          <div className="truncate text-ink-3">{h.text.split("\n")[0]}</div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1563,136 +1768,111 @@ function FollowupCard({
   onResetCadence: () => void;
 }) {
   const [edited, setEdited] = useState<string | null>(null);
-  const history = target.sent_history_json ? JSON.parse(target.sent_history_json) : [];
+  const history: SentHistoryEntry[] = target.sent_history_json ? JSON.parse(target.sent_history_json) : [];
   const nextN = target.followup_count + 1;
   const daysSinceSent = target.sent_at ? Math.floor((Date.now() - target.sent_at) / 86400_000) : 0;
   const text = edited ?? draft?.text ?? "";
   const copyKey = `fu-${target.id}`;
+  const copied = copiedKey === copyKey;
+  const fieldId = `outreach-followup-${target.id}`;
 
   return (
-    <div className="border border-amber-200 dark:border-amber-900/40 rounded-lg bg-amber-50/30 dark:bg-amber-950/10 overflow-hidden">
-      <div className="px-4 py-3 flex items-center gap-3 border-b border-amber-100 dark:border-amber-900/30">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium text-zinc-900 dark:text-zinc-100 truncate">{target.brand_name}</span>
-            <span className="text-zinc-400">·</span>
-            <span className="text-sm text-zinc-600 dark:text-zinc-400 truncate">
-              {target.person_name}
-            </span>
-          </div>
-          <div className="flex items-center gap-2 mt-0.5 text-xs text-zinc-500">
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300">
+    <Card>
+      <div className="flex items-center gap-3 px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="truncate text-sm font-medium text-ink">{target.brand_name}</span>
+            <Badge tone="amber">
               <Clock size={10} /> Follow-up #{nextN} due
-            </span>
-            <span>Day {daysSinceSent} since first send</span>
+            </Badge>
+          </div>
+          <div className="mt-0.5 truncate text-xs text-ink-3">
+            {target.person_name} · <span className="tabular-nums">Day {daysSinceSent}</span> since first send
           </div>
         </div>
         {target.linkedin_url && (
-          <a
-            href={target.linkedin_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 p-1.5 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            title="Open LinkedIn"
-          >
+          <IconLink href={target.linkedin_url} label="Open LinkedIn" external>
             <ExternalLink size={14} />
-          </a>
+          </IconLink>
         )}
       </div>
 
-      <div className="px-4 py-3 space-y-3">
+      <div className="space-y-4 border-t border-line bg-sunken/50 p-4">
         {/* Prior sends summary */}
         {history.length > 0 && (
-          <details className="text-xs text-zinc-500">
-            <summary className="cursor-pointer hover:text-zinc-700 dark:hover:text-zinc-300">
-              Prior sends ({history.length})
+          <details className="group/history text-xs">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-semibold text-ink [&::-webkit-details-marker]:hidden">
+              <ChevronDown size={13} className="-rotate-90 text-ink-3 transition-transform group-open/history:rotate-0" />
+              Prior sends
+              <span className="font-normal tabular-nums text-ink-3">{history.length}</span>
             </summary>
-            <div className="mt-2 space-y-1.5 pl-2 border-l-2 border-zinc-200 dark:border-zinc-800">
-              {history.map((h: { at: number; follow_up_n: number; text: string; template?: string }, i: number) => (
-                <div key={i} className="text-xs">
-                  <div className="font-medium text-zinc-600 dark:text-zinc-400">
-                    {h.follow_up_n === 0 ? `First send${h.template ? ` (Template ${h.template})` : ""}` : `Follow-up #${h.follow_up_n}`}
-                    <span className="ml-2 opacity-60 font-normal">{new Date(h.at).toLocaleDateString()}</span>
-                  </div>
-                  <div className="text-zinc-500 italic truncate">{h.text.split("\n")[0]}</div>
-                </div>
-              ))}
+            <div className="mt-2">
+              <SentHistoryList history={history} />
             </div>
           </details>
         )}
 
         {/* Draft area */}
         {!draft && (
-          <button
-            onClick={onGenerate}
-            disabled={drafting}
-            className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium rounded-md bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50"
-          >
-            {drafting ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+          <Button variant="brand" onClick={onGenerate} loading={drafting} className="w-full">
+            {!drafting && <Sparkles size={14} />}
             Generate follow-up #{nextN}
-          </button>
+          </Button>
         )}
 
         {draft && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] uppercase tracking-wide text-zinc-500">
-                Follow-up #{draft.followup_n} draft ({text.length} chars)
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => onCopy(text, copyKey)}
-                  className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-                >
-                  {copiedKey === copyKey ? <Check size={11} className="text-emerald-600" /> : <Copy size={11} />}
-                  {copiedKey === copyKey ? "Copied" : "Copy"}
-                </button>
-              </div>
+          <div>
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <label htmlFor={fieldId} className="text-xs font-medium text-ink-2">
+                Follow-up #{draft.followup_n} draft <span className="font-normal tabular-nums text-ink-3">({text.length} chars)</span>
+              </label>
+              <Button size="sm" variant="ghost" onClick={() => onCopy(text, copyKey)}>
+                {copied ? <Check size={12} className="text-emerald-600 dark:text-emerald-400" /> : <Copy size={12} />}
+                {copied ? "Copied" : "Copy"}
+              </Button>
             </div>
-            <textarea
+            <AutoTextarea
+              id={fieldId}
               value={text}
               onChange={(e) => setEdited(e.target.value)}
-              rows={Math.max(3, Math.ceil(text.length / 70))}
-              className="w-full px-3 py-2 text-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md text-zinc-800 dark:text-zinc-200"
+              minRows={3}
+              className={textareaClass}
             />
             {draft.reasoning && (
-              <p className="text-xs text-zinc-500 italic">Angle: {draft.reasoning}</p>
+              <p className="mt-2 text-xs leading-relaxed text-ink-3">
+                <span className="font-medium text-ink-2">Angle:</span> {draft.reasoning}
+              </p>
             )}
-            <div className="flex items-center gap-2 pt-1">
-              <button
-                onClick={() => onMarkSent(text)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700"
-              >
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="primary" onClick={() => onMarkSent(text)}>
                 <Send size={12} /> Mark follow-up sent
-              </button>
-              <button
-                onClick={onGenerate}
-                disabled={drafting}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 rounded-md"
-              >
-                {drafting ? <Loader2 size={11} className="animate-spin" /> : <RotateCcw size={11} />}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={onGenerate} loading={drafting}>
+                {!drafting && <RotateCcw size={12} />}
                 Regenerate
-              </button>
+              </Button>
             </div>
           </div>
         )}
 
         {/* Status actions */}
-        <div className="flex items-center gap-2 pt-2 border-t border-amber-100 dark:border-amber-900/30 flex-wrap">
-          <span className="text-xs text-zinc-500 mr-1">Or:</span>
+        <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
+          <span className="mr-1 text-xs text-ink-3">Or</span>
           <StatusButton onClick={onMarkReplied}>Mark replied</StatusButton>
           <StatusButton onClick={() => onMarkStatus("declined")}>Declined</StatusButton>
           <StatusButton onClick={() => onMarkStatus("dead")}>Dead</StatusButton>
-          <button
+          <Button
+            size="sm"
+            variant="ghost"
             onClick={onResetCadence}
-            className="ml-auto text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-            title="Reset cadence — back to queued"
+            className="ml-auto"
+            title="Reset cadence, back to queued"
           >
             Reset
-          </button>
+          </Button>
         </div>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -1718,36 +1898,43 @@ function DraftBlock({
   const dmEdited = dmText !== firstDM;
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">{label}</div>
-        {onMarkSent && (
-          <button
-            onClick={() => onMarkSent(dmText)}
-            className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded bg-emerald-600 text-white hover:bg-emerald-700"
-          >
-            <Send size={10} /> Sent this{dmEdited && " (edited)"}
-          </button>
-        )}
+    <div>
+      <SubLabel
+        icon={Send}
+        action={
+          onMarkSent && (
+            <Button size="sm" variant="primary" onClick={() => onMarkSent(dmText)}>
+              <Send size={12} /> Sent this{dmEdited && " (edited)"}
+            </Button>
+          )
+        }
+      >
+        {label}
+      </SubLabel>
+      <div className="space-y-3">
+        <DraftLine
+          sublabel="Connection note"
+          counter={`${noteText.length}/300`}
+          edited={noteEdited}
+          text={noteText}
+          onChange={setNoteText}
+          keyId={`${keyPrefix}-note`}
+          copiedKey={copiedKey}
+          onCopy={onCopy}
+          minRows={2}
+        />
+        <DraftLine
+          sublabel="First DM"
+          counter={`${dmText.length}/600`}
+          edited={dmEdited}
+          text={dmText}
+          onChange={setDmText}
+          keyId={`${keyPrefix}-dm`}
+          copiedKey={copiedKey}
+          onCopy={onCopy}
+          minRows={3}
+        />
       </div>
-      <DraftLine
-        sublabel={`Connection note (${noteText.length}/300)${noteEdited ? " · edited" : ""}`}
-        text={noteText}
-        onChange={setNoteText}
-        keyId={`${keyPrefix}-note`}
-        copiedKey={copiedKey}
-        onCopy={onCopy}
-        maxRows={3}
-      />
-      <DraftLine
-        sublabel={`First DM (${dmText.length}/600)${dmEdited ? " · edited" : ""}`}
-        text={dmText}
-        onChange={setDmText}
-        keyId={`${keyPrefix}-dm`}
-        copiedKey={copiedKey}
-        onCopy={onCopy}
-        maxRows={6}
-      />
     </div>
   );
 }
@@ -1785,68 +1972,65 @@ function EmailDraftBlock({
   const emailCopied = copiedKey === `${keyPrefix}-addr`;
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 inline-flex items-center gap-1.5">
-          <Mail size={11} /> Email — Cold email variant
-        </div>
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {toEmail && (
-            <button
-              onClick={() => onCopy(toEmail, `${keyPrefix}-addr`)}
-              className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-              title={toEmail}
-            >
-              {emailCopied ? <Check size={10} className="text-emerald-600" /> : <Copy size={10} />}
-              {emailCopied ? "Copied" : "Copy email"}
-            </button>
-          )}
-          {gmailHref && (
-            <a
-              href={gmailHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded bg-sky-600 text-white hover:bg-sky-700"
-            >
-              <Mail size={10} /> Open in Gmail
-            </a>
-          )}
-          {onMarkSent && (
-            <button
-              onClick={() => onMarkSent(bodyText)}
-              className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded bg-emerald-600 text-white hover:bg-emerald-700"
-            >
-              <Send size={10} /> Sent this{bodyEdited && " (edited)"}
-            </button>
-          )}
-        </div>
+    <div>
+      <SubLabel
+        icon={Mail}
+        hint="Cold email variant"
+        action={
+          <div className="flex flex-wrap items-center gap-1.5">
+            {toEmail && (
+              <Button size="sm" onClick={() => onCopy(toEmail, `${keyPrefix}-addr`)} title={toEmail}>
+                {emailCopied ? <Check size={12} className="text-emerald-600 dark:text-emerald-400" /> : <Copy size={12} />}
+                {emailCopied ? "Copied" : "Copy email"}
+              </Button>
+            )}
+            {gmailHref && (
+              <a href={gmailHref} target="_blank" rel="noopener noreferrer" className={linkButtonSecondary}>
+                <Mail size={12} /> Open in Gmail
+              </a>
+            )}
+            {onMarkSent && (
+              <Button size="sm" variant="primary" onClick={() => onMarkSent(bodyText)}>
+                <Send size={12} /> Sent this{bodyEdited && " (edited)"}
+              </Button>
+            )}
+          </div>
+        }
+      >
+        Email
+      </SubLabel>
+      <div className="space-y-3">
+        <DraftLine
+          sublabel="Subject"
+          counter={`${subjectText.length}/70`}
+          edited={subjectEdited}
+          text={subjectText}
+          onChange={setSubjectText}
+          keyId={`${keyPrefix}-subject`}
+          copiedKey={copiedKey}
+          onCopy={onCopy}
+          minRows={1}
+        />
+        <DraftLine
+          sublabel="Body"
+          counter={`${bodyText.length}/900`}
+          edited={bodyEdited}
+          text={bodyText}
+          onChange={setBodyText}
+          keyId={`${keyPrefix}-body`}
+          copiedKey={copiedKey}
+          onCopy={onCopy}
+          minRows={4}
+        />
       </div>
-      <DraftLine
-        sublabel={`Subject (${subjectText.length}/70)${subjectEdited ? " · edited" : ""}`}
-        text={subjectText}
-        onChange={setSubjectText}
-        keyId={`${keyPrefix}-subject`}
-        copiedKey={copiedKey}
-        onCopy={onCopy}
-        maxRows={1}
-      />
-      <DraftLine
-        sublabel={`Body (${bodyText.length}/900)${bodyEdited ? " · edited" : ""}`}
-        text={bodyText}
-        onChange={setBodyText}
-        keyId={`${keyPrefix}-body`}
-        copiedKey={copiedKey}
-        onCopy={onCopy}
-        maxRows={8}
-      />
       {sig && (
-        <p className="text-[11px] text-zinc-400 inline-flex items-center gap-1">
-          <PenLine size={10} /> Your signature is appended to the Gmail draft.
+        <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-ink-3">
+          <PenLine size={12} /> Your signature is appended to the Gmail draft.
         </p>
       )}
       {!toEmail && (
-        <p className="text-[11px] text-zinc-400 italic">
-          No email on file for this contact — run Find Contacts to pull one, or copy the draft manually.
+        <p className="mt-2 text-xs text-ink-3">
+          No email on file for this contact. Run Find contacts to pull one, or copy the draft manually.
         </p>
       )}
     </div>
@@ -1854,65 +2038,67 @@ function EmailDraftBlock({
 }
 
 function DraftLine({
-  sublabel, text, onChange, keyId, copiedKey, onCopy, maxRows,
+  sublabel, counter, edited, text, onChange, keyId, copiedKey, onCopy, minRows,
 }: {
   sublabel: string;
+  counter: string;
+  edited: boolean;
   text: string;
   onChange: (next: string) => void;
   keyId: string;
   copiedKey: string | null;
   onCopy: (text: string, key: string) => void;
-  maxRows?: number;
+  minRows?: number;
 }) {
   const copied = copiedKey === keyId;
-  const rows = Math.min(maxRows ?? 6, Math.max(2, Math.ceil(text.length / 70)));
+  const fieldId = `outreach-draft-${keyId}`;
+  // Not a <Field>: a <label> wrapping the Copy button would click it when the label text is pressed.
   return (
     <div>
-      <div className="flex items-center justify-between gap-2 mb-1">
-        <span className="text-[10px] uppercase tracking-wide text-zinc-500">{sublabel}</span>
-        <button
-          onClick={() => onCopy(text, keyId)}
-          className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-        >
-          {copied ? <Check size={11} className="text-emerald-600" /> : <Copy size={11} />}
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <label htmlFor={fieldId} className="flex items-center gap-1.5 text-xs font-medium text-ink-2">
+          {sublabel}
+          <span className="font-normal tabular-nums text-ink-3">{counter}</span>
+          {edited && <Badge>Edited</Badge>}
+        </label>
+        <Button size="sm" variant="ghost" onClick={() => onCopy(text, keyId)}>
+          {copied ? <Check size={12} className="text-emerald-600 dark:text-emerald-400" /> : <Copy size={12} />}
           {copied ? "Copied" : "Copy"}
-        </button>
+        </Button>
       </div>
-      <textarea
+      <AutoTextarea
+        id={fieldId}
         value={text}
         onChange={(e) => onChange(e.target.value)}
-        rows={rows}
+        minRows={minRows ?? 2}
         spellCheck
-        className="w-full text-sm whitespace-pre-wrap bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2 text-zinc-800 dark:text-zinc-200 resize-y focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+        className={cn(textareaClass, "whitespace-pre-wrap")}
       />
     </div>
   );
 }
 
+const CONFIDENCE_TONES: Record<CandidateContact["confidence"], BadgeTone> = {
+  high: "green",
+  medium: "amber",
+  low: "neutral",
+};
+
 function ContactMeta({ contact }: { contact: CandidateContact }) {
   return (
-    <div className="flex items-center gap-2 mt-1 text-xs flex-wrap">
-      <span className={`px-1.5 py-0.5 rounded text-[10px] ${ROLE_COLORS[contact.role_category] ?? ROLE_COLORS.other}`}>
+    <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+      <Badge tone={ROLE_TONES[contact.role_category] ?? "neutral"}>
         {ROLE_LABELS[contact.role_category] ?? contact.role_category}
-      </span>
-      <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
-        contact.confidence === "high" ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300"
-        : contact.confidence === "medium" ? "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300"
-        : "bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300"
-      }`}>
+      </Badge>
+      <Badge tone={CONFIDENCE_TONES[contact.confidence] ?? "neutral"} className="capitalize">
         {contact.confidence}
-      </span>
+      </Badge>
       {contact.origin && (
-        <span
-          className={`px-1.5 py-0.5 rounded text-[10px] font-medium inline-flex items-center gap-1 ${
-            contact.origin === "apollo"
-              ? "bg-sky-100 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300"
-              : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
-          }`}
-          title={contact.origin === "apollo" ? "Verified via Apollo" : "Discovered via web search"}
-        >
-          {contact.origin === "apollo" ? <ShieldCheck size={9} /> : <Search size={9} />}
-          {contact.origin}
+        <span title={contact.origin === "apollo" ? "Verified via Apollo" : "Discovered via web search"}>
+          <Badge tone={contact.origin === "apollo" ? "sky" : "neutral"}>
+            {contact.origin === "apollo" ? <ShieldCheck size={10} /> : <Search size={10} />}
+            {contact.origin === "apollo" ? "Apollo" : "Web search"}
+          </Badge>
         </span>
       )}
       {contact.linkedin_url ? (
@@ -1921,21 +2107,21 @@ function ContactMeta({ contact }: { contact: CandidateContact }) {
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
-          className="inline-flex items-center gap-1 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+          className="inline-flex items-center gap-1 text-ink-3 hover:text-ink"
         >
-          <ExternalLink size={10} /> LinkedIn
+          <ExternalLink size={12} /> LinkedIn
         </a>
       ) : (
-        <span className="text-zinc-400 italic">no LinkedIn URL</span>
+        <span className="text-ink-4">No LinkedIn URL</span>
       )}
       {contact.email && (
         <a
           href={`mailto:${contact.email}`}
           onClick={(e) => e.stopPropagation()}
-          className="inline-flex items-center gap-1 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+          className="inline-flex items-center gap-1 text-ink-3 hover:text-ink"
           title={contact.email}
         >
-          <Mail size={10} /> email
+          <Mail size={12} /> Email
         </a>
       )}
       {contact.source && (
@@ -1944,10 +2130,9 @@ function ContactMeta({ contact }: { contact: CandidateContact }) {
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
-          className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-          title="Source"
+          className="inline-flex items-center gap-1 text-ink-3 hover:text-ink"
         >
-          source ↗
+          Source <ExternalLink size={11} />
         </a>
       )}
     </div>
@@ -1958,17 +2143,15 @@ function StatusButton({
   onClick, active, disabled, children,
 }: { onClick: () => void; active?: boolean; disabled?: boolean; children: React.ReactNode }) {
   return (
-    <button
+    <Button
+      size="sm"
+      variant={active ? "primary" : "secondary"}
       onClick={onClick}
       disabled={disabled}
+      aria-pressed={active}
       title={active ? "Click again to undo" : undefined}
-      className={`px-2.5 py-1 text-xs rounded-md border transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
-        active
-          ? "border-zinc-900 dark:border-zinc-100 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300"
-          : "border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-      }`}
     >
       {children}
-    </button>
+    </Button>
   );
 }

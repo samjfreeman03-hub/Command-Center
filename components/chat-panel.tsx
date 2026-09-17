@@ -1,13 +1,61 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Business } from "@/lib/businesses";
 import type { ChatMessage } from "@/lib/types";
-import { Send, Trash2, Paperclip, X, FileText, MessageSquare, CheckCircle2 } from "lucide-react";
-import { useShareHeaders } from "@/lib/share-context";
+import { ArrowUp, Trash2, Paperclip, X, FileText, Sparkles, CheckCircle2, Loader2, AlertTriangle } from "lucide-react";
+import { ShareTokenContext, useShareHeaders } from "@/lib/share-context";
+import { usePanelState } from "@/lib/panel-cache";
+import { Button, IconButton } from "@/components/ui/button";
+import { Badge } from "@/components/ui/display";
+import { confirmDialog, toast } from "@/components/ui/host";
+import { cn } from "@/lib/cn";
 
 type PendingFile = { id: string; file: File; preview: string | null };
+
+const SUGGESTIONS = [
+  "Add these companies to the CRM: …",
+  "Create a lead for [brand], $10k, proposal stage",
+  "What's in our pipeline right now?",
+  "Draft a follow-up from last week's sponsor meeting",
+];
+
+/** Composer growth cap. Past this the textarea scrolls inside. */
+const COMPOSER_MAX_PX = 200;
+
+/*
+ * Panel height = viewport minus the chrome around it, so the composer stays at
+ * the bottom and only the message list scrolls. `--chat-off` is everything
+ * that is not the panel (safe-area insets are subtracted separately):
+ *
+ * Admin shell
+ *   phone 217px = top bar 52 + header 68 + gap 16 + tabs 45 + panel top pad 20 + bottom gap 16
+ *   sm    229px = same with the header 76 and panel top pad 24
+ *   md+   191px = canvas inset and border 18 + header 76 + gap 16 + tabs 41 + top pad 24 + bottom gap 16
+ * Share view (no top bar, no canvas inset)
+ *   phone 165px, sm 177px, md+ 173px
+ *
+ * The workspace gives every panel 40px of bottom padding; `-mb-6` hands 24px
+ * of it back so 16px is left under the hint line.
+ */
+const OFFSETS_ADMIN = "[--chat-off:217px] sm:[--chat-off:229px] md:[--chat-off:191px]";
+const OFFSETS_SHARE = "[--chat-off:165px] sm:[--chat-off:177px] md:[--chat-off:173px]";
+
+/** Small brand-tinted tile that marks the assistant. */
+function SparkleTile({ size = "sm" }: { size?: "sm" | "lg" }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "flex shrink-0 items-center justify-center bg-brand-soft text-brand ring-1 ring-inset ring-line",
+        size === "lg" ? "h-11 w-11 rounded-xl" : "h-7 w-7 rounded-lg"
+      )}
+    >
+      <Sparkles size={size === "lg" ? 18 : 14} />
+    </span>
+  );
+}
 
 export function ChatPanel({
   business,
@@ -16,7 +64,7 @@ export function ChatPanel({
   business: Business;
   initialMessages: ChatMessage[];
 }) {
-  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
+  const [messages, setMessages] = usePanelState<ChatMessage[]>("chat", initialMessages);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,20 +72,36 @@ export function ChatPanel({
   // Ids of assistant messages that performed workspace actions (session-local badge)
   const [actionMsgIds, setActionMsgIds] = useState<Set<number>>(new Set());
   const router = useRouter();
-  const endRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const shareHeaders = useShareHeaders();
+  const isShare = useContext(ShareTokenContext) !== null;
 
+  // Keep the newest message in view. Scrolls the list itself (not
+  // scrollIntoView) so the page or canvas behind it never moves.
+  const firstScroll = useRef(true);
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const el = listRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: firstScroll.current ? "auto" : "smooth" });
+    firstScroll.current = false;
+  }, [messages, sending]);
+
+  // Auto-grow the composer
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX_PX)}px`;
+    el.style.overflowY = el.scrollHeight > COMPOSER_MAX_PX ? "auto" : "hidden";
+  }, [input]);
 
   function addFiles(fileList: FileList | null) {
     if (!fileList) return;
     const MAX = 10 * 1024 * 1024;
     Array.from(fileList).forEach((file) => {
-      if (file.size > MAX) { setError(`${file.name} is too large (max 10 MB)`); return; }
+      if (file.size > MAX) { toast(`${file.name} is too large (max 10 MB)`, { tone: "error" }); return; }
       const id = Math.random().toString(36).slice(2);
       if (file.type.startsWith("image/")) {
         const reader = new FileReader();
@@ -51,8 +115,8 @@ export function ChatPanel({
     });
   }
 
-  async function send(e: React.FormEvent) {
-    e.preventDefault();
+  async function send(e?: React.FormEvent) {
+    e?.preventDefault();
     const content = input.trim();
     if ((!content && pendingFiles.length === 0) || sending) return;
     setError(null);
@@ -110,151 +174,211 @@ export function ChatPanel({
   }
 
   async function clearAll() {
-    if (!confirm("Clear all chat history for this business?")) return;
+    const ok = await confirmDialog({
+      title: "Clear this chat?",
+      description: `All chat history for ${business.name} will be deleted.`,
+      confirmLabel: "Clear chat",
+      destructive: true,
+    });
+    if (!ok) return;
+    const before = messages;
     setMessages([]);
-    await fetch(`/api/chat?business_id=${business.id}`, { method: "DELETE", headers: shareHeaders });
+    setActionMsgIds(new Set());
+    try {
+      const res = await fetch(`/api/chat?business_id=${business.id}`, { method: "DELETE", headers: shareHeaders });
+      if (!res.ok) throw new Error("clear failed");
+    } catch {
+      setMessages(before);
+      toast("Could not clear chat", { tone: "error" });
+    }
   }
 
+  function fillComposer(text: string) {
+    setInput(text);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(text.length, text.length);
+    });
+  }
+
+  function onComposerKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
+    e.preventDefault();
+    send();
+  }
+
+  const canSend = !sending && (input.trim().length > 0 || pendingFiles.length > 0);
+  const column = "mx-auto w-full max-w-[760px]";
+
   return (
-    <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 flex flex-col overflow-hidden" style={{ height: "calc(100dvh - 8rem)" }}>
-
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-100 dark:border-zinc-900">
-        <div className="flex items-center gap-2">
-          <MessageSquare size={15} className="text-zinc-400" />
-          <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{business.name}</span>
-          <span className="text-xs text-zinc-400">— can read &amp; update your CRM, pipeline, todos &amp; notes</span>
+    <div
+      className={cn("-mb-6 flex min-h-[360px] flex-col", isShare ? OFFSETS_SHARE : OFFSETS_ADMIN)}
+      style={{
+        height: isShare
+          ? "calc(100dvh - var(--chat-off) - env(safe-area-inset-bottom, 0px))"
+          : "calc(100dvh - var(--chat-off) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))",
+      }}
+    >
+      {/* Top row: quiet clear action */}
+      {messages.length > 0 && (
+        <div className={cn(column, "flex shrink-0 items-center justify-between gap-3 pb-2")}>
+          <div className="text-xs text-ink-3">
+            <span className="tabular-nums">{messages.length}</span> {messages.length === 1 ? "message" : "messages"}
+          </div>
+          <Button variant="ghost" size="sm" onClick={clearAll} disabled={sending}>
+            <Trash2 size={13} /> Clear chat
+          </Button>
         </div>
-        {messages.length > 0 && (
-          <button
-            onClick={clearAll}
-            className="text-xs text-zinc-400 hover:text-red-500 dark:hover:text-red-400 inline-flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
-          >
-            <Trash2 size={11} /> Clear history
-          </button>
-        )}
-      </div>
+      )}
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
-        {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full gap-4 text-center pb-8">
-            <div className="w-12 h-12 rounded-2xl bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center">
-              <MessageSquare size={20} className="text-zinc-400" />
-            </div>
-            <div>
-              <div className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
-                Ask anything about {business.name}
-              </div>
-              <div className="text-xs text-zinc-400 dark:text-zinc-600 space-y-1 max-w-sm">
-                <div className="bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 rounded-lg">&ldquo;Add these companies to the CRM: …&rdquo;</div>
-                <div className="bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 rounded-lg">&ldquo;Create a lead for [brand], $10k, proposal stage&rdquo;</div>
-                <div className="bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 rounded-lg">&ldquo;What&apos;s in our pipeline right now?&rdquo;</div>
-                <div className="bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 rounded-lg">&ldquo;Draft a follow-up from last week&apos;s sponsor meeting&rdquo;</div>
-              </div>
+      {/* Messages: the only thing that scrolls */}
+      <div ref={listRef} className="scroll-touch -mx-2 min-h-0 flex-1 overflow-y-auto px-2">
+        {messages.length === 0 && !sending ? (
+          <div className={cn(column, "flex min-h-full flex-col items-center justify-center py-8 text-center")}>
+            <SparkleTile size="lg" />
+            <div className="mt-4 text-[15px] font-semibold tracking-tight text-ink">Ask anything about {business.name}</div>
+            <p className="mt-1 max-w-sm text-[13px] leading-relaxed text-ink-3">
+              It knows this workspace and can make changes for you.
+            </p>
+            <div className="mt-5 flex max-w-xl flex-wrap justify-center gap-2">
+              {SUGGESTIONS.map((text) => (
+                <button
+                  key={text}
+                  type="button"
+                  onClick={() => fillComposer(text)}
+                  className="rounded-lg border border-line bg-raised px-3 py-2 text-left text-[13px] text-ink-2 shadow-card transition-colors hover:bg-sunken hover:text-ink md:py-1.5"
+                >
+                  {text}
+                </button>
+              ))}
             </div>
           </div>
-        )}
+        ) : (
+          <div className={cn(column, "space-y-6 pb-4 pt-1")}>
+            {messages.map((m) =>
+              m.role === "user" ? (
+                <div key={m.id} className="flex justify-end">
+                  <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl bg-inverse px-4 py-2.5 text-sm leading-relaxed text-on-inverse">
+                    {m.content}
+                  </div>
+                </div>
+              ) : (
+                <div key={m.id} className="flex items-start gap-3">
+                  <SparkleTile />
+                  <div className="min-w-0 flex-1 pt-0.5">
+                    <div className="whitespace-pre-wrap break-words text-sm leading-relaxed text-ink">{m.content}</div>
+                    {actionMsgIds.has(m.id) && (
+                      <Badge tone="green" className="mt-2 whitespace-normal">
+                        <CheckCircle2 size={11} className="shrink-0" /> Workspace updated. Switch tabs to see the changes.
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              )
+            )}
 
-        {messages.map((m) => (
-          <div key={m.id} className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}>
-            <div
-              className={`max-w-[78%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap leading-relaxed ${
-                m.role === "user"
-                  ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-br-sm"
-                  : "bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 rounded-bl-sm border border-zinc-200 dark:border-zinc-800"
-              }`}
-            >
-              {m.content}
-            </div>
-            {actionMsgIds.has(m.id) && (
-              <div className="mt-1 inline-flex items-center gap-1 text-[11px] text-emerald-700 dark:text-emerald-400">
-                <CheckCircle2 size={11} /> Workspace updated — switch tabs to see the changes
+            {sending && (
+              <div className="flex items-center gap-3" role="status" aria-label="Assistant is thinking">
+                <SparkleTile />
+                <div className="inline-flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-4 [animation-delay:0ms]" />
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-4 [animation-delay:150ms]" />
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-4 [animation-delay:300ms]" />
+                </div>
               </div>
             )}
           </div>
-        ))}
-
-        {sending && (
-          <div className="flex justify-start">
-            <div className="bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl rounded-bl-sm px-4 py-3 inline-flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:0ms]" />
-              <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:150ms]" />
-              <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:300ms]" />
-            </div>
-          </div>
         )}
-        <div ref={endRef} />
       </div>
 
-      {/* Error */}
-      {error && (
-        <div className="px-5 py-2.5 text-xs text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/30 border-t border-red-100 dark:border-red-900/40 flex items-center justify-between">
-          <span>{error}</span>
-          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600"><X size={12} /></button>
-        </div>
-      )}
-
-      {/* Pending file chips */}
-      {pendingFiles.length > 0 && (
-        <div className="px-4 pt-3 pb-1 flex flex-wrap gap-2 border-t border-zinc-100 dark:border-zinc-900">
-          {pendingFiles.map((pf) => (
-            <div
-              key={pf.id}
-              className="flex items-center gap-1.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg pl-2 pr-1.5 py-1"
+      {/* Composer */}
+      <div className={cn(column, "shrink-0 pt-2")}>
+        {error && (
+          <div className="mb-2 flex items-center gap-2 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300" role="alert">
+            <AlertTriangle size={13} className="shrink-0" />
+            <span className="min-w-0 flex-1">{error}</span>
+            <button
+              type="button"
+              onClick={() => setError(null)}
+              aria-label="Dismiss error"
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md opacity-70 hover:opacity-100"
             >
-              {pf.preview ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={pf.preview} alt="" className="w-5 h-5 rounded object-cover" />
-              ) : (
-                <FileText size={13} className="text-zinc-400" />
-              )}
-              <span className="text-xs text-zinc-700 dark:text-zinc-300 max-w-[110px] truncate">{pf.file.name}</span>
-              <button
-                type="button"
-                onClick={() => setPendingFiles((prev) => prev.filter((f) => f.id !== pf.id))}
-                className="text-zinc-400 hover:text-red-500 ml-0.5"
-              >
-                <X size={11} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+              <X size={12} />
+            </button>
+          </div>
+        )}
 
-      {/* Input */}
-      <form onSubmit={send} className="border-t border-zinc-100 dark:border-zinc-900 p-4 pb-safe-4 flex gap-2 items-center shrink-0">
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept="image/*,.pdf,.txt,.md,.csv,.json,.xml,.yaml,.yml"
-          className="hidden"
-          onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }}
-        />
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          className="shrink-0 w-9 h-9 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 flex items-center justify-center transition-colors"
-          title="Attach file or image"
+        <form
+          onSubmit={send}
+          className="rounded-2xl border border-line-strong bg-raised shadow-lift transition-[border-color] duration-150 focus-within:border-ink-3"
         >
-          <Paperclip size={16} />
-        </button>
-        <input
-          ref={inputRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder={`Message ${business.name}…`}
-          className="flex-1 h-11 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-sm px-3.5 rounded-xl outline-none focus:border-zinc-400 dark:focus:border-zinc-600 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 text-zinc-900 dark:text-zinc-100 transition-colors"
-        />
-        <button
-          type="submit"
-          disabled={sending || (!input.trim() && pendingFiles.length === 0)}
-          className="shrink-0 w-11 h-11 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-xl hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-40 flex items-center justify-center transition-colors"
-        >
-          <Send size={15} />
-        </button>
-      </form>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*,.pdf,.txt,.md,.csv,.json,.xml,.yaml,.yml"
+            className="hidden"
+            onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }}
+          />
+
+          {pendingFiles.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 px-3 pt-3">
+              {pendingFiles.map((pf) => (
+                <div key={pf.id} className="flex items-center gap-1.5 rounded-md border border-line bg-sunken py-1 pl-1.5 pr-1">
+                  {pf.preview ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={pf.preview} alt="" className="h-5 w-5 rounded-md object-cover" />
+                  ) : (
+                    <FileText size={13} className="text-ink-3" />
+                  )}
+                  <span className="max-w-[140px] truncate text-xs text-ink-2">{pf.file.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setPendingFiles((prev) => prev.filter((f) => f.id !== pf.id))}
+                    aria-label={`Remove ${pf.file.name}`}
+                    className="flex h-5 w-5 items-center justify-center rounded-md text-ink-3 hover:bg-hover hover:text-ink"
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <textarea
+            ref={inputRef}
+            rows={1}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onComposerKeyDown}
+            placeholder={`Message ${business.name}…`}
+            aria-label={`Message ${business.name}`}
+            className="block w-full resize-none bg-transparent px-4 pb-1 pt-3.5 text-base leading-relaxed text-ink outline-none placeholder:text-ink-4 md:text-sm"
+          />
+
+          <div className="flex items-center justify-between px-2 pb-2">
+            <IconButton label="Attach a file or image" onClick={() => fileInputRef.current?.click()}>
+              <Paperclip size={15} />
+            </IconButton>
+            <button
+              type="submit"
+              disabled={!canSend}
+              aria-label={sending ? "Sending" : "Send message"}
+              title="Send message"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-inverse text-on-inverse shadow-card transition-opacity duration-150 hover:opacity-90 disabled:pointer-events-none disabled:opacity-40 md:h-8 md:w-8"
+            >
+              {sending ? <Loader2 size={14} className="animate-spin" /> : <ArrowUp size={15} />}
+            </button>
+          </div>
+        </form>
+
+        <p className="mt-2 truncate text-center text-xs text-ink-3">
+          Can read and update your CRM, pipeline, todos, and notes.
+          <span className="hidden sm:inline"> Enter to send, Shift+Enter for a new line.</span>
+        </p>
+      </div>
     </div>
   );
 }

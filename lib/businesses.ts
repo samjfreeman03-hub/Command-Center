@@ -10,6 +10,8 @@ export type Business = {
   tabActive: string;
   /** Raw hex for use in inline styles (e.g. header background tint) */
   hex: string;
+  /** Accent that stays legible on dark surfaces (the light-theme hex is often too dark). */
+  hexDark: string;
 };
 
 export const BUSINESSES: Business[] = [
@@ -23,6 +25,7 @@ export const BUSINESSES: Business[] = [
     dot: "bg-[#0B402C] dark:bg-[#4ade80]",
     tabActive: "bg-[#0B402C] text-white dark:bg-zinc-100 dark:text-zinc-900",
     hex: "#0B402C",
+    hexDark: "#4ade80",
   },
   {
     id: "flair",
@@ -34,6 +37,7 @@ export const BUSINESSES: Business[] = [
     dot: "bg-[#ED1F24]",
     tabActive: "bg-[#ED1F24] text-white dark:bg-zinc-100 dark:text-zinc-900",
     hex: "#ED1F24",
+    hexDark: "#f87171",
   },
   {
     id: "campuslink",
@@ -45,6 +49,7 @@ export const BUSINESSES: Business[] = [
     dot: "bg-[#ED1F24]",
     tabActive: "bg-[#ED1F24] text-white dark:bg-zinc-100 dark:text-zinc-900",
     hex: "#ED1F24",
+    hexDark: "#f87171",
   },
   {
     id: "stealth",
@@ -56,6 +61,7 @@ export const BUSINESSES: Business[] = [
     dot: "bg-zinc-950 dark:bg-zinc-50",
     tabActive: "bg-zinc-950 text-white dark:bg-zinc-100 dark:text-zinc-900",
     hex: "#18181b",
+    hexDark: "#f4f4f5",
   },
   {
     id: "techspace",
@@ -67,6 +73,7 @@ export const BUSINESSES: Business[] = [
     dot: "bg-sky-500 dark:bg-sky-400",
     tabActive: "bg-sky-500 text-white dark:bg-zinc-100 dark:text-zinc-900",
     hex: "#0ea5e9",
+    hexDark: "#38bdf8",
   },
   {
     id: "personal",
@@ -78,9 +85,19 @@ export const BUSINESSES: Business[] = [
     dot: "bg-zinc-500 dark:bg-zinc-400",
     tabActive: "bg-zinc-600 text-white dark:bg-zinc-100 dark:text-zinc-900",
     hex: "#71717a",
+    hexDark: "#a1a1aa",
   },
 ];
 
 export function getBusiness(id: string): Business | undefined {
   return BUSINESSES.find((b) => b.id === id);
+}
+
+/**
+ * Inline CSS variables for a `.brand-scope` wrapper. Inside it, the semantic
+ * `brand` color utilities (bg-brand, text-brand, bg-brand-soft, border-brand)
+ * resolve to this business's accent in both themes.
+ */
+export function brandVars(b: Business): React.CSSProperties {
+  return { "--brand-light": b.hex, "--brand-dark": b.hexDark } as React.CSSProperties;
 }

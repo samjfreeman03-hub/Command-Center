@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
 import { BUSINESSES } from "./businesses";
-import type { Todo, Lead, LeadCategory, BizEvent, Initiative, InitiativeLink, Note, ChatMessage, LeadAttachment, BusinessResource, TeamMember, BrandContact, BrandAttachment, OutreachTarget, OutreachStatus } from "./types";
+import type { Todo, Lead, LeadCategory, BizEvent, Initiative, InitiativeLink, Note, ChatMessage, LeadAttachment, BusinessResource, TeamMember, BrandContact, BrandAttachment, OutreachTarget, OutreachStatus, SearchHit } from "./types";
 
 // Email row types (internal to db.ts)
 type RawEmailRow = {
@@ -145,6 +145,13 @@ function migrate(db: Database.Database) {
       created_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_chat_business ON chat_messages(business_id);
+
+    CREATE TABLE IF NOT EXISTS ask_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
 
     CREATE TABLE IF NOT EXISTS share_tokens (
       business_id TEXT PRIMARY KEY,
@@ -493,7 +500,7 @@ export const db = {
   listLeads(opts?: { businessId?: string }): Lead[] {
     const where = opts?.businessId ? "WHERE business_id = ?" : "";
     const args = opts?.businessId ? [opts.businessId] : [];
-    const sql = `SELECT * FROM leads ${where} ORDER BY
+    const sql = `SELECT leads.*, (SELECT COUNT(*) FROM lead_attachments a WHERE a.lead_id = leads.id) AS attachment_count FROM leads ${where} ORDER BY
       CASE stage
         WHEN 'proposal' THEN 0
         WHEN 'qualified' THEN 1
@@ -898,6 +905,68 @@ export const db = {
 
   updateBusinessTagline(id: string, tagline: string) {
     getDb().prepare("UPDATE businesses SET tagline = ? WHERE id = ?").run(tagline.trim(), id);
+  },
+
+  // ---- Ask AI (global, cross-business chat; admin only) ----
+  listAsk(limit = 60): { id: number; role: "user" | "assistant"; content: string; created_at: number }[] {
+    const rows = getDb()
+      .prepare("SELECT * FROM (SELECT * FROM ask_messages ORDER BY id DESC LIMIT ?) ORDER BY id ASC")
+      .all(limit);
+    return rows as { id: number; role: "user" | "assistant"; content: string; created_at: number }[];
+  },
+
+  appendAsk(role: "user" | "assistant", content: string) {
+    const result = getDb()
+      .prepare("INSERT INTO ask_messages (role, content, created_at) VALUES (?, ?, ?)")
+      .run(role, content, Date.now());
+    return getDb().prepare("SELECT * FROM ask_messages WHERE id = ?").get(result.lastInsertRowid) as {
+      id: number; role: "user" | "assistant"; content: string; created_at: number;
+    };
+  },
+
+  clearAsk() {
+    getDb().prepare("DELETE FROM ask_messages").run();
+  },
+
+  // ---- Global search (command palette) ----
+  /**
+   * Case-insensitive substring search across every record type in every
+   * business. Returns a few hits per type; `tab` + `id` deep-link into the
+   * business page (`/b/<business_id>?tab=<tab>&open=<id>`).
+   */
+  search(query: string, perType = 5): SearchHit[] {
+    const q = query.trim();
+    if (q.length < 2) return [];
+    const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    const run = (sql: string, params: unknown[]) => getDb().prepare(sql).all(...params) as SearchHit[];
+    const m = (cols: string[]) => "(" + cols.map((c) => `${c} LIKE ? ESCAPE '\\'`).join(" OR ") + ")";
+    const p = (n: number) => [...Array(n).fill(like), perType];
+
+    return [
+      ...run(
+        `SELECT 'initiative' AS type, id, business_id, title, COALESCE(next_step, '') AS subtitle, 'initiatives' AS tab
+         FROM initiatives WHERE ${m(["title", "next_step", "notes"])} ORDER BY status = 'done', updated_at DESC LIMIT ?`, p(3)),
+      ...run(
+        `SELECT 'todo' AS type, id, business_id, title, COALESCE(due_date, '') AS subtitle, 'todos' AS tab
+         FROM todos WHERE ${m(["title", "notes"])} ORDER BY status = 'done', created_at DESC LIMIT ?`, p(2)),
+      ...run(
+        `SELECT 'lead' AS type, id, business_id, COALESCE(NULLIF(company, ''), name) AS title,
+                CASE WHEN company IS NOT NULL AND company != '' THEN name || ' · ' || stage ELSE stage END AS subtitle, 'pipeline' AS tab
+         FROM leads WHERE ${m(["name", "company", "contact_email", "notes", "next_action"])} ORDER BY updated_at DESC LIMIT ?`, p(5)),
+      ...run(
+        `SELECT 'contact' AS type, id, business_id, brand_name AS title,
+                TRIM(COALESCE(contact_name, '') || CASE WHEN contact_title IS NOT NULL AND contact_title != '' THEN ' · ' || contact_title ELSE '' END) AS subtitle, 'brands' AS tab
+         FROM brand_contacts WHERE ${m(["brand_name", "contact_name", "email", "notes"])} ORDER BY updated_at DESC LIMIT ?`, p(4)),
+      ...run(
+        `SELECT 'note' AS type, id, business_id, title, SUBSTR(REPLACE(content, char(10), ' '), 1, 80) AS subtitle, 'notes' AS tab
+         FROM notes WHERE ${m(["title", "content"])} ORDER BY updated_at DESC LIMIT ?`, p(2)),
+      ...run(
+        `SELECT 'event' AS type, id, business_id, name AS title, COALESCE(date, 'Date TBD') AS subtitle, 'events' AS tab
+         FROM events WHERE ${m(["name", "venue", "city", "notes"])} ORDER BY date DESC LIMIT ?`, p(4)),
+      ...run(
+        `SELECT 'outreach' AS type, id, business_id, brand_name AS title, person_name || ' · ' || status AS subtitle, 'outreach' AS tab
+         FROM outreach_targets WHERE ${m(["brand_name", "person_name", "person_title"])} ORDER BY updated_at DESC LIMIT ?`, p(3)),
+    ];
   },
 
   // ---- Hidden businesses (kept out of the sidebar + dashboard; data untouched) ----

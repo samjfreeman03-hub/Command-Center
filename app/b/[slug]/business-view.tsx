@@ -1,99 +1,50 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Business } from "@/lib/businesses";
-import type { Todo, Lead, LeadCategory, BizEvent, Initiative, Note, ChatMessage, BusinessResource, TeamMember, BrandContact, OutreachTarget } from "@/lib/types";
-import { EventsPanel } from "@/components/events-panel";
-import { EVENTS_BUSINESS_IDS } from "@/lib/events-config";
-import { InitiativesPanel } from "@/components/initiatives-panel";
-import { TodosPanel } from "@/components/todos-panel";
-import { PipelinePanel } from "@/components/pipeline-panel";
-import { ResourcesPanel } from "@/components/resources-panel";
-import { NotesPanel } from "@/components/notes-panel";
-import { ChatPanel } from "@/components/chat-panel";
-import { TeamPanel } from "@/components/team-panel";
-import { BrandsPanel } from "@/components/brands-panel";
-import { OutreachPanel } from "@/components/outreach-panel";
-import {
-  Link2, Check, Pencil, Send, Target, ListTodo, TrendingUp, CalendarDays,
-  Building2, FolderOpen, StickyNote, MessageSquare, Users, Eye, EyeOff,
-} from "lucide-react";
+import type { LeadCategory } from "@/lib/types";
+import type { TabId } from "@/lib/tabs";
 import { OUTREACH_BUSINESS_IDS } from "@/lib/outreach-config";
+import { BusinessWorkspace, type WorkspaceData } from "@/components/business-workspace";
+import { Button, IconButton } from "@/components/ui/button";
+import { toast } from "@/components/ui/host";
+import { Link2, Pencil, Send, Eye, EyeOff } from "lucide-react";
 
-const TABS = [
-  { id: "initiatives", label: "Initiatives", Icon: Target },
-  { id: "todos",       label: "Todos",       Icon: ListTodo },
-  { id: "pipeline",    label: "Pipeline",    Icon: TrendingUp },
-  { id: "events",      label: "Events",      Icon: CalendarDays },
-  { id: "outreach",    label: "Outreach",    Icon: Send },
-  { id: "brands",      label: "CRM",         Icon: Building2 },
-  { id: "resources",   label: "Resources",   Icon: FolderOpen },
-  { id: "notes",       label: "Notes",       Icon: StickyNote },
-  { id: "chat",        label: "Chat",        Icon: MessageSquare },
-  { id: "team",        label: "Team",        Icon: Users },
-] as const;
-
-type TabId = (typeof TABS)[number]["id"];
-
-/** Feature-flagged tabs: Outreach (FLAIR + MTRNM), Events (TechSpace + MTRNM + FLAIR). */
-function tabsForBusiness(businessId: string) {
-  return TABS.filter(
-    (t) =>
-      (t.id !== "outreach" || OUTREACH_BUSINESS_IDS.includes(businessId)) &&
-      (t.id !== "events" || EVENTS_BUSINESS_IDS.includes(businessId))
-  );
-}
-
+/** Admin view of a business: the shared workspace plus owner-only controls. */
 export function BusinessView({
   business,
+  data,
   initialTab,
-  initialTodos,
-  initialLeads,
-  initialResources,
-  initialNotes,
-  initialChat,
-  initialMembers,
-  initialBrands,
-  initialOutreach,
+  openId,
+  autoNew,
   shareToken,
   initialTagline,
   leadCategories,
   leadCategoriesEnabled,
-  initialEvents,
-  initialInitiatives,
   initialHidden,
 }: {
   business: Business;
+  data: WorkspaceData;
   initialTab: string;
-  initialTodos: Todo[];
-  initialLeads: Lead[];
-  initialResources: BusinessResource[];
-  initialNotes: Note[];
-  initialChat: ChatMessage[];
-  initialMembers: TeamMember[];
-  initialBrands: BrandContact[];
-  initialOutreach: OutreachTarget[];
+  openId?: number;
+  autoNew?: boolean;
   shareToken: string;
   initialTagline: string;
   leadCategories: LeadCategory[];
   leadCategoriesEnabled: boolean;
-  initialEvents: BizEvent[];
-  initialInitiatives: Initiative[];
   initialHidden: boolean;
 }) {
-  const tabs = tabsForBusiness(business.id);
-  const [tab, setTabState] = useState<TabId>(
-    (tabs.find((t) => t.id === initialTab)?.id ?? "initiatives") as TabId
-  );
-
-  // Keep ?tab= in the URL so refresh/back keeps the active tab
-  function setTab(next: TabId) {
-    setTabState(next);
-    window.history.replaceState(null, "", `/b/${business.id}?tab=${next}`);
-  }
   const router = useRouter();
   const [hidden, setHidden] = useState(initialHidden);
+  const [tagline, setTagline] = useState(initialTagline);
+  const [editingTagline, setEditingTagline] = useState(false);
+  const [taglineDraft, setTaglineDraft] = useState(initialTagline);
+
+  // Keep ?tab= in the URL so refresh/back keeps the active tab
+  function onTabChange(next: TabId) {
+    window.history.replaceState(null, "", `/b/${business.id}?tab=${next}`);
+  }
 
   // Hiding only removes the business from the sidebar + dashboard; its data,
   // URL, and team share links keep working. refresh() re-renders the sidebar.
@@ -105,21 +56,14 @@ export function BusinessView({
       body: JSON.stringify({ hidden: next }),
     });
     router.refresh();
+    if (next) toast(`${business.name} hidden`, { action: { label: "Undo", onClick: () => setBusinessHidden(false) } });
   }
-
-  const [copied, setCopied] = useState(false);
-  const [copiedOutreach, setCopiedOutreach] = useState(false);
-  const [members, setMembers] = useState<TeamMember[]>(initialMembers);
-  const [tagline, setTagline] = useState(initialTagline);
-  const [editingTagline, setEditingTagline] = useState(false);
-  const [taglineDraft, setTaglineDraft] = useState(initialTagline);
-  const taglineRef = useRef<HTMLInputElement>(null);
 
   async function saveTagline() {
     const val = taglineDraft.trim();
-    if (!val || val === tagline) { setEditingTagline(false); return; }
-    setTagline(val);
     setEditingTagline(false);
+    if (!val || val === tagline) return;
+    setTagline(val);
     await fetch(`/api/businesses/${business.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
@@ -127,152 +71,85 @@ export function BusinessView({
     });
   }
 
-  function copyShareLink() {
-    const url = `${window.location.origin}/s/${shareToken}`;
-    navigator.clipboard.writeText(url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  function copyLink(path: string, message: string) {
+    navigator.clipboard.writeText(`${window.location.origin}${path}`);
+    toast(message, { tone: "success" });
   }
 
-  function copyOutreachShareLink() {
-    const url = `${window.location.origin}/s/${shareToken}/outreach`;
-    navigator.clipboard.writeText(url);
-    setCopiedOutreach(true);
-    setTimeout(() => setCopiedOutreach(false), 2000);
-  }
+  const taglineNode = editingTagline ? (
+    <input
+      value={taglineDraft}
+      onChange={(e) => setTaglineDraft(e.target.value)}
+      onBlur={saveTagline}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") saveTagline();
+        if (e.key === "Escape") { setEditingTagline(false); setTaglineDraft(tagline); }
+      }}
+      autoFocus
+      className="w-full max-w-md border-b border-line-strong bg-transparent text-[13px] text-ink-2 outline-none"
+    />
+  ) : (
+    <button
+      onClick={() => { setTaglineDraft(tagline); setEditingTagline(true); }}
+      className="group inline-flex max-w-full items-center gap-1.5 text-left"
+      title="Edit tagline"
+    >
+      <span className="truncate">{tagline}</span>
+      <Pencil size={11} className="shrink-0 text-ink-4 opacity-70 transition-opacity md:opacity-0 md:group-hover:opacity-100" />
+    </button>
+  );
+
+  const actions = (
+    <>
+      {!hidden && (
+        <IconButton label="Hide from sidebar and dashboard (nothing is deleted)" onClick={() => setBusinessHidden(true)}>
+          <EyeOff size={15} />
+        </IconButton>
+      )}
+      {OUTREACH_BUSINESS_IDS.includes(business.id) && (
+        <Button
+          onClick={() => copyLink(`/s/${shareToken}/outreach`, "Outreach link copied")}
+          title="Copy a link to just the Outreach tab (same team password)"
+        >
+          <Send size={13} />
+          <span className="hidden sm:inline">Share outreach</span>
+        </Button>
+      )}
+      <Button onClick={() => copyLink(`/s/${shareToken}`, "Team link copied")} title="Copy the full team share link">
+        <Link2 size={13} />
+        <span className="hidden sm:inline">Share</span>
+      </Button>
+    </>
+  );
+
+  const banner = hidden ? (
+    <div className="flex w-full shrink-0 items-center justify-between gap-3 border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-xs text-amber-800 dark:text-amber-300 sm:px-8 md:rounded-t-2xl">
+      <span className="inline-flex items-center gap-1.5">
+        <EyeOff size={12} className="shrink-0" />
+        {business.name} is hidden from your sidebar and dashboard. Nothing is deleted, and team share links still work.
+      </span>
+      <button
+        onClick={() => setBusinessHidden(false)}
+        className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 font-semibold transition-colors hover:bg-amber-500/15"
+      >
+        <Eye size={12} /> Unhide
+      </button>
+    </div>
+  ) : null;
 
   return (
-    <div className="flex flex-col min-h-screen">
-
-      {hidden && (
-        <div className="w-full shrink-0 flex items-center justify-between gap-3 px-4 sm:px-8 lg:px-10 py-2 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200/70 dark:border-amber-900/50 text-xs text-amber-800 dark:text-amber-300">
-          <span className="inline-flex items-center gap-1.5">
-            <EyeOff size={12} className="shrink-0" />
-            {business.name} is hidden from your sidebar and dashboard. Nothing is deleted, and team share links still work.
-          </span>
-          <button
-            onClick={() => setBusinessHidden(false)}
-            className="shrink-0 inline-flex items-center gap-1.5 font-semibold px-2.5 py-1 rounded-md hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
-          >
-            <Eye size={12} /> Unhide
-          </button>
-        </div>
-      )}
-
-      {/* ── Header — white background, brand identity carried by pill + name color + dot ── */}
-      <header className="w-full shrink-0 bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-zinc-800">
-        <div className="px-4 sm:px-8 lg:px-10 pt-5 pb-5 sm:pt-7 sm:pb-7">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              {/* Brand badge */}
-              <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold mb-2.5 ${business.accentBg} ${business.accent} ring-1`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${business.dot}`} />
-                <span className="truncate max-w-[180px] sm:max-w-none">{business.fullName}</span>
-              </div>
-              {/* Name — brand colored */}
-              <h1 className={`text-2xl sm:text-3xl font-bold tracking-tight mb-1 ${business.accent}`}>
-                {business.name}
-              </h1>
-              {/* Tagline (editable) */}
-              {editingTagline ? (
-                <input
-                  ref={taglineRef}
-                  value={taglineDraft}
-                  onChange={(e) => setTaglineDraft(e.target.value)}
-                  onBlur={saveTagline}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") saveTagline();
-                    if (e.key === "Escape") { setEditingTagline(false); setTaglineDraft(tagline); }
-                  }}
-                  autoFocus
-                  className="text-sm text-zinc-500 bg-transparent border-b border-zinc-300 dark:border-zinc-700 outline-none w-full max-w-sm sm:max-w-md"
-                />
-              ) : (
-                <button
-                  onClick={() => { setTaglineDraft(tagline); setEditingTagline(true); }}
-                  className="group flex items-center gap-1.5 text-left"
-                >
-                  <p className="text-sm text-zinc-500 leading-snug">{tagline}</p>
-                  <Pencil size={11} className="text-zinc-400 opacity-60 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0" />
-                </button>
-              )}
-            </div>
-
-            {/* Header actions */}
-            <div className="shrink-0 flex items-center gap-1.5">
-              {!hidden && (
-                <button
-                  onClick={() => setBusinessHidden(true)}
-                  title="Hide this business from the sidebar and dashboard (nothing is deleted)"
-                  className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/70 hover:bg-white dark:hover:bg-zinc-900 backdrop-blur-sm transition-colors"
-                >
-                  <EyeOff size={12} />
-                  <span className="hidden sm:inline">Hide</span>
-                </button>
-              )}
-              {OUTREACH_BUSINESS_IDS.includes(business.id) && (
-                <button
-                  onClick={copyOutreachShareLink}
-                  title="Copy a link to just the Outreach tab (same team password)"
-                  className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/70 hover:bg-white dark:hover:bg-zinc-900 backdrop-blur-sm transition-colors"
-                >
-                  {copiedOutreach ? <Check size={12} className="text-emerald-600" /> : <Send size={12} />}
-                  <span className="hidden sm:inline">{copiedOutreach ? "Copied!" : "Share Outreach"}</span>
-                </button>
-              )}
-              <button
-                onClick={copyShareLink}
-                title="Copy the full team share link"
-                className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/70 hover:bg-white dark:hover:bg-zinc-900 backdrop-blur-sm transition-colors"
-              >
-                {copied ? <Check size={12} className="text-emerald-600" /> : <Link2 size={12} />}
-                <span className="hidden sm:inline">{copied ? "Copied!" : "Share"}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* ── Tabs (sticky while scrolling panels) ── */}
-      <div className="tabs-sticky w-full px-4 sm:px-8 lg:px-10 pt-3 pb-2 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md">
-        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1 pb-0.5">
-          {tabs.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
-                tab === t.id
-                  ? `${business.tabActive} shadow-sm`
-                  : "text-zinc-500 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900"
-              }`}
-            >
-              <t.Icon size={13} className={tab === t.id ? "" : "opacity-70"} />
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Tab panels (key remounts + animates on tab switch) ── */}
-      <div key={tab} className="panel-in w-full px-4 sm:px-8 lg:px-10 pt-5 pb-safe-10 flex-1">
-        {tab === "initiatives" && <InitiativesPanel businessId={business.id} initial={initialInitiatives} />}
-        {tab === "todos"     && <TodosPanel businessId={business.id} initial={initialTodos} members={members} />}
-        {tab === "pipeline"  && <PipelinePanel businessId={business.id} initial={initialLeads} categories={leadCategories} categoriesEnabled={leadCategoriesEnabled} />}
-        {tab === "events"    && <EventsPanel businessId={business.id} initial={initialEvents} />}
-        {tab === "outreach"  && <OutreachPanel businessId={business.id} initial={initialOutreach} />}
-        {tab === "brands"    && <BrandsPanel businessId={business.id} initial={initialBrands} categories={leadCategories} categoriesEnabled={leadCategoriesEnabled} />}
-        {tab === "resources" && <ResourcesPanel businessId={business.id} initial={initialResources} />}
-        {tab === "notes"     && <NotesPanel businessId={business.id} initial={initialNotes} />}
-        {tab === "chat"      && <ChatPanel business={business} initialMessages={initialChat} />}
-        {tab === "team"      && (
-          <TeamPanel
-            businessId={business.id}
-            initialMembers={members}
-            initialTodos={initialTodos}
-            onMembersChange={setMembers}
-          />
-        )}
-      </div>
-    </div>
+    <BusinessWorkspace
+      business={business}
+      data={data}
+      initialTab={initialTab}
+      openId={openId}
+      autoNew={autoNew}
+      leadCategories={leadCategories}
+      leadCategoriesEnabled={leadCategoriesEnabled}
+      tagline={taglineNode}
+      actions={actions}
+      banner={banner}
+      onTabChange={onTabChange}
+    />
   );
 }

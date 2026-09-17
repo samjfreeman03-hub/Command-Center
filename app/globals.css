@@ -5,12 +5,95 @@
 @theme inline {
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* ── Semantic colors ──────────────────────────────────────────────
+     One name covers light AND dark (values swap under html.dark below).
+     Use these instead of zinc-* + dark: pairs:
+       bg-shell    app background behind everything
+       bg-canvas   the main content surface
+       bg-raised   cards, modals, inputs, popovers
+       bg-sunken   subtle fills (group headers, chips, wells)
+       bg-hover    hover wash for rows/buttons
+       border-line / border-line-strong
+       text-ink (primary) / ink-2 (secondary) / ink-3 (muted) / ink-4 (placeholder, decorative only)
+       bg-inverse + text-on-inverse   primary buttons
+       bg-brand + text-on-brand / bg-brand-soft / text-brand   per-business accent (inside .brand-scope) */
+  --color-shell: var(--shell);
+  --color-canvas: var(--canvas);
+  --color-raised: var(--raised);
+  --color-sunken: var(--sunken);
+  --color-hover: var(--hover);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-4: var(--ink-4);
+  --color-inverse: var(--inverse);
+  --color-on-inverse: var(--on-inverse);
+  --color-brand: var(--brand);
+  --color-on-brand: var(--on-brand);
+  --color-brand-soft: var(--brand-soft);
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.04), 0 1px 1px rgb(0 0 0 / 0.02);
+  --shadow-lift: 0 4px 16px -4px rgb(0 0 0 / 0.10), 0 1px 2px rgb(0 0 0 / 0.05);
+  --shadow-pop: 0 24px 64px -12px rgb(0 0 0 / 0.28), 0 8px 20px -8px rgb(0 0 0 / 0.16), 0 0 0 1px rgb(0 0 0 / 0.04);
+}
+
+:root {
+  --shell: #f3f3f5;
+  --canvas: #ffffff;
+  --raised: #ffffff;
+  --sunken: #f6f6f8;
+  --hover: rgb(9 9 11 / 0.045);
+  --line: rgb(9 9 11 / 0.08);
+  --line-strong: rgb(9 9 11 / 0.14);
+  --ink: #111113;
+  --ink-2: #4a4a54;
+  --ink-3: #71717a;
+  --ink-4: #a1a1aa;
+  --inverse: #111113;
+  --on-inverse: #fafafa;
+  --brand: #111113;
+  --on-brand: #ffffff;
+  --brand-soft: color-mix(in srgb, var(--brand) 9%, transparent);
+}
+
+html.dark {
+  --shell: #09090b;
+  --canvas: #111113;
+  --raised: #1a1a1d;
+  --sunken: #0c0c0e;
+  --hover: rgb(255 255 255 / 0.055);
+  --line: rgb(255 255 255 / 0.08);
+  --line-strong: rgb(255 255 255 / 0.15);
+  --ink: #f4f4f5;
+  --ink-2: #b9b9c2;
+  --ink-3: #8b8b95;
+  --ink-4: #5f5f69;
+  --inverse: #f4f4f5;
+  --on-inverse: #111113;
+  --brand: #f4f4f5;
+  --on-brand: #0a0a0b;
+  --brand-soft: color-mix(in srgb, var(--brand) 14%, transparent);
+}
+
+/* Per-business accent: wrap a subtree in .brand-scope and set --brand-light /
+   --brand-dark inline (see brandVars() in lib/businesses.ts). */
+.brand-scope {
+  --brand: var(--brand-light, #111113);
+  /* Derived values must be redeclared here: a var() inside a custom property
+     resolves where it is declared, so the :root copy would stay neutral. */
+  --brand-soft: color-mix(in srgb, var(--brand) 10%, transparent);
+}
+html.dark .brand-scope {
+  --brand: var(--brand-dark, #f4f4f5);
+  --brand-soft: color-mix(in srgb, var(--brand) 15%, transparent);
 }
 
 html, body {
-  /* Tinted app background so white cards/headers read as elevated surfaces */
-  background: #f4f4f5;
-  color: #18181b;
+  background: var(--shell);
+  color: var(--ink);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -18,17 +101,15 @@ html, body {
   -webkit-text-size-adjust: 100%;
 }
 
-html.dark, html.dark body {
-  background: #0a0a0a;
-  color: #fafafa;
-}
-
 body {
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  font-feature-settings: "rlig" 1, "calt" 1;
+  font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
+  letter-spacing: -0.006em;
   /* Prevent overscroll bounce revealing white background in PWA */
   overscroll-behavior: none;
 }
+
+::selection { background: color-mix(in srgb, var(--ink) 16%, transparent); }
 
 /* ── Safe area utilities ─────────────────────────────────────────── */
 
@@ -85,10 +166,14 @@ body {
 }
 
 /* Keyboard focus ring (keyboard nav only — not mouse clicks) */
-:focus-visible {
-  outline: 2px solid rgb(113 113 122 / 0.55);
-  outline-offset: 2px;
-  border-radius: 4px;
+/* In the base layer so utilities (outline-none etc.) can override it. Text
+   controls draw their own focus ring (see components/ui/input.tsx). */
+@layer base {
+  :focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--ink) 40%, transparent);
+    outline-offset: 2px;
+  }
+  input:focus-visible, textarea:focus-visible, select:focus-visible { outline: none; }
 }
 
 /* ── Motion ────────────────────────────────────────────────────────── */
@@ -100,11 +185,26 @@ body {
 }
 .panel-in { animation: panel-in 0.18s ease-out; }
 
+/* Overlays */
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes sheet-in {
+  from { transform: translateY(24px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+.fade-in  { animation: fade-in 0.14s ease-out; }
+.pop-in   { animation: pop-in 0.16s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.sheet-in { animation: sheet-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }
+@media (min-width: 640px) { .sheet-in { animation: pop-in 0.16s cubic-bezier(0.2, 0.8, 0.2, 1); } }
+
 /* Subtle press feedback on all enabled buttons */
 button:not(:disabled):active { transform: scale(0.98); }
 
 @media (prefers-reduced-motion: reduce) {
-  .panel-in { animation: none; }
+  .panel-in, .fade-in, .pop-in, .sheet-in { animation: none; }
   button:not(:disabled):active { transform: none; }
 }
 
@@ -129,12 +229,10 @@ html { scroll-behavior: smooth; }
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb {
-    background: rgb(228 228 231);
+    background: var(--line-strong);
     border-radius: 3px;
   }
-  ::-webkit-scrollbar-thumb:hover { background: rgb(212 212 216); }
-  html.dark ::-webkit-scrollbar-thumb { background: rgb(39 39 42); }
-  html.dark ::-webkit-scrollbar-thumb:hover { background: rgb(63 63 70); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--ink-4); }
 }
 
 /* ── Tap highlight ─────────────────────────────────────────────────── */

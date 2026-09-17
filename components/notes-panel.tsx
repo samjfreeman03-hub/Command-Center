@@ -1,29 +1,65 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Note } from "@/lib/types";
-import { Plus, Trash2, FileText, ArrowLeft, Check, Loader2, AlertTriangle } from "lucide-react";
-import { format } from "date-fns";
+import { Plus, Trash2, FileText, ArrowLeft, Check, Loader2, AlertTriangle, Search } from "lucide-react";
+import { format, isSameYear, isToday } from "date-fns";
 import { useShareHeaders } from "@/lib/share-context";
+import { usePanelState } from "@/lib/panel-cache";
+import { Button, IconButton } from "@/components/ui/button";
+import { PrefixInput } from "@/components/ui/input";
+import { EmptyState } from "@/components/ui/display";
+import { confirmDialog, toast } from "@/components/ui/host";
+import { cn } from "@/lib/cn";
 
 type SaveStatus = "idle" | "dirty" | "saving" | "saved" | "error";
 
-export function NotesPanel({ businessId, initial }: { businessId: string; initial: Note[] }) {
-  const [notes, setNotes] = useState(initial);
-  const [selected, setSelected] = useState<Note | null>(initial[0] ?? null);
-  const [draftTitle, setDraftTitle] = useState(initial[0]?.title ?? "");
-  const [draftContent, setDraftContent] = useState(initial[0]?.content ?? "");
-  const [isNew, setIsNew] = useState(false);
+/** Time for today, "Sep 3" this year, "Sep 3, 2025" otherwise. */
+function shortDate(ts: number) {
+  const d = new Date(ts);
+  if (isToday(d)) return format(d, "h:mm a");
+  return format(d, isSameYear(d, new Date()) ? "MMM d" : "MMM d, yyyy");
+}
+
+export function NotesPanel({
+  businessId,
+  initial,
+  openId,
+  autoNew,
+}: {
+  businessId: string;
+  initial: Note[];
+  /** Deep link: select this note on mount and whenever it changes. */
+  openId?: number;
+  /** Deep link: start a new note on mount. */
+  autoNew?: boolean;
+}) {
+  const [notes, setNotes] = usePanelState("notes", initial);
+  // What the editor opens with. Computed once from the cached list (not the
+  // server prop) so a tab switch never reopens a stale or deleted note.
+  const [boot] = useState<{ note: Note | null; fromLink: boolean }>(() => {
+    if (openId != null) {
+      const linked = notes.find((n) => n.id === openId);
+      if (linked) return { note: linked, fromLink: true };
+    }
+    if (autoNew) return { note: null, fromLink: true };
+    return { note: notes[0] ?? null, fromLink: false };
+  });
+  const [selected, setSelected] = useState<Note | null>(boot.note);
+  const [draftTitle, setDraftTitle] = useState(boot.note?.title ?? "");
+  const [draftContent, setDraftContent] = useState(boot.note?.content ?? "");
+  const [isNew, setIsNew] = useState(boot.fromLink && !boot.note);
   const [status, setStatus] = useState<SaveStatus>("idle");
   // Mobile: "list" | "editor"
-  const [mobileView, setMobileView] = useState<"list" | "editor">("list");
+  const [mobileView, setMobileView] = useState<"list" | "editor">(boot.fromLink ? "editor" : "list");
+  const [query, setQuery] = useState("");
   const shareHeaders = useShareHeaders();
 
   // ── Autosave machinery (scratchpad-style) ──────────────────────────
   // Latest draft + what's already persisted, readable from stable callbacks.
   const latest = useRef({ title: draftTitle, content: draftContent });
   latest.current = { title: draftTitle, content: draftContent };
-  const lastSaved = useRef({ title: initial[0]?.title ?? "", content: initial[0]?.content ?? "" });
+  const lastSaved = useRef({ title: boot.note?.title ?? "", content: boot.note?.content ?? "" });
   const selectedRef = useRef<Note | null>(selected);
   selectedRef.current = selected;
   const isNewRef = useRef(isNew);
@@ -31,9 +67,13 @@ export function NotesPanel({ businessId, initial }: { businessId: string; initia
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlight = useRef(false);
   const runAgain = useRef(false);
+  // Bumped whenever the editor switches to a different note (pick / new). A
+  // save that finishes after a switch must not touch the new note's state.
+  const contextEpoch = useRef(0);
 
   const saveNow = useCallback(async () => {
     const { title, content } = latest.current;
+    const epoch = contextEpoch.current;
     const unchanged = title === lastSaved.current.title && content === lastSaved.current.content;
     if (unchanged) return;
     // Nothing to create from a completely empty new note.
@@ -59,11 +99,17 @@ export function NotesPanel({ businessId, initial }: { businessId: string; initia
         });
         if (!res.ok) throw new Error("create failed");
         const created: Note = await res.json();
-        lastSaved.current = { title, content };
         setNotes((prev) => [created, ...prev]);
-        setSelected(created);
-        setIsNew(false);
-        setStatus("saved");
+        if (contextEpoch.current === epoch) {
+          lastSaved.current = { title, content };
+          // Update the refs now, not on the next render: the queued follow-up
+          // save below runs first and would otherwise POST a duplicate note.
+          selectedRef.current = created;
+          isNewRef.current = false;
+          setSelected(created);
+          setIsNew(false);
+          setStatus("saved");
+        }
       } else {
         const id = selectedRef.current.id;
         const res = await fetch(`/api/notes/${id}`, {
@@ -74,13 +120,15 @@ export function NotesPanel({ businessId, initial }: { businessId: string; initia
         });
         if (!res.ok) throw new Error("save failed");
         const updated: Note = await res.json();
-        lastSaved.current = { title, content };
         setNotes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
-        setSelected((cur) => (cur && cur.id === updated.id ? updated : cur));
-        setStatus("saved");
+        if (contextEpoch.current === epoch) {
+          lastSaved.current = { title, content };
+          setSelected((cur) => (cur && cur.id === updated.id ? updated : cur));
+          setStatus("saved");
+        }
       }
     } catch {
-      setStatus("error");
+      if (contextEpoch.current === epoch) setStatus("error");
     } finally {
       inFlight.current = false;
       if (runAgain.current) {
@@ -128,6 +176,18 @@ export function NotesPanel({ businessId, initial }: { businessId: string; initia
 
   function pick(n: Note) {
     flushPending();
+    // Re-picking the open note must not reset the draft to the (possibly
+    // older) list copy while a save is still in flight.
+    if (!isNewRef.current && selectedRef.current?.id === n.id) {
+      setMobileView("editor");
+      return;
+    }
+    contextEpoch.current++;
+    // Keep all three refs consistent right away: a queued save may run before
+    // the next render and must never pair the old draft with the new note.
+    selectedRef.current = n;
+    isNewRef.current = false;
+    latest.current = { title: n.title, content: n.content };
     setSelected(n);
     setDraftTitle(n.title);
     setDraftContent(n.content);
@@ -139,6 +199,10 @@ export function NotesPanel({ businessId, initial }: { businessId: string; initia
 
   function startNew() {
     flushPending();
+    contextEpoch.current++;
+    selectedRef.current = null;
+    isNewRef.current = true;
+    latest.current = { title: "", content: "" };
     setSelected(null);
     setDraftTitle("");
     setDraftContent("");
@@ -154,8 +218,15 @@ export function NotesPanel({ businessId, initial }: { businessId: string; initia
   }
 
   async function remove(id: number) {
-    if (!confirm("Delete this note?")) return;
+    const ok = await confirmDialog({
+      title: "Delete this note?",
+      description: "This cannot be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     if (timer.current) clearTimeout(timer.current);
+    const removed = notes.find((n) => n.id === id);
     setNotes((prev) => prev.filter((n) => n.id !== id));
     if (selected?.id === id) {
       setSelected(null);
@@ -164,138 +235,183 @@ export function NotesPanel({ businessId, initial }: { businessId: string; initia
       lastSaved.current = { title: "", content: "" };
       setStatus("idle");
     }
-    await fetch(`/api/notes/${id}`, { method: "DELETE", headers: shareHeaders });
     setMobileView("list");
+    try {
+      const res = await fetch(`/api/notes/${id}`, { method: "DELETE", headers: shareHeaders });
+      if (!res.ok) throw new Error("delete failed");
+    } catch {
+      if (removed) {
+        setNotes((prev) =>
+          prev.some((n) => n.id === id) ? prev : [...prev, removed].sort((a, b) => b.updated_at - a.updated_at)
+        );
+      }
+      toast("Could not delete note", { tone: "error" });
+    }
   }
 
-  // ── MOBILE: single-column toggle view ──────────────────────────────
-  const listPane = (
-    <div className="flex flex-col rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden h-full">
-      <div className="px-3 pt-3 pb-2.5 border-b border-zinc-100 dark:border-zinc-900 shrink-0">
-        <button
-          onClick={startNew}
-          className="w-full h-11 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-sm font-medium rounded-lg hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors inline-flex items-center justify-center gap-2"
-        >
-          <Plus size={15} /> New note
-        </button>
-      </div>
-      <div className="flex-1 overflow-y-auto p-2 space-y-0.5 scroll-touch">
-        {notes.length === 0 ? (
-          <div className="text-xs text-zinc-400 dark:text-zinc-600 px-3 py-5 text-center leading-relaxed">
-            Notes feed your AI context — paste meeting recaps, research, briefs.
-          </div>
-        ) : (
-          notes.map((n) => (
-            <button
-              key={n.id}
-              onClick={() => pick(n)}
-              className={`w-full text-left px-3 py-3 rounded-lg transition-colors ${
-                selected?.id === n.id
-                  ? "bg-zinc-100 dark:bg-zinc-900"
-                  : "hover:bg-zinc-50 dark:hover:bg-zinc-900/50 active:bg-zinc-100 dark:active:bg-zinc-900"
-              }`}
-            >
-              <div className="flex items-start gap-2">
-                <FileText size={13} className={`mt-0.5 shrink-0 ${selected?.id === n.id ? "text-zinc-600 dark:text-zinc-400" : "text-zinc-400 dark:text-zinc-600"}`} />
-                <div className="min-w-0">
-                  <div className={`text-sm truncate font-medium ${selected?.id === n.id ? "text-zinc-900 dark:text-zinc-100" : "text-zinc-700 dark:text-zinc-300"}`}>
-                    {n.title || "Untitled"}
-                  </div>
-                  <div className="text-[11px] text-zinc-400 mt-0.5">
-                    {format(new Date(n.updated_at), "MMM d, yyyy")}
-                  </div>
-                </div>
-              </div>
-            </button>
-          ))
-        )}
-      </div>
-    </div>
-  );
+  // Deep links that arrive while mounted behave exactly like a click.
+  const linkReady = useRef(false);
+  useEffect(() => {
+    if (!linkReady.current) {
+      linkReady.current = true; // the mount case is handled by `boot`
+      return;
+    }
+    if (openId != null) {
+      const linked = notes.find((n) => n.id === openId);
+      if (linked) pick(linked);
+    } else if (autoNew) {
+      startNew();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId, autoNew]);
 
-  const editorPane = (
-    <div className="flex flex-col rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden h-full">
-      {selected || isNew ? (
-        <>
-          <div className="px-4 pt-4 pb-3 border-b border-zinc-100 dark:border-zinc-900 shrink-0">
-            {/* Back button (mobile only) */}
-            <button
-              onClick={backToList}
-              className="md:hidden flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 mb-3 -ml-1 px-2 py-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
-            >
-              <ArrowLeft size={13} /> All notes
-            </button>
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return notes;
+    return notes.filter((n) => n.title.toLowerCase().includes(q) || n.content.toLowerCase().includes(q));
+  }, [notes, query]);
+
+
+  // Nothing at all yet: one blank slate instead of two empty panes.
+  if (notes.length === 0 && !selected && !isNew) {
+    return (
+      <EmptyState
+        className="min-h-[60vh] justify-center"
+        icon={<FileText size={18} />}
+        title="No notes yet"
+        body="Notes feed the AI chat's context. Paste meeting recaps, research, and briefs."
+        action={
+          <Button variant="primary" onClick={startNew}>
+            <Plus size={14} /> New note
+          </Button>
+        }
+      />
+    );
+  }
+
+  const editing = !!selected || isNew;
+
+  return (
+    <div className="min-h-[60vh] md:grid md:grid-cols-[280px_minmax(0,1fr)]">
+      {/* List: a plain column on the canvas, hairline on the right */}
+      <div className={cn("border-line md:block md:border-r md:pr-4", mobileView === "editor" && "hidden")}>
+        <div className="md:sticky md:top-14">
+          <div className="mb-3 flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <PrefixInput
+                prefix={<Search size={14} />}
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search notes"
+                aria-label="Search notes"
+              />
+            </div>
+            <Button variant="primary" onClick={startNew} className="md:h-9">
+              <Plus size={14} /> New note
+            </Button>
+          </div>
+
+          <div className="scroll-touch -mx-1 space-y-0.5 px-1 md:max-h-[calc(100dvh-13rem)] md:overflow-y-auto">
+            {isNew && !selected && (
+              <div className="rounded-lg bg-hover px-3 py-2.5">
+                <div className="truncate text-sm font-medium text-ink">{draftTitle.trim() || "New note"}</div>
+                <div className="mt-0.5 truncate text-xs text-ink-3">Saves as you type</div>
+              </div>
+            )}
+            {visible.map((n) => {
+              const active = selected?.id === n.id;
+              const preview = n.content.trim().split("\n").find((l) => l.trim())?.trim();
+              return (
+                <button
+                  key={n.id}
+                  onClick={() => pick(n)}
+                  aria-current={active ? "true" : undefined}
+                  className={cn(
+                    "block w-full rounded-lg px-3 py-2.5 text-left transition-colors",
+                    active ? "bg-hover text-ink" : "text-ink-2 hover:bg-hover"
+                  )}
+                >
+                  <div className="flex items-baseline gap-2">
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{n.title || "Untitled"}</span>
+                    <span className="shrink-0 text-xs tabular-nums text-ink-3">{shortDate(n.updated_at)}</span>
+                  </div>
+                  <div className="mt-0.5 truncate text-xs text-ink-3">{preview || "No content"}</div>
+                </button>
+              );
+            })}
+            {visible.length === 0 && notes.length > 0 && (
+              <div className="px-3 py-6 text-center text-xs text-ink-3">No notes match your search.</div>
+            )}
+          </div>
+
+          <p className="mt-4 px-2 text-xs leading-relaxed text-ink-3">
+            Notes feed the AI chat&apos;s context. Paste meeting recaps, research, and briefs.
+          </p>
+        </div>
+      </div>
+
+      {/* Editor: no box, just type on the canvas */}
+      <div className={cn("min-w-0 flex-col md:flex md:pl-8", mobileView === "list" ? "hidden" : "flex")}>
+        {editing ? (
+          <div className="flex w-full max-w-[720px] flex-1 flex-col">
+            <div className="mb-2 flex min-h-10 items-center justify-between gap-2 md:min-h-8">
+              <Button variant="ghost" size="sm" onClick={backToList} className="-ml-2 md:hidden">
+                <ArrowLeft size={13} /> All notes
+              </Button>
+              <div className="ml-auto flex items-center gap-1.5">
+                <div className="inline-flex items-center gap-1.5 text-xs text-ink-3" aria-live="polite">
+                  {status === "saving" && (<><Loader2 size={12} className="animate-spin" /> Saving…</>)}
+                  {status === "dirty" && "Editing…"}
+                  {status === "saved" && (<><Check size={12} className="text-emerald-600 dark:text-emerald-400" /> Saved</>)}
+                  {status === "error" && (
+                    <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                      <AlertTriangle size={12} /> Not saved, check your connection
+                    </span>
+                  )}
+                  {status === "idle" &&
+                    (selected
+                      ? `Saved ${format(new Date(selected.updated_at), "MMM d 'at' h:mm a")}`
+                      : "New note, saves as you type")}
+                </div>
+                {selected && (
+                  <IconButton label="Delete note" variant="danger" onClick={() => remove(selected.id)}>
+                    <Trash2 size={14} />
+                  </IconButton>
+                )}
+              </div>
+            </div>
             <input
               value={draftTitle}
               onChange={(e) => setDraftTitle(e.target.value)}
               placeholder="Note title"
-              className="w-full bg-transparent text-xl font-semibold outline-none placeholder:text-zinc-300 dark:placeholder:text-zinc-700 text-zinc-900 dark:text-zinc-100"
+              aria-label="Note title"
+              autoFocus={isNew}
+              className="w-full bg-transparent text-xl font-semibold tracking-tight text-ink outline-none placeholder:text-ink-4"
+            />
+            {/* Grows with its content where the browser supports field-sizing; elsewhere it scrolls inside. */}
+            <textarea
+              value={draftContent}
+              onChange={(e) => setDraftContent(e.target.value)}
+              placeholder="Start writing. Saves automatically."
+              aria-label="Note content"
+              className="scroll-touch mt-3 min-h-[50vh] w-full flex-1 resize-none bg-transparent text-base leading-7 text-ink outline-none [field-sizing:content] placeholder:text-ink-4 md:text-sm md:leading-7"
             />
           </div>
-          <textarea
-            value={draftContent}
-            onChange={(e) => setDraftContent(e.target.value)}
-            placeholder="Start writing — saves automatically…"
-            className="flex-1 px-4 py-4 bg-transparent text-sm leading-7 outline-none resize-none placeholder:text-zinc-400 dark:placeholder:text-zinc-600 text-zinc-800 dark:text-zinc-200 min-h-[200px] scroll-touch"
+        ) : (
+          <EmptyState
+            className="flex-1 justify-center"
+            icon={<FileText size={18} />}
+            title="No note selected"
+            body="Pick one from the list or start a new one."
+            action={
+              <Button onClick={startNew}>
+                <Plus size={14} /> New note
+              </Button>
+            }
           />
-          <div className="flex items-center justify-between px-4 pt-3 pb-safe-3 border-t border-zinc-100 dark:border-zinc-900 bg-zinc-50/50 dark:bg-zinc-900/20 shrink-0">
-            <div className="text-xs text-zinc-400 inline-flex items-center gap-1.5" aria-live="polite">
-              {status === "saving" && (<><Loader2 size={11} className="animate-spin" /> Saving…</>)}
-              {status === "dirty" && "…"}
-              {status === "saved" && (<><Check size={11} className="text-emerald-600" /> Saved</>)}
-              {status === "error" && (
-                <span className="text-amber-600 dark:text-amber-400 inline-flex items-center gap-1.5">
-                  <AlertTriangle size={11} /> Not saved — check connection
-                </span>
-              )}
-              {status === "idle" && (
-                selected
-                  ? `Saved ${format(new Date(selected.updated_at), "MMM d 'at' h:mm a")}`
-                  : "New note — saves as you type"
-              )}
-            </div>
-            {selected && (
-              <button
-                onClick={() => remove(selected.id)}
-                className="h-9 px-3 text-xs text-zinc-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors inline-flex items-center gap-1.5"
-              >
-                <Trash2 size={12} /> Delete
-              </button>
-            )}
-          </div>
-        </>
-      ) : (
-        <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center p-8">
-          <div className="w-12 h-12 rounded-2xl bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center">
-            <FileText size={22} className="text-zinc-400" />
-          </div>
-          <div>
-            <div className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">No note selected</div>
-            <div className="text-xs text-zinc-400">Pick one from the list or create a new one.</div>
-          </div>
-          <button
-            onClick={startNew}
-            className="h-10 px-4 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-xs font-semibold rounded-lg hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors inline-flex items-center gap-1.5 mt-1"
-          >
-            <Plus size={13} /> New note
-          </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
-  );
-
-  return (
-    <>
-      {/* MOBILE: toggle between list and editor */}
-      <div className="md:hidden h-[calc(100dvh-8rem)]">
-        {mobileView === "list" ? listPane : editorPane}
-      </div>
-
-      {/* DESKTOP: side-by-side */}
-      <div className="hidden md:grid grid-cols-[240px_1fr] gap-4" style={{ height: "calc(100dvh - 10rem)" }}>
-        {listPane}
-        {editorPane}
-      </div>
-    </>
   );
 }

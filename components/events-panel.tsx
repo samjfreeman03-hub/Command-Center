@@ -1,13 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { BizEvent } from "@/lib/types";
 import { EVENT_STATUSES } from "@/lib/types";
 import {
   Plus, Trash2, X, CalendarDays, Clock, MapPin, ExternalLink, Users, Handshake, Gem,
 } from "lucide-react";
 import { useShareHeaders } from "@/lib/share-context";
+import { usePanelState } from "@/lib/panel-cache";
+import { cn } from "@/lib/cn";
 import { AutoTextarea } from "@/components/auto-textarea";
+import { Button } from "@/components/ui/button";
+import { Input, Field, textareaClass, FieldGroup } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
+import { confirmDialog, toast } from "@/components/ui/host";
+import { Badge, Card, EmptyState, SectionHeader, type BadgeTone } from "@/components/ui/display";
+import { Segmented } from "@/components/ui/segmented";
 
 const EMPTY_FORM = {
   name: "",
@@ -24,6 +32,13 @@ const EMPTY_FORM = {
 };
 
 type EventForm = typeof EMPTY_FORM;
+
+const STATUS_TONES: Record<BizEvent["status"], BadgeTone> = {
+  planning: "amber",
+  confirmed: "blue",
+  completed: "green",
+  cancelled: "red",
+};
 
 function todayStr(): string {
   return new Date().toISOString().slice(0, 10);
@@ -75,49 +90,86 @@ function eventToForm(e: BizEvent): EventForm {
   };
 }
 
+type Editor = { mode: "new" } | { mode: "edit"; id: number } | null;
+
 export function EventsPanel({
   businessId,
   initial,
+  openId,
+  autoNew,
 }: {
   businessId: string;
   initial: BizEvent[];
+  openId?: number;
+  autoNew?: boolean;
 }) {
-  const [events, setEvents] = useState(initial);
-  const [showAdd, setShowAdd] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [events, setEvents] = usePanelState("events", initial);
+  const [editor, setEditor] = useState<Editor>(null);
   const shareHeaders = useShareHeaders();
 
-  async function add(form: EventForm) {
-    const res = await fetch("/api/events", {
-      method: "POST",
-      headers: { "content-type": "application/json", ...shareHeaders },
-      body: JSON.stringify({ business_id: businessId, ...formToPayload(form) }),
-    });
-    if (res.ok) {
+  // Deep links: open a record's editor, or the create form
+  useEffect(() => {
+    if (openId == null) return;
+    if (events.some((e) => e.id === openId)) setEditor({ mode: "edit", id: openId });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId]);
+  useEffect(() => {
+    if (autoNew) setEditor({ mode: "new" });
+  }, [autoNew]);
+
+  async function add(form: EventForm): Promise<boolean> {
+    try {
+      const res = await fetch("/api/events", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...shareHeaders },
+        body: JSON.stringify({ business_id: businessId, ...formToPayload(form) }),
+      });
+      if (!res.ok) throw new Error();
       const created: BizEvent = await res.json();
       setEvents((prev) => [...prev, created]);
-      setShowAdd(false);
+      return true;
+    } catch {
+      toast("Could not create event", { tone: "error" });
+      return false;
     }
   }
 
-  async function update(id: number, form: EventForm) {
-    const res = await fetch(`/api/events/${id}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json", ...shareHeaders },
-      body: JSON.stringify(formToPayload(form)),
-    });
-    if (res.ok) {
+  async function update(id: number, form: EventForm): Promise<boolean> {
+    try {
+      const res = await fetch(`/api/events/${id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", ...shareHeaders },
+        body: JSON.stringify(formToPayload(form)),
+      });
+      if (!res.ok) throw new Error();
       const updated: BizEvent = await res.json();
       setEvents((prev) => prev.map((e) => (e.id === id ? updated : e)));
-      setEditingId(null);
+      return true;
+    } catch {
+      toast("Could not save event", { tone: "error" });
+      return false;
     }
   }
 
   async function remove(id: number) {
-    if (!confirm("Delete this event?")) return;
+    const target = events.find((e) => e.id === id);
+    const ok = await confirmDialog({
+      title: "Delete this event?",
+      description: target ? `"${target.name}" will be removed for good.` : undefined,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+    const snapshot = events;
     setEvents((prev) => prev.filter((e) => e.id !== id));
-    setEditingId(null);
-    await fetch(`/api/events/${id}`, { method: "DELETE", headers: shareHeaders });
+    setEditor(null);
+    try {
+      const res = await fetch(`/api/events/${id}`, { method: "DELETE", headers: shareHeaders });
+      if (!res.ok) throw new Error();
+    } catch {
+      setEvents(snapshot);
+      toast("Could not delete event", { tone: "error" });
+    }
   }
 
   const today = todayStr();
@@ -131,101 +183,102 @@ export function EventsPanel({
     .sort((a, b) => (b.date ?? "0000").localeCompare(a.date ?? "0000"));
   const next = upcoming.find((e) => e.date);
 
+  const editing = editor?.mode === "edit" ? events.find((e) => e.id === editor.id) ?? null : null;
+  const modalOpen = editor?.mode === "new" || editing != null;
+
   return (
-    <div className="space-y-6">
-      {/* Summary + add */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="text-sm text-zinc-600 dark:text-zinc-400">
-          <span className="text-zinc-900 dark:text-zinc-100 font-medium">{upcoming.length}</span> upcoming
+    <div>
+      {/* Toolbar */}
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="text-[13px] text-ink-3">
+          <span className="font-medium text-ink tabular-nums">{upcoming.length}</span> upcoming
           {next?.date && (
             <>
-              <span className="mx-2 text-zinc-300 dark:text-zinc-700">·</span>
-              next: <span className="text-zinc-900 dark:text-zinc-100 font-medium">{next.name}</span>{" "}
-              <span className="text-zinc-400">({countdownLabel(next.date)?.toLowerCase()})</span>
+              <span className="mx-2 text-ink-4">·</span>
+              next: <span className="font-medium text-ink">{next.name}</span>{" "}
+              <span>({countdownLabel(next.date)?.toLowerCase()})</span>
             </>
           )}
         </div>
-        <button
-          onClick={() => setShowAdd((v) => !v)}
-          className="bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 text-sm font-medium px-3 py-1.5 rounded-md hover:bg-zinc-800 dark:hover:bg-white inline-flex items-center gap-1.5"
-        >
+        <Button variant="primary" onClick={() => setEditor({ mode: "new" })}>
           <Plus size={14} /> New event
-        </button>
+        </Button>
       </div>
 
-      {showAdd && (
-        <EventFormCard
-          initial={EMPTY_FORM}
-          submitLabel="Create event"
-          onSubmit={add}
-          onCancel={() => setShowAdd(false)}
-        />
-      )}
-
-      {/* Upcoming */}
-      <Section title="Upcoming" count={upcoming.length}>
-        {upcoming.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 py-10 text-center">
-            <div className="w-12 h-12 rounded-2xl bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center">
-              <CalendarDays size={20} className="text-zinc-400" />
-            </div>
-            <div>
-              <div className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">No upcoming events</div>
-              <div className="text-xs text-zinc-400">Click &ldquo;New event&rdquo; to start planning.</div>
-            </div>
-          </div>
-        ) : (
-          <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
-            {upcoming.map((e) => (
-              <EventRow
-                key={e.id}
-                event={e}
-                isEditing={editingId === e.id}
-                onStartEdit={() => setEditingId(e.id)}
-                onCancelEdit={() => setEditingId(null)}
-                onSave={(form) => update(e.id, form)}
-                onDelete={() => remove(e.id)}
+      <div className="space-y-6">
+        <section>
+          <SectionHeader title="Upcoming" count={upcoming.length} />
+          <Card>
+            {upcoming.length === 0 ? (
+              <EmptyState
+                icon={<CalendarDays size={18} />}
+                title="No upcoming events"
+                body="Add the next show, dinner, or activation to start planning it here."
+                action={
+                  <Button onClick={() => setEditor({ mode: "new" })}>
+                    <Plus size={14} /> New event
+                  </Button>
+                }
               />
-            ))}
-          </div>
+            ) : (
+              <div className="divide-y divide-line">
+                {upcoming.map((e) => (
+                  <EventRow key={e.id} event={e} onOpen={() => setEditor({ mode: "edit", id: e.id })} />
+                ))}
+              </div>
+            )}
+          </Card>
+        </section>
+
+        {past.length > 0 && (
+          <section>
+            <SectionHeader title="Past & closed" count={past.length} />
+            <Card>
+              <div className="divide-y divide-line">
+                {past.map((e) => (
+                  <EventRow key={e.id} event={e} muted onOpen={() => setEditor({ mode: "edit", id: e.id })} />
+                ))}
+              </div>
+            </Card>
+          </section>
         )}
-      </Section>
+      </div>
 
-      {/* Past / done */}
-      {past.length > 0 && (
-        <Section title="Past & closed" count={past.length} muted>
-          <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
-            {past.map((e) => (
-              <EventRow
-                key={e.id}
-                event={e}
-                isEditing={editingId === e.id}
-                onStartEdit={() => setEditingId(e.id)}
-                onCancelEdit={() => setEditingId(null)}
-                onSave={(form) => update(e.id, form)}
-                onDelete={() => remove(e.id)}
-              />
-            ))}
-          </div>
-        </Section>
+      {modalOpen && (
+        <EventModal
+          key={editing ? editing.id : "new"}
+          event={editing}
+          onClose={() => setEditor(null)}
+          onSave={(form) => (editing ? update(editing.id, form) : add(form))}
+          onDelete={editing ? () => remove(editing.id) : undefined}
+        />
       )}
     </div>
   );
 }
 
-// ── Event row + edit modal ────────────────────────────────────────────────────
+// ── Event row ─────────────────────────────────────────────────────────────────
 
-function EventRow({
-  event, isEditing, onStartEdit, onCancelEdit, onSave, onDelete,
-}: {
-  event: BizEvent;
-  isEditing: boolean;
-  onStartEdit: () => void;
-  onCancelEdit: () => void;
-  onSave: (form: EventForm) => void;
-  onDelete: () => void;
-}) {
-  const status = EVENT_STATUSES.find((s) => s.value === event.status)!;
+function DateTile({ date }: { date: string | null }) {
+  const d = date ? new Date(`${date}T00:00:00`) : null;
+  return (
+    <div className="flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-lg bg-sunken ring-1 ring-inset ring-line">
+      {d ? (
+        <>
+          <span className="text-[11px] font-medium uppercase leading-none text-brand">
+            {d.toLocaleDateString("en-US", { month: "short" })}
+          </span>
+          <span className="mt-0.5 text-base font-semibold leading-none text-ink tabular-nums">{d.getDate()}</span>
+        </>
+      ) : (
+        <CalendarDays size={15} className="text-ink-3" />
+      )}
+    </div>
+  );
+}
+
+function EventRow({ event, muted, onOpen }: { event: BizEvent; muted?: boolean; onOpen: () => void }) {
+  const status = EVENT_STATUSES.find((s) => s.value === event.status) ?? EVENT_STATUSES[0];
   const countdown = event.date && event.status !== "completed" && event.status !== "cancelled"
     ? countdownLabel(event.date)
     : null;
@@ -234,184 +287,161 @@ function EventRow({
     : "Date TBD";
 
   return (
-    <>
-      {isEditing && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-start justify-center bg-black/50 sm:p-8 overflow-y-auto">
-          <div className="w-full sm:max-w-xl bg-white dark:bg-zinc-950 rounded-t-2xl sm:rounded-xl shadow-2xl sm:mt-4 sm:mb-8 safe-bottom">
-            <div className="flex items-center justify-between px-5 pt-4 pb-1">
-              <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Edit event</h2>
-              <button onClick={onCancelEdit} className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 rounded">
-                <X size={16} />
-              </button>
-            </div>
-            <div className="p-5 pt-2">
-              <EventFormCard
-                initial={eventToForm(event)}
-                submitLabel="Save"
-                onSubmit={onSave}
-                onCancel={onCancelEdit}
-                onDelete={onDelete}
-                bare
-              />
-            </div>
-          </div>
-        </div>
-      )}
+    <div className="group flex items-start transition-colors hover:bg-hover">
+      {/* Click to edit. The external link is a sibling so it never triggers this. */}
       <button
-        onClick={onStartEdit}
-        className="block w-full text-left px-4 py-3.5 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors"
+        type="button"
+        onClick={onOpen}
+        className={cn("flex min-w-0 flex-1 items-start gap-3 px-4 py-3 text-left", muted && "opacity-75")}
       >
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{event.name}</span>
-              <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${status.color}`}>{status.label}</span>
-              {countdown && (
-                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900">
-                  {countdown}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-3 mt-1 text-xs text-zinc-500 flex-wrap">
-              <span className="inline-flex items-center gap-1"><CalendarDays size={11} /> {dateLabel}</span>
-              {event.time && <span className="inline-flex items-center gap-1"><Clock size={11} /> {event.time}</span>}
-              {(event.venue || event.city) && (
-                <span className="inline-flex items-center gap-1">
-                  <MapPin size={11} /> {[event.venue, event.city].filter(Boolean).join(", ")}
-                </span>
-              )}
-              {event.expected_attendance != null && (
-                <span className="inline-flex items-center gap-1"><Users size={11} /> {event.expected_attendance.toLocaleString()}</span>
-              )}
-            </div>
-            {(event.partners.length > 0 || event.sponsors.length > 0) && (
-              <div className="flex flex-wrap gap-1 mt-1.5">
-                {event.partners.map((p) => (
-                  <span key={`p-${p}`} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] font-medium bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300">
-                    <Handshake size={9} /> {p}
-                  </span>
-                ))}
-                {event.sponsors.map((s) => (
-                  <span key={`s-${s}`} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] font-medium bg-sky-100 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300">
-                    <Gem size={9} /> {s}
-                  </span>
-                ))}
-              </div>
+        <DateTile date={event.date} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="text-sm font-medium text-ink">{event.name}</span>
+            <Badge tone={STATUS_TONES[event.status] ?? "neutral"}>{status.label}</Badge>
+            {countdown && <Badge tone="inverse">{countdown}</Badge>}
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-ink-3">
+            <span className="inline-flex items-center gap-1"><CalendarDays size={13} /> {dateLabel}</span>
+            {event.time && <span className="inline-flex items-center gap-1"><Clock size={13} /> {event.time}</span>}
+            {(event.venue || event.city) && (
+              <span className="inline-flex items-center gap-1">
+                <MapPin size={13} /> {[event.venue, event.city].filter(Boolean).join(", ")}
+              </span>
             )}
-            {event.notes && (
-              <p className="text-xs text-zinc-400 dark:text-zinc-600 mt-1 line-clamp-1">{event.notes}</p>
+            {event.expected_attendance != null && (
+              <span className="inline-flex items-center gap-1 tabular-nums">
+                <Users size={13} /> {event.expected_attendance.toLocaleString()}
+              </span>
             )}
           </div>
-          {event.event_link && (
-            <a
-              href={event.event_link}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(ev) => ev.stopPropagation()}
-              className="shrink-0 p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800"
-              title="Open event link"
-            >
-              <ExternalLink size={14} />
-            </a>
+          {(event.partners.length > 0 || event.sponsors.length > 0) && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {event.partners.map((p) => (
+                <Badge key={`p-${p}`} tone="violet"><Handshake size={11} /> {p}</Badge>
+              ))}
+              {event.sponsors.map((s) => (
+                <Badge key={`s-${s}`} tone="sky"><Gem size={11} /> {s}</Badge>
+              ))}
+            </div>
           )}
+          {event.notes && <p className="mt-1 line-clamp-1 text-xs text-ink-3">{event.notes}</p>}
         </div>
       </button>
-    </>
+      {event.event_link && (
+        <a
+          href={event.event_link}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Open event link"
+          title="Open event link"
+          className="mr-3 mt-3 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-ink-3 transition-colors hover:bg-sunken hover:text-ink md:h-8 md:w-8"
+        >
+          <ExternalLink size={14} />
+        </a>
+      )}
+    </div>
   );
 }
 
-// ── Add/edit form ─────────────────────────────────────────────────────────────
+// ── Create / edit modal ───────────────────────────────────────────────────────
 
-function EventFormCard({
-  initial, submitLabel, onSubmit, onCancel, onDelete, bare,
+function EventModal({
+  event, onClose, onSave, onDelete,
 }: {
-  initial: EventForm;
-  submitLabel: string;
-  onSubmit: (form: EventForm) => void;
-  onCancel: () => void;
+  /** null = creating a new event */
+  event: BizEvent | null;
+  onClose: () => void;
+  onSave: (form: EventForm) => Promise<boolean>;
   onDelete?: () => void;
-  bare?: boolean;
 }) {
-  const [form, setForm] = useState<EventForm>(initial);
+  const [form, setForm] = useState<EventForm>(event ? eventToForm(event) : EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
   function set<K extends keyof EventForm>(key: K, val: EventForm[K]) {
     setForm((f) => ({ ...f, [key]: val }));
   }
 
+  async function submit() {
+    if (!form.name.trim() || saving) return;
+    setSaving(true);
+    const ok = await onSave(form);
+    setSaving(false);
+    if (ok) onClose();
+  }
+
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!form.name.trim()) return;
-        onSubmit(form);
-      }}
-      className={bare ? "space-y-3" : "rounded-lg border border-zinc-300 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/40 p-4 space-y-3"}
+    <Modal
+      open
+      onClose={onClose}
+      title={event ? "Edit event" : "New event"}
+      onSubmit={submit}
+      footer={
+        <>
+          {onDelete ? (
+            <Button variant="danger" onClick={onDelete}><Trash2 size={13} /> Delete</Button>
+          ) : <span />}
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button variant="primary" type="submit" loading={saving} disabled={!form.name.trim()}>
+              {event ? "Save" : "Create event"}
+            </Button>
+          </div>
+        </>
+      }
     >
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Event name *" full>
-          <input value={form.name} onChange={(e) => set("name", e.target.value)} className={inputCls} placeholder="Required" autoFocus />
+        <Field label="Event name" required className="col-span-2">
+          <Input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. Rooftop sessions vol. 4" autoFocus />
         </Field>
         <Field label="Date">
-          <input type="date" value={form.date} onChange={(e) => set("date", e.target.value)} className={inputCls} />
+          <Input type="date" value={form.date} onChange={(e) => set("date", e.target.value)} />
         </Field>
         <Field label="Time">
-          <input value={form.time} onChange={(e) => set("time", e.target.value)} className={inputCls} placeholder="e.g. 8pm–2am" />
+          <Input value={form.time} onChange={(e) => set("time", e.target.value)} placeholder="e.g. 8pm to 2am" />
         </Field>
         <Field label="Venue">
-          <input value={form.venue} onChange={(e) => set("venue", e.target.value)} className={inputCls} placeholder="e.g. Yamashiro" />
+          <Input value={form.venue} onChange={(e) => set("venue", e.target.value)} placeholder="e.g. Yamashiro" />
         </Field>
         <Field label="City">
-          <input value={form.city} onChange={(e) => set("city", e.target.value)} className={inputCls} placeholder="e.g. Los Angeles" />
+          <Input value={form.city} onChange={(e) => set("city", e.target.value)} placeholder="e.g. Los Angeles" />
         </Field>
-        <Field label="Status">
-          <select value={form.status} onChange={(e) => set("status", e.target.value as BizEvent["status"])} className={inputCls}>
-            {EVENT_STATUSES.map((s) => (
-              <option key={s.value} value={s.value}>{s.label}</option>
-            ))}
-          </select>
-        </Field>
+        <FieldGroup label="Status" className="col-span-2">
+          <Segmented
+            options={EVENT_STATUSES.map((s) => ({ value: s.value, label: s.label }))}
+            value={form.status}
+            onChange={(v) => set("status", v)}
+          />
+        </FieldGroup>
         <Field label="Expected attendance">
-          <input type="number" min={0} value={form.expected_attendance} onChange={(e) => set("expected_attendance", e.target.value)} className={inputCls} placeholder="e.g. 500" />
+          <Input type="number" min={0} inputMode="numeric" value={form.expected_attendance} onChange={(e) => set("expected_attendance", e.target.value)} placeholder="e.g. 500" />
         </Field>
-        <Field label="Event link" full>
-          <input type="url" value={form.event_link} onChange={(e) => set("event_link", e.target.value)} className={inputCls} placeholder="https://… (tickets, RSVP, Partiful, etc.)" />
+        <Field label="Event link" hint="Tickets, RSVP, Partiful, etc.">
+          <Input type="url" value={form.event_link} onChange={(e) => set("event_link", e.target.value)} placeholder="https://…" />
         </Field>
-        <Field label="Partners" full>
-          <ChipsInput values={form.partners} onChange={(v) => set("partners", v)} placeholder="Type a partner and press Enter" chipClass="bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300" />
-        </Field>
-        <Field label="Sponsors" full>
-          <ChipsInput values={form.sponsors} onChange={(v) => set("sponsors", v)} placeholder="Type a sponsor and press Enter" chipClass="bg-sky-100 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300" />
-        </Field>
-        <Field label="Notes" full>
-          <AutoTextarea value={form.notes} onChange={(e) => set("notes", e.target.value)} minRows={4} className={`${inputCls} resize-none leading-relaxed`} placeholder="Run of show, open items, vendor details…" />
+        <FieldGroup label="Partners" className="col-span-2">
+          <ChipsInput label="Partners" values={form.partners} onChange={(v) => set("partners", v)} placeholder="Type a partner and press Enter" tone="violet" />
+        </FieldGroup>
+        <FieldGroup label="Sponsors" className="col-span-2">
+          <ChipsInput label="Sponsors" values={form.sponsors} onChange={(v) => set("sponsors", v)} placeholder="Type a sponsor and press Enter" tone="sky" />
+        </FieldGroup>
+        <Field label="Notes" className="col-span-2">
+          <AutoTextarea value={form.notes} onChange={(e) => set("notes", e.target.value)} minRows={4} className={textareaClass} placeholder="Run of show, open items, vendor details…" />
         </Field>
       </div>
-      <div className="flex items-center justify-between gap-2 pt-1">
-        {onDelete ? (
-          <button type="button" onClick={onDelete} className="text-xs text-red-600 dark:text-red-400 hover:text-red-500 inline-flex items-center gap-1">
-            <Trash2 size={12} /> Delete
-          </button>
-        ) : <span />}
-        <div className="flex gap-2">
-          <button type="button" onClick={onCancel} className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 px-3 py-1.5">
-            Cancel
-          </button>
-          <button type="submit" disabled={!form.name.trim()} className="bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 text-sm font-medium px-3 py-1.5 rounded-md hover:bg-zinc-800 dark:hover:bg-white disabled:opacity-40">
-            {submitLabel}
-          </button>
-        </div>
-      </div>
-    </form>
+    </Modal>
   );
 }
 
-/** Text input that turns Enter/comma into removable chips. */
+
+/** Text input that turns Enter/comma into removable chips. Styled to match `Input`. */
 function ChipsInput({
-  values, onChange, placeholder, chipClass,
+  label, values, onChange, placeholder, tone,
 }: {
+  label: string;
   values: string[];
   onChange: (next: string[]) => void;
   placeholder?: string;
-  chipClass: string;
+  tone: BadgeTone;
 }) {
   const [draft, setDraft] = useState("");
 
@@ -425,58 +455,48 @@ function ChipsInput({
   }
 
   return (
-    <div className={`${inputCls} flex flex-wrap items-center gap-1.5 py-1.5 cursor-text`}>
+    <div
+      onMouseDown={(e) => {
+        // Clicking the padding focuses the text input, like a real input
+        if (e.target === e.currentTarget) {
+          e.preventDefault();
+          e.currentTarget.querySelector("input")?.focus();
+        }
+      }}
+      className={cn(
+        "flex min-h-10 w-full cursor-text flex-wrap items-center gap-1.5 rounded-lg border border-line-strong bg-raised px-2 py-1.5 md:min-h-9",
+        "transition-[border-color,box-shadow] duration-150 hover:border-ink-4",
+        "focus-within:border-ink-3 focus-within:ring-[3px] focus-within:ring-ink/10"
+      )}
+    >
       {values.map((v) => (
-        <span key={v} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium ${chipClass}`}>
+        <Badge key={v} tone={tone} className="text-xs">
           {v}
-          <button type="button" onClick={() => onChange(values.filter((x) => x !== v))} className="hover:text-rose-600 dark:hover:text-rose-400">
-            <X size={10} />
+          <button
+            type="button"
+            aria-label={`Remove ${v}`}
+            onClick={() => onChange(values.filter((x) => x !== v))}
+            className="-mr-0.5 rounded-md opacity-60 transition-opacity hover:opacity-100"
+          >
+            <X size={11} />
           </button>
-        </span>
+        </Badge>
       ))}
       <input
+        aria-label={label}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === ",") { e.preventDefault(); commit(); }
+          if (e.key === "Enter" || e.key === ",") {
+            // Enter with an empty draft falls through and submits the form
+            if (e.key === "," || draft.trim()) { e.preventDefault(); commit(); }
+          }
           if (e.key === "Backspace" && !draft && values.length > 0) onChange(values.slice(0, -1));
         }}
         onBlur={commit}
         placeholder={values.length === 0 ? placeholder : ""}
-        className="flex-1 min-w-[120px] bg-transparent outline-none text-sm placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
+        className="min-w-[120px] flex-1 bg-transparent px-1 text-sm text-ink outline-none placeholder:text-ink-4"
       />
     </div>
   );
 }
-
-// ── Shared bits ───────────────────────────────────────────────────────────────
-
-function Section({
-  title, count, muted, children,
-}: { title: string; count: number; muted?: boolean; children: React.ReactNode }) {
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-3 px-1">
-        <h2 className={`text-xs font-semibold uppercase tracking-wider ${muted ? "text-zinc-400 dark:text-zinc-600" : "text-zinc-500"}`}>
-          {title}
-        </h2>
-        <span className="text-xs font-medium px-2 py-0.5 rounded-full text-zinc-500 bg-zinc-100 dark:bg-zinc-900">{count}</span>
-      </div>
-      <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden">
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function Field({ label, full, children }: { label: string; full?: boolean; children: React.ReactNode }) {
-  return (
-    <label className={`block ${full ? "col-span-2" : ""}`}>
-      <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">{label}</div>
-      {children}
-    </label>
-  );
-}
-
-const inputCls =
-  "w-full bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-800 text-sm text-zinc-900 dark:text-zinc-100 px-2.5 py-1.5 rounded outline-none focus:border-zinc-500 dark:focus:border-zinc-600 placeholder:text-zinc-400 dark:placeholder:text-zinc-600";

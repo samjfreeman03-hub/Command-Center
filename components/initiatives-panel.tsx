@@ -1,13 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Initiative, InitiativeLink } from "@/lib/types";
 import { INITIATIVE_KINDS, INITIATIVE_HORIZONS, INITIATIVE_STATUSES } from "@/lib/types";
 import {
-  Plus, Trash2, X, Target, CalendarDays, ArrowRight, CircleCheck, Circle, PauseCircle, Link2,
+  Plus, Trash2, X, Target, CalendarDays, ArrowRight, ArrowUp, ArrowDown, CircleCheck, Circle, PauseCircle, Link2,
 } from "lucide-react";
 import { useShareHeaders } from "@/lib/share-context";
+import { usePanelState } from "@/lib/panel-cache";
+import { cn } from "@/lib/cn";
 import { AutoTextarea } from "@/components/auto-textarea";
+import { Button, IconButton } from "@/components/ui/button";
+import { Input, Field, textareaClass, FieldGroup } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
+import { confirmDialog, toast } from "@/components/ui/host";
+import { Badge, Card, EmptyState, SectionHeader, type BadgeTone } from "@/components/ui/display";
+import { Segmented } from "@/components/ui/segmented";
 
 const EMPTY_FORM = {
   title: "",
@@ -21,6 +29,15 @@ const EMPTY_FORM = {
 };
 
 type InitiativeForm = typeof EMPTY_FORM;
+
+const KIND_TONES: Record<Initiative["kind"], BadgeTone> = {
+  project: "violet",
+  client: "green",
+  idea: "amber",
+  watch: "sky",
+};
+
+const HORIZON_ORDER: Initiative["horizon"][] = ["now", "next", "later"];
 
 function formToPayload(form: InitiativeForm) {
   return {
@@ -62,53 +79,119 @@ function targetLabel(date: string): string {
   return new Date(`${date}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+function horizonLabel(h: Initiative["horizon"]): string {
+  return INITIATIVE_HORIZONS.find((x) => x.value === h)?.label ?? h;
+}
+
+type Editor = { mode: "new" } | { mode: "edit"; id: number } | null;
+
 export function InitiativesPanel({
   businessId,
   initial,
+  openId,
+  autoNew,
 }: {
   businessId: string;
   initial: Initiative[];
+  openId?: number;
+  autoNew?: boolean;
 }) {
-  const [items, setItems] = useState(initial);
-  const [showAdd, setShowAdd] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [items, setItems] = usePanelState("initiatives", initial);
+  const [editor, setEditor] = useState<Editor>(null);
   const shareHeaders = useShareHeaders();
 
-  async function add(form: InitiativeForm) {
-    const res = await fetch("/api/initiatives", {
-      method: "POST",
-      headers: { "content-type": "application/json", ...shareHeaders },
-      body: JSON.stringify({ business_id: businessId, ...formToPayload(form) }),
-    });
-    if (res.ok) {
+  // Deep links: open a record's editor, or the create form
+  useEffect(() => {
+    if (openId == null) return;
+    if (items.some((i) => i.id === openId)) setEditor({ mode: "edit", id: openId });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId]);
+  useEffect(() => {
+    if (autoNew) setEditor({ mode: "new" });
+  }, [autoNew]);
+
+  async function add(form: InitiativeForm): Promise<boolean> {
+    try {
+      const res = await fetch("/api/initiatives", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...shareHeaders },
+        body: JSON.stringify({ business_id: businessId, ...formToPayload(form) }),
+      });
+      if (!res.ok) throw new Error();
       const created: Initiative = await res.json();
       setItems((prev) => [created, ...prev]);
-      setShowAdd(false);
+      return true;
+    } catch {
+      toast("Could not create initiative", { tone: "error" });
+      return false;
     }
   }
 
-  async function update(id: number, patch: Partial<Initiative>) {
-    const res = await fetch(`/api/initiatives/${id}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json", ...shareHeaders },
-      body: JSON.stringify(patch),
-    });
-    if (res.ok) {
+  /** PATCH with an optimistic update. Rolls back and toasts `failMessage` on failure. */
+  async function update(id: number, patch: Partial<Initiative>, failMessage = "Could not save initiative"): Promise<boolean> {
+    const before = items.find((i) => i.id === id);
+    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)));
+    try {
+      const res = await fetch(`/api/initiatives/${id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", ...shareHeaders },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) throw new Error();
       const updated: Initiative = await res.json();
       setItems((prev) => prev.map((i) => (i.id === id ? updated : i)));
-      setEditingId(null);
+      return true;
+    } catch {
+      if (before) setItems((prev) => prev.map((i) => (i.id === id ? before : i)));
+      toast(failMessage, { tone: "error" });
+      return false;
     }
   }
 
   async function remove(id: number) {
-    if (!confirm("Delete this initiative?")) return;
+    const target = items.find((i) => i.id === id);
+    const ok = await confirmDialog({
+      title: "Delete this initiative?",
+      description: target ? `"${target.title}" will be removed for good.` : undefined,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+    const snapshot = items;
     setItems((prev) => prev.filter((i) => i.id !== id));
-    setEditingId(null);
-    await fetch(`/api/initiatives/${id}`, { method: "DELETE", headers: shareHeaders });
+    setEditor(null);
+    try {
+      const res = await fetch(`/api/initiatives/${id}`, { method: "DELETE", headers: shareHeaders });
+      if (!res.ok) throw new Error();
+    } catch {
+      setItems(snapshot);
+      toast("Could not delete initiative", { tone: "error" });
+    }
   }
 
-  function toggleDone(i: Initiative) {
-    update(i.id, { status: i.status === "done" ? "active" : "done" });
+  async function toggleDone(i: Initiative) {
+    if (i.status === "done") {
+      await update(i.id, { status: "active" }, "Could not reopen initiative");
+      return;
+    }
+    const previous = i.status;
+    const ok = await update(i.id, { status: "done" }, "Could not mark done");
+    if (ok) {
+      toast("Marked done", {
+        tone: "success",
+        action: { label: "Undo", onClick: () => void update(i.id, { status: previous }, "Could not undo") },
+      });
+    }
+  }
+
+  async function moveTo(i: Initiative, horizon: Initiative["horizon"]) {
+    const previous = i.horizon;
+    const ok = await update(i.id, { horizon }, "Could not move initiative");
+    if (ok) {
+      toast(`Moved to ${horizonLabel(horizon)}`, {
+        action: { label: "Undo", onClick: () => void update(i.id, { horizon: previous }, "Could not undo") },
+      });
+    }
   }
 
   const active = items.filter((i) => i.status === "active");
@@ -117,285 +200,299 @@ export function InitiativesPanel({
   const done = items
     .filter((i) => i.status === "done")
     .sort((a, b) => (b.completed_at ?? 0) - (a.completed_at ?? 0));
+  const nowCount = byHorizon("now").length;
 
   const rowProps = (i: Initiative) => ({
     initiative: i,
-    isEditing: editingId === i.id,
-    onStartEdit: () => setEditingId(i.id),
-    onCancelEdit: () => setEditingId(null),
-    onSave: (form: InitiativeForm) => update(i.id, formToPayload(form)),
-    onDelete: () => remove(i.id),
-    onToggleDone: () => toggleDone(i),
+    onOpen: () => setEditor({ mode: "edit" as const, id: i.id }),
+    onToggleDone: () => void toggleDone(i),
+    onMove: (h: Initiative["horizon"]) => void moveTo(i, h),
   });
 
+  const editing = editor?.mode === "edit" ? items.find((i) => i.id === editor.id) ?? null : null;
+  const modalOpen = editor?.mode === "new" || editing != null;
+
   return (
-    <div className="space-y-6">
-      {/* Summary + add */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="text-sm text-zinc-600 dark:text-zinc-400">
-          <span className="text-zinc-900 dark:text-zinc-100 font-medium">{byHorizon("now").length}</span> in focus now
-          {active.length > byHorizon("now").length && (
+    <div>
+      {/* Toolbar */}
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="text-[13px] text-ink-3">
+          <span className="font-medium text-ink tabular-nums">{nowCount}</span> in focus now
+          {active.length > nowCount && (
             <>
-              <span className="mx-2 text-zinc-300 dark:text-zinc-700">·</span>
-              <span className="text-zinc-900 dark:text-zinc-100 font-medium">{active.length - byHorizon("now").length}</span> queued
+              <span className="mx-2 text-ink-4">·</span>
+              <span className="font-medium text-ink tabular-nums">{active.length - nowCount}</span> queued
             </>
           )}
         </div>
-        <button
-          onClick={() => setShowAdd((v) => !v)}
-          className="bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 text-sm font-medium px-3 py-1.5 rounded-md hover:bg-zinc-800 dark:hover:bg-white inline-flex items-center gap-1.5"
-        >
+        <Button variant="primary" onClick={() => setEditor({ mode: "new" })}>
           <Plus size={14} /> New initiative
-        </button>
+        </Button>
       </div>
 
-      {showAdd && (
-        <InitiativeFormCard
-          initial={EMPTY_FORM}
-          submitLabel="Create initiative"
-          onSubmit={add}
-          onCancel={() => setShowAdd(false)}
-        />
-      )}
-
-      {items.length === 0 && !showAdd ? (
-        <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
-          <div className="flex flex-col items-center gap-3 py-12 text-center px-6">
-            <div className="w-12 h-12 rounded-2xl bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center">
-              <Target size={20} className="text-zinc-400" />
-            </div>
-            <div>
-              <div className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">No initiatives yet</div>
-              <div className="text-xs text-zinc-400 max-w-xs leading-relaxed">
-                Initiatives are the big things — key projects, major clients, and priorities to keep top of mind. Bigger than a todo, tracked over weeks.
-              </div>
-            </div>
-          </div>
-        </div>
+      {items.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={<Target size={18} />}
+            title="No initiatives yet"
+            body="Initiatives are the big things: key projects, major clients, and priorities to keep top of mind. Bigger than a todo, tracked over weeks."
+            action={
+              <Button onClick={() => setEditor({ mode: "new" })}>
+                <Plus size={14} /> New initiative
+              </Button>
+            }
+          />
+        </Card>
       ) : (
-        <>
+        <div className="space-y-6">
           {INITIATIVE_HORIZONS.map((h) => {
             const group = byHorizon(h.value);
             if (group.length === 0 && h.value !== "now") return null;
             return (
-              <Section key={h.value} title={h.label} hint={h.hint} count={group.length}>
-                {group.length === 0 ? (
-                  <div className="px-4 py-6 text-center text-xs text-zinc-400">
-                    Nothing in focus — promote something from Next, or add a new initiative.
-                  </div>
-                ) : (
-                  <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
-                    {group.map((i) => <InitiativeRow key={i.id} {...rowProps(i)} />)}
-                  </div>
-                )}
-              </Section>
+              <section key={h.value}>
+                <SectionHeader title={h.label} count={group.length} hint={h.hint} />
+                <Card>
+                  {group.length === 0 ? (
+                    <EmptyState
+                      className="py-8"
+                      icon={<Target size={18} />}
+                      title="Nothing in focus"
+                      body="Promote something from Next, or add a new initiative."
+                      action={
+                        <Button size="sm" onClick={() => setEditor({ mode: "new" })}>
+                          <Plus size={13} /> New initiative
+                        </Button>
+                      }
+                    />
+                  ) : (
+                    <div className="divide-y divide-line">
+                      {group.map((i) => <InitiativeRow key={i.id} {...rowProps(i)} />)}
+                    </div>
+                  )}
+                </Card>
+              </section>
             );
           })}
 
           {onHold.length > 0 && (
-            <Section title="On hold" count={onHold.length} muted>
-              <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
-                {onHold.map((i) => <InitiativeRow key={i.id} {...rowProps(i)} />)}
-              </div>
-            </Section>
+            <section>
+              <SectionHeader title="On hold" count={onHold.length} />
+              <Card>
+                <div className="divide-y divide-line">
+                  {onHold.map((i) => <InitiativeRow key={i.id} {...rowProps(i)} />)}
+                </div>
+              </Card>
+            </section>
           )}
 
           {done.length > 0 && (
-            <Section title="Done" count={done.length} muted>
-              <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
-                {done.map((i) => <InitiativeRow key={i.id} {...rowProps(i)} />)}
-              </div>
-            </Section>
+            <section>
+              <SectionHeader title="Done" count={done.length} />
+              <Card>
+                <div className="divide-y divide-line">
+                  {done.map((i) => <InitiativeRow key={i.id} {...rowProps(i)} />)}
+                </div>
+              </Card>
+            </section>
           )}
-        </>
+        </div>
+      )}
+
+      {modalOpen && (
+        <InitiativeModal
+          key={editing ? editing.id : "new"}
+          initiative={editing}
+          onClose={() => setEditor(null)}
+          onSave={(form) => (editing ? update(editing.id, formToPayload(form)) : add(form))}
+          onDelete={editing ? () => remove(editing.id) : undefined}
+        />
       )}
     </div>
   );
 }
 
-// ── Row + edit modal ──────────────────────────────────────────────────────────
+// ── Row ───────────────────────────────────────────────────────────────────────
 
 function InitiativeRow({
-  initiative, isEditing, onStartEdit, onCancelEdit, onSave, onDelete, onToggleDone,
+  initiative, onOpen, onToggleDone, onMove,
 }: {
   initiative: Initiative;
-  isEditing: boolean;
-  onStartEdit: () => void;
-  onCancelEdit: () => void;
-  onSave: (form: InitiativeForm) => void;
-  onDelete: () => void;
+  onOpen: () => void;
   onToggleDone: () => void;
+  onMove: (h: Initiative["horizon"]) => void;
 }) {
   const kind = INITIATIVE_KINDS.find((k) => k.value === initiative.kind) ?? INITIATIVE_KINDS[0];
   const isDone = initiative.status === "done";
   const isHeld = initiative.status === "on_hold";
+  const isActive = initiative.status === "active";
+  const overdue = !!initiative.target_date && !isDone && initiative.target_date < new Date().toISOString().slice(0, 10);
+
+  const idx = HORIZON_ORDER.indexOf(initiative.horizon);
+  const sooner = idx > 0 ? HORIZON_ORDER[idx - 1] : null;
+  const later = idx >= 0 && idx < HORIZON_ORDER.length - 1 ? HORIZON_ORDER[idx + 1] : null;
 
   return (
-    <>
-      {isEditing && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-start justify-center bg-black/50 sm:p-8 overflow-y-auto">
-          <div className="w-full sm:max-w-xl bg-white dark:bg-zinc-950 rounded-t-2xl sm:rounded-xl shadow-2xl sm:mt-4 sm:mb-8 safe-bottom">
-            <div className="flex items-center justify-between px-5 pt-4 pb-1">
-              <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Edit initiative</h2>
-              <button onClick={onCancelEdit} className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 rounded">
-                <X size={16} />
-              </button>
-            </div>
-            <div className="p-5 pt-2">
-              <InitiativeFormCard
-                initial={initiativeToForm(initiative)}
-                submitLabel="Save"
-                onSubmit={onSave}
-                onCancel={onCancelEdit}
-                onDelete={onDelete}
-                bare
-              />
-            </div>
-          </div>
-        </div>
-      )}
-      <div className={`flex items-start gap-3 px-4 py-3.5 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors ${isDone ? "opacity-60" : ""}`}>
-        {/* Done toggle */}
-        <button
-          onClick={onToggleDone}
-          title={isDone ? "Reopen" : "Mark done"}
-          className="shrink-0 mt-0.5 text-zinc-300 dark:text-zinc-700 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
-        >
-          {isDone ? <CircleCheck size={18} className="text-emerald-600 dark:text-emerald-400" />
-            : isHeld ? <PauseCircle size={18} className="text-amber-500/70" />
-            : <Circle size={18} />}
-        </button>
+    <div className={cn("group flex items-start gap-3 px-4 py-3 transition-colors hover:bg-hover", isDone && "opacity-60")}>
+      {/* Done toggle */}
+      <button
+        type="button"
+        onClick={onToggleDone}
+        title={isDone ? "Reopen" : "Mark done"}
+        aria-label={isDone ? "Reopen" : "Mark done"}
+        className="mt-0.5 shrink-0 rounded-md text-ink-4 transition-colors hover:text-emerald-600 dark:hover:text-emerald-400"
+      >
+        {isDone ? <CircleCheck size={18} className="text-emerald-600 dark:text-emerald-400" />
+          : isHeld ? <PauseCircle size={18} className="text-amber-600 dark:text-amber-400" />
+          : <Circle size={18} />}
+      </button>
 
-        {/* Body — click to edit; link chips are real anchors outside the button */}
-        <div className="min-w-0 flex-1">
-          <button onClick={onStartEdit} className="block w-full text-left">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className={`text-sm font-medium text-zinc-900 dark:text-zinc-100 ${isDone ? "line-through decoration-zinc-400" : ""}`}>
-                {initiative.title}
-              </span>
-              <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${kind.color}`}>{kind.label}</span>
-              {initiative.target_date && !isDone && (
-                <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-900 text-zinc-500">
-                  <CalendarDays size={10} /> {targetLabel(initiative.target_date)}
-                </span>
-              )}
-            </div>
-            {initiative.next_step && !isDone && (
-              <div className="flex items-center gap-1.5 mt-1 text-xs text-zinc-600 dark:text-zinc-400">
-                <ArrowRight size={11} className="shrink-0 text-zinc-400" />
-                <span className="truncate">{initiative.next_step}</span>
-              </div>
+      {/* Body: click to edit. Link chips are real anchors outside the button. */}
+      <div className="min-w-0 flex-1">
+        <button type="button" onClick={onOpen} className="block w-full text-left">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className={cn("text-sm font-medium text-ink", isDone && "line-through decoration-ink-4")}>
+              {initiative.title}
+            </span>
+            <Badge tone={KIND_TONES[initiative.kind] ?? "neutral"}>{kind.label}</Badge>
+            {initiative.target_date && !isDone && (
+              <Badge tone={overdue ? "red" : "neutral"}>
+                <CalendarDays size={11} /> {targetLabel(initiative.target_date)}
+              </Badge>
             )}
-            {initiative.notes && (
-              <p className="text-xs text-zinc-400 dark:text-zinc-600 mt-1 line-clamp-1">{initiative.notes}</p>
-            )}
-          </button>
-          {initiative.links.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-1.5">
-              {initiative.links.map((l, idx) => (
-                <a
-                  key={`${l.url}-${idx}`}
-                  href={l.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(ev) => ev.stopPropagation()}
-                  title={l.url}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors max-w-[220px]"
-                >
-                  <Link2 size={10} className="shrink-0" />
-                  <span className="truncate">{linkLabel(l)}</span>
-                </a>
-              ))}
+          </div>
+          {initiative.next_step && !isDone && (
+            <div className="mt-1 flex items-center gap-1.5 text-xs text-ink-2">
+              <ArrowRight size={13} className="shrink-0 text-ink-3" />
+              <span className="truncate">{initiative.next_step}</span>
             </div>
           )}
-        </div>
+          {initiative.notes && <p className="mt-1 line-clamp-1 text-xs text-ink-3">{initiative.notes}</p>}
+        </button>
+        {initiative.links.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {initiative.links.map((l, i) => (
+              <a
+                key={`${l.url}-${i}`}
+                href={l.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={l.url}
+                className="inline-flex max-w-[220px] items-center gap-1 rounded-md bg-sunken px-1.5 py-0.5 text-[11px] font-medium leading-4 text-ink-2 ring-1 ring-inset ring-line transition-colors hover:bg-raised hover:text-ink"
+              >
+                <Link2 size={11} className="shrink-0" />
+                <span className="truncate">{linkLabel(l)}</span>
+              </a>
+            ))}
+          </div>
+        )}
       </div>
-    </>
+
+      {/* Quick move between horizons, no modal needed */}
+      {isActive && (
+        <div className="-my-1 -mr-1.5 flex shrink-0 items-center transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
+          {sooner && (
+            <IconButton size="sm" label={`Move to ${horizonLabel(sooner)}`} onClick={() => onMove(sooner)}>
+              <ArrowUp size={14} />
+            </IconButton>
+          )}
+          {later && (
+            <IconButton size="sm" label={`Move to ${horizonLabel(later)}`} onClick={() => onMove(later)}>
+              <ArrowDown size={14} />
+            </IconButton>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
-// ── Add/edit form ─────────────────────────────────────────────────────────────
+// ── Create / edit modal ───────────────────────────────────────────────────────
 
-function InitiativeFormCard({
-  initial, submitLabel, onSubmit, onCancel, onDelete, bare,
+function InitiativeModal({
+  initiative, onClose, onSave, onDelete,
 }: {
-  initial: InitiativeForm;
-  submitLabel: string;
-  onSubmit: (form: InitiativeForm) => void;
-  onCancel: () => void;
+  /** null = creating a new initiative */
+  initiative: Initiative | null;
+  onClose: () => void;
+  onSave: (form: InitiativeForm) => Promise<boolean>;
   onDelete?: () => void;
-  bare?: boolean;
 }) {
-  const [form, setForm] = useState<InitiativeForm>(initial);
+  const [form, setForm] = useState<InitiativeForm>(initiative ? initiativeToForm(initiative) : EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
   function set<K extends keyof InitiativeForm>(key: K, val: InitiativeForm[K]) {
     setForm((f) => ({ ...f, [key]: val }));
   }
 
+  async function submit() {
+    if (!form.title.trim() || saving) return;
+    setSaving(true);
+    const ok = await onSave(form);
+    setSaving(false);
+    if (ok) onClose();
+  }
+
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!form.title.trim()) return;
-        onSubmit(form);
-      }}
-      className={bare ? "space-y-3" : "rounded-lg border border-zinc-300 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/40 p-4 space-y-3"}
+    <Modal
+      open
+      onClose={onClose}
+      title={initiative ? "Edit initiative" : "New initiative"}
+      onSubmit={submit}
+      footer={
+        <>
+          {onDelete ? (
+            <Button variant="danger" onClick={onDelete}><Trash2 size={13} /> Delete</Button>
+          ) : <span />}
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button variant="primary" type="submit" loading={saving} disabled={!form.title.trim()}>
+              {initiative ? "Save" : "Create initiative"}
+            </Button>
+          </div>
+        </>
+      }
     >
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Title *" full>
-          <input value={form.title} onChange={(e) => set("title", e.target.value)} className={inputCls} placeholder="e.g. Land the Red Bull partnership" autoFocus />
+        <Field label="Title" required className="col-span-2">
+          <Input value={form.title} onChange={(e) => set("title", e.target.value)} placeholder="e.g. Land the Red Bull partnership" autoFocus />
         </Field>
-        <Field label="Type" full>
+        <FieldGroup label="Type" className="col-span-2">
           <Segmented
             options={INITIATIVE_KINDS.map((k) => ({ value: k.value, label: k.label }))}
             value={form.kind}
-            onChange={(v) => set("kind", v as Initiative["kind"])}
+            onChange={(v) => set("kind", v)}
           />
-        </Field>
-        <Field label="Horizon" full>
+        </FieldGroup>
+        <FieldGroup label="Horizon" className="col-span-2 sm:col-span-1">
           <Segmented
             options={INITIATIVE_HORIZONS.map((h) => ({ value: h.value, label: h.label, hint: h.hint }))}
             value={form.horizon}
-            onChange={(v) => set("horizon", v as Initiative["horizon"])}
+            onChange={(v) => set("horizon", v)}
           />
+        </FieldGroup>
+        <FieldGroup label="Status" className="col-span-2 sm:col-span-1">
+          <Segmented
+            options={INITIATIVE_STATUSES.map((s) => ({ value: s.value, label: s.label }))}
+            value={form.status}
+            onChange={(v) => set("status", v)}
+          />
+        </FieldGroup>
+        <Field label="Next step" className="col-span-2" hint="The one next move that pushes this forward.">
+          <Input value={form.next_step} onChange={(e) => set("next_step", e.target.value)} placeholder="e.g. Send the deck to Maria" />
         </Field>
-        <Field label="Next step" full>
-          <input value={form.next_step} onChange={(e) => set("next_step", e.target.value)} className={inputCls} placeholder="The one next move, e.g. send the deck to Maria" />
+        <Field label="Target date" className="col-span-2 sm:col-span-1">
+          <Input type="date" value={form.target_date} onChange={(e) => set("target_date", e.target.value)} />
         </Field>
-        <Field label="Target date">
-          <input type="date" value={form.target_date} onChange={(e) => set("target_date", e.target.value)} className={inputCls} />
-        </Field>
-        <Field label="Status">
-          <select value={form.status} onChange={(e) => set("status", e.target.value as Initiative["status"])} className={inputCls}>
-            {INITIATIVE_STATUSES.map((s) => (
-              <option key={s.value} value={s.value}>{s.label}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Links" full>
+        <FieldGroup label="Links" className="col-span-2">
           <LinksEditor links={form.links} onChange={(v) => set("links", v)} />
-        </Field>
-        <Field label="Notes" full>
-          <AutoTextarea value={form.notes} onChange={(e) => set("notes", e.target.value)} minRows={4} className={`${inputCls} resize-none leading-relaxed`} placeholder="Context, why it matters, key people, open questions…" />
+        </FieldGroup>
+        <Field label="Notes" className="col-span-2">
+          <AutoTextarea value={form.notes} onChange={(e) => set("notes", e.target.value)} minRows={4} className={textareaClass} placeholder="Context, why it matters, key people, open questions…" />
         </Field>
       </div>
-      <div className="flex items-center justify-between gap-2 pt-1">
-        {onDelete ? (
-          <button type="button" onClick={onDelete} className="text-xs text-red-600 dark:text-red-400 hover:text-red-500 inline-flex items-center gap-1">
-            <Trash2 size={12} /> Delete
-          </button>
-        ) : <span />}
-        <div className="flex gap-2">
-          <button type="button" onClick={onCancel} className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 px-3 py-1.5">
-            Cancel
-          </button>
-          <button type="submit" disabled={!form.title.trim()} className="bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 text-sm font-medium px-3 py-1.5 rounded-md hover:bg-zinc-800 dark:hover:bg-white disabled:opacity-40">
-            {submitLabel}
-          </button>
-        </div>
-      </div>
-    </form>
+    </Modal>
   );
 }
+
 
 /** Editable list of {label, url} link rows. */
 function LinksEditor({
@@ -412,100 +509,31 @@ function LinksEditor({
     <div className="space-y-2">
       {links.map((l, idx) => (
         <div key={idx} className="flex items-center gap-2">
-          <input
-            value={l.label ?? ""}
-            onChange={(e) => setLink(idx, { label: e.target.value })}
-            className={`${inputCls} w-32 sm:w-40 shrink-0`}
-            placeholder="Label (optional)"
-          />
-          <input
-            value={l.url}
-            onChange={(e) => setLink(idx, { url: e.target.value })}
-            className={inputCls}
-            placeholder="https://…"
-            autoFocus={l.url === "" && idx === links.length - 1}
-          />
-          <button
-            type="button"
-            onClick={() => onChange(links.filter((_, i) => i !== idx))}
-            className="shrink-0 p-1.5 text-zinc-400 hover:text-red-500 rounded"
-            title="Remove link"
-          >
-            <X size={13} />
-          </button>
+          <div className="w-28 shrink-0 sm:w-40">
+            <Input
+              aria-label={`Link ${idx + 1} label`}
+              value={l.label ?? ""}
+              onChange={(e) => setLink(idx, { label: e.target.value })}
+              placeholder="Label (optional)"
+            />
+          </div>
+          <div className="min-w-0 flex-1">
+            <Input
+              aria-label={`Link ${idx + 1} URL`}
+              value={l.url}
+              onChange={(e) => setLink(idx, { url: e.target.value })}
+              placeholder="https://…"
+              autoFocus={l.url === "" && idx === links.length - 1}
+            />
+          </div>
+          <IconButton label="Remove link" onClick={() => onChange(links.filter((_, i) => i !== idx))}>
+            <X size={14} />
+          </IconButton>
         </div>
       ))}
-      <button
-        type="button"
-        onClick={() => onChange([...links, { label: null, url: "" }])}
-        className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200 px-2 py-1 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
-      >
-        <Plus size={12} /> Add link
-      </button>
+      <Button variant="ghost" size="sm" onClick={() => onChange([...links, { label: null, url: "" }])}>
+        <Plus size={13} /> Add link
+      </Button>
     </div>
   );
 }
-
-/** Pill-style single-select. */
-function Segmented({
-  options, value, onChange,
-}: {
-  options: { value: string; label: string; hint?: string }[];
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          onClick={() => onChange(o.value)}
-          title={o.hint}
-          className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-            value === o.value
-              ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-              : "bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-800"
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// ── Shared bits ───────────────────────────────────────────────────────────────
-
-function Section({
-  title, hint, count, muted, children,
-}: { title: string; hint?: string; count: number; muted?: boolean; children: React.ReactNode }) {
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-3 px-1">
-        <div className="flex items-baseline gap-2">
-          <h2 className={`text-xs font-semibold uppercase tracking-wider ${muted ? "text-zinc-400 dark:text-zinc-600" : "text-zinc-500"}`}>
-            {title}
-          </h2>
-          {hint && <span className="text-[11px] text-zinc-400 dark:text-zinc-600 normal-case">{hint}</span>}
-        </div>
-        <span className="text-xs font-medium px-2 py-0.5 rounded-full text-zinc-500 bg-zinc-100 dark:bg-zinc-900">{count}</span>
-      </div>
-      <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden">
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function Field({ label, full, children }: { label: string; full?: boolean; children: React.ReactNode }) {
-  return (
-    <label className={`block ${full ? "col-span-2" : ""}`}>
-      <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">{label}</div>
-      {children}
-    </label>
-  );
-}
-
-const inputCls =
-  "w-full bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-800 text-sm text-zinc-900 dark:text-zinc-100 px-2.5 py-1.5 rounded outline-none focus:border-zinc-500 dark:focus:border-zinc-600 placeholder:text-zinc-400 dark:placeholder:text-zinc-600";
