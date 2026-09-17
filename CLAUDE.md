@@ -1254,6 +1254,17 @@ Roadmap status:
 4. **Attention: SHIPPED.** Today dashboard + scratchpad "File to tabs" (§32).
    A scheduled morning brief was discussed but not built.
 
+### Sam's sequencing (2026-09-17)
+
+He wants to be happy with EVERY part of the Command Center before the brain is
+built and connected to everything. So: review and fix surfaces first, brain last.
+
+**Up next: rethink discovery + outreach entirely.** His words: "it's not great
+nor optimized right now." He has barely used the Outreach tab for FLAIR or
+MTRNM despite it being the most built-out surface. Do not polish the current
+flow; start from how he actually wants to find and contact brands. Go in with
+questions about why it went unused before proposing anything.
+
 Known deferred items (user-acknowledged, build when asked):
 - Inbox feature disabled (code preserved in `app/inbox/`, nav link removed;
   sidebar has static Gmail/Calendar links instead — see §6 note)
@@ -1386,8 +1397,9 @@ DESIGN.md wins. Highlights:
 - **`app/page.tsx` is now "Today"**, computed in LA time and excluding hidden
   businesses: **Needs attention** (`components/today-attention.tsx`: overdue
   and due-today todos, completable in place with Undo; deal next actions due;
-  initiative targets due; events today; outreach follow-ups and new targets
-  waiting), **Coming up** (next 7 days, events 14), the scratchpad, dense
+  initiative targets due; events today). Outreach queues were removed from
+  this list on 2026-09-17: Sam barely uses outreach, so "31 follow-ups due"
+  was stale cadence math, not real work. Only surface things he acts on, **Coming up** (next 7 days, events 14), the scratchpad, dense
   business rows (focus initiative + todos/deals/pipeline), and all open todos.
   Two independent columns on desktop; on phones the wrappers use
   `display: contents` so `order-*` puts the scratchpad second.

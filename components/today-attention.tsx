@@ -11,7 +11,7 @@ import { cn } from "@/lib/cn";
 
 export type AttentionItem = {
   key: string;
-  kind: "todo" | "lead" | "initiative" | "event" | "outreach";
+  kind: "todo" | "lead" | "initiative" | "event";
   businessId: string;
   title: string;
   /** e.g. "Todo", "method · proposal" */
@@ -29,7 +29,6 @@ const KIND_LABEL: Record<AttentionItem["kind"], string> = {
   lead: "Deal",
   initiative: "Initiative",
   event: "Event",
-  outreach: "Outreach",
 };
 
 /** "Needs attention": everything overdue or due today, across all businesses, actionable in place. */

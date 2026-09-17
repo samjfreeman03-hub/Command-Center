@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { BUSINESSES, getBusiness } from "@/lib/businesses";
-import { OUTREACH_BUSINESS_IDS } from "@/lib/outreach-config";
 import { eventsEnabled } from "@/lib/events-config";
 import { ArrowRight, ChevronRight, ListTodo, Target, TrendingUp, CalendarClock } from "lucide-react";
 import { DashboardTodos } from "@/components/dashboard-todos";
@@ -102,24 +101,6 @@ export default function Dashboard() {
         key: `event-${e.id}`, kind: "event", businessId: e.business_id, title: e.name,
         context: [e.time, e.venue].filter(Boolean).join(", "), when: "Today", overdue: false,
         href: `/b/${e.business_id}?tab=events&open=${e.id}`, sort: today,
-      });
-    }
-  }
-  for (const id of OUTREACH_BUSINESS_IDS) {
-    if (hiddenIds.has(id)) continue;
-    const queue = db.listDailyQueue({ businessId: id });
-    if (queue.followups.length > 0) {
-      attention.push({
-        key: `followups-${id}`, kind: "outreach", businessId: id,
-        title: `${queue.followups.length} follow-up${queue.followups.length === 1 ? "" : "s"} due`,
-        context: "Cadence is waiting on you", when: "Today", overdue: false, href: `/b/${id}?tab=outreach`, sort: today,
-      });
-    }
-    if (queue.newTargets.length > 0) {
-      attention.push({
-        key: `targets-${id}`, kind: "outreach", businessId: id,
-        title: `${queue.newTargets.length} new target${queue.newTargets.length === 1 ? "" : "s"} ready to send`,
-        context: "Today's outreach queue", when: "Today", overdue: false, href: `/b/${id}?tab=outreach`, sort: today,
       });
     }
   }
