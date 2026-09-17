@@ -2,6 +2,20 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AdminShell } from "@/components/admin-shell";
+import { db } from "@/lib/db";
+
+/**
+ * Hidden businesses for the sidebar. Skipped during `next build` (static pages
+ * like /login would otherwise open the database in the build container).
+ */
+function hiddenBusinessIds(): string[] {
+  if (process.env.NEXT_PHASE === "phase-production-build") return [];
+  try {
+    return db.hiddenBusinessIds();
+  } catch {
+    return [];
+  }
+}
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -62,7 +76,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>
       <body className="min-h-full bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-        <AdminShell>{children}</AdminShell>
+        <AdminShell hiddenBusinessIds={hiddenBusinessIds()}>{children}</AdminShell>
       </body>
     </html>
   );

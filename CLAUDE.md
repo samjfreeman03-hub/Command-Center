@@ -1212,6 +1212,51 @@ The per-business AI chat (`/api/chat`) is an agent, not just Q&A. Added 2026-06-
 on disk. `git log` is the authoritative changelog; commit messages are detailed
 by convention.
 
+### Hidden businesses (added 2026-09-16)
+
+`businesses.hidden` (0/1). A hidden business disappears from the sidebar list,
+the dashboard cards, AND every dashboard total (todos, leads, pipeline, focus).
+Nothing is deleted: `/b/<id>` still loads (with an amber banner + Unhide), share
+links keep working, chat/API are unaffected. Toggle: Hide button in the business
+header, Unhide from the banner or the sidebar's collapsible "Hidden · N" group.
+`PATCH /api/businesses/[id] { hidden }` is admin-only (share tokens can never
+hide). The root layout reads `db.hiddenBusinessIds()` and passes it through
+`AdminShell` to `Sidebar` (no client flash); it skips the DB during `next build`
+via `NEXT_PHASE`. Toggles call `router.refresh()` to re-render the layout.
+`migrateHiddenBusinesses()` runs after `seed()` and hides CampusLink exactly
+once (the ALTER throws on later boots, so an unhide sticks).
+
+### Product audit 2026-09-16 (findings + proposed roadmap, NOT yet built)
+
+Sam asked whether the app is missing a "second brain". Audit conclusion: the
+app is a set of well-built silos (CRUD tabs per business) with an AI bolted
+onto each silo. What is missing is the layer ACROSS the silos. Verified gaps:
+no search anywhere, no keyboard shortcuts, no drag and drop, AI chat scoped to
+one business and buried as tab 9 of 10, no persistent memory, no linking
+between records (method exists separately as a lead, a CRM contact, an
+initiative and a note), dashboard shows counts rather than what needs
+attention. UI debt: three generations of UI side by side (lead edit modal is
+unlabeled raw inputs; events/initiatives modals are newer), 22 native
+confirm()/alert() dialogs, 6 corner radii with no system, no shared
+Button/Input/Modal primitives, ~50 uses of 10-11px text, pipeline is a vertical
+list instead of a board, full-width rows on wide screens.
+
+Proposed order (each phase shippable on its own):
+1. Design system pass: shared primitives (Button, Input, Field, Modal, Card,
+   ConfirmDialog, Toast) + one radius/type scale, then migrate every panel.
+   Rebuild the lead modal, pipeline as a drag-and-drop board, CRM search.
+2. Command layer: Cmd+K palette (jump anywhere, create anything, global
+   search across all businesses) + a global "Ask" chat that sees every
+   business and can act in any of them.
+3. Brain: `memories` table (facts about Sam, people, companies, decisions,
+   preferences; FTS5 search) that every AI surface reads and that grows from
+   chats/notes/scratchpad with a review queue; entity linking so a company or
+   person page shows its lead + CRM + initiative + notes + events together.
+4. Attention: "Today" dashboard (overdue, due today, follow-ups due, events
+   this week, stale initiatives, leads past their next-action date), a
+   scratchpad "File these" action that routes lines into real todos/leads,
+   and an optional morning brief.
+
 Known deferred items (user-acknowledged, build when asked):
 - Inbox feature disabled (code preserved in `app/inbox/`, nav link removed;
   sidebar has static Gmail/Calendar links instead — see §6 note)

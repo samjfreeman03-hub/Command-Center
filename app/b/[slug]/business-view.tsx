@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { useRouter } from "next/navigation";
 import type { Business } from "@/lib/businesses";
 import type { Todo, Lead, LeadCategory, BizEvent, Initiative, Note, ChatMessage, BusinessResource, TeamMember, BrandContact, OutreachTarget } from "@/lib/types";
 import { EventsPanel } from "@/components/events-panel";
@@ -16,7 +17,7 @@ import { BrandsPanel } from "@/components/brands-panel";
 import { OutreachPanel } from "@/components/outreach-panel";
 import {
   Link2, Check, Pencil, Send, Target, ListTodo, TrendingUp, CalendarDays,
-  Building2, FolderOpen, StickyNote, MessageSquare, Users,
+  Building2, FolderOpen, StickyNote, MessageSquare, Users, Eye, EyeOff,
 } from "lucide-react";
 import { OUTREACH_BUSINESS_IDS } from "@/lib/outreach-config";
 
@@ -61,6 +62,7 @@ export function BusinessView({
   leadCategoriesEnabled,
   initialEvents,
   initialInitiatives,
+  initialHidden,
 }: {
   business: Business;
   initialTab: string;
@@ -78,6 +80,7 @@ export function BusinessView({
   leadCategoriesEnabled: boolean;
   initialEvents: BizEvent[];
   initialInitiatives: Initiative[];
+  initialHidden: boolean;
 }) {
   const tabs = tabsForBusiness(business.id);
   const [tab, setTabState] = useState<TabId>(
@@ -89,6 +92,21 @@ export function BusinessView({
     setTabState(next);
     window.history.replaceState(null, "", `/b/${business.id}?tab=${next}`);
   }
+  const router = useRouter();
+  const [hidden, setHidden] = useState(initialHidden);
+
+  // Hiding only removes the business from the sidebar + dashboard; its data,
+  // URL, and team share links keep working. refresh() re-renders the sidebar.
+  async function setBusinessHidden(next: boolean) {
+    setHidden(next);
+    await fetch(`/api/businesses/${business.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ hidden: next }),
+    });
+    router.refresh();
+  }
+
   const [copied, setCopied] = useState(false);
   const [copiedOutreach, setCopiedOutreach] = useState(false);
   const [members, setMembers] = useState<TeamMember[]>(initialMembers);
@@ -125,6 +143,21 @@ export function BusinessView({
 
   return (
     <div className="flex flex-col min-h-screen">
+
+      {hidden && (
+        <div className="w-full shrink-0 flex items-center justify-between gap-3 px-4 sm:px-8 lg:px-10 py-2 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200/70 dark:border-amber-900/50 text-xs text-amber-800 dark:text-amber-300">
+          <span className="inline-flex items-center gap-1.5">
+            <EyeOff size={12} className="shrink-0" />
+            {business.name} is hidden from your sidebar and dashboard. Nothing is deleted, and team share links still work.
+          </span>
+          <button
+            onClick={() => setBusinessHidden(false)}
+            className="shrink-0 inline-flex items-center gap-1.5 font-semibold px-2.5 py-1 rounded-md hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
+          >
+            <Eye size={12} /> Unhide
+          </button>
+        </div>
+      )}
 
       {/* ── Header — white background, brand identity carried by pill + name color + dot ── */}
       <header className="w-full shrink-0 bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-zinc-800">
@@ -165,8 +198,18 @@ export function BusinessView({
               )}
             </div>
 
-            {/* Share buttons */}
+            {/* Header actions */}
             <div className="shrink-0 flex items-center gap-1.5">
+              {!hidden && (
+                <button
+                  onClick={() => setBusinessHidden(true)}
+                  title="Hide this business from the sidebar and dashboard (nothing is deleted)"
+                  className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/70 hover:bg-white dark:hover:bg-zinc-900 backdrop-blur-sm transition-colors"
+                >
+                  <EyeOff size={12} />
+                  <span className="hidden sm:inline">Hide</span>
+                </button>
+              )}
               {OUTREACH_BUSINESS_IDS.includes(business.id) && (
                 <button
                   onClick={copyOutreachShareLink}

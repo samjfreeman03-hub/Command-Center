@@ -54,6 +54,7 @@ export default async function BusinessPage({
       leadCategoriesEnabled={leadCategoriesEnabled(slug)}
       initialEvents={events}
       initialInitiatives={initiatives}
+      initialHidden={db.hiddenBusinessIds().includes(slug)}
     />
   );
 }

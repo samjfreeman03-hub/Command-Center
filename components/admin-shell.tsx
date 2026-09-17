@@ -5,7 +5,13 @@ import { usePathname, useRouter } from "next/navigation";
 import { Sidebar } from "./sidebar";
 import { Menu } from "lucide-react";
 
-export function AdminShell({ children }: { children: React.ReactNode }) {
+export function AdminShell({
+  children,
+  hiddenBusinessIds,
+}: {
+  children: React.ReactNode;
+  hiddenBusinessIds: string[];
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -49,14 +55,14 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           />
           {/* Drawer — adds safe-area padding at top and bottom */}
           <div className="md:hidden fixed inset-y-0 left-0 z-50 w-[280px] shadow-2xl safe-left">
-            <Sidebar onLogout={logout} onClose={() => setDrawerOpen(false)} />
+            <Sidebar onLogout={logout} onClose={() => setDrawerOpen(false)} hiddenBusinessIds={hiddenBusinessIds} />
           </div>
         </>
       )}
 
       <div className="flex min-h-screen">
         <div className="hidden md:block sticky top-0 h-screen shrink-0">
-          <Sidebar onLogout={logout} />
+          <Sidebar onLogout={logout} hiddenBusinessIds={hiddenBusinessIds} />
         </div>
         {/* mobile-content-offset handles notch via CSS */}
         <main className="flex-1 min-w-0 mobile-content-offset md:pt-0 overflow-x-hidden">

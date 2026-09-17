@@ -37,6 +37,7 @@ function getDb(): Database.Database {
   migrate(db);
   migrateAlter(db);
   seed(db);
+  migrateHiddenBusinesses(db);
   _db = db;
   return db;
 }
@@ -311,6 +312,20 @@ function seed(db: Database.Database) {
     "INSERT OR IGNORE INTO businesses (id, name, created_at) VALUES (?, ?, ?)"
   );
   for (const b of BUSINESSES) insert.run(b.id, b.name, now);
+}
+
+/**
+ * Runs after seed() so the business rows exist. The ALTER throws once the
+ * column is there, so the CampusLink default below applies exactly once and
+ * never overrides a later unhide.
+ */
+function migrateHiddenBusinesses(db: Database.Database) {
+  try {
+    db.exec("ALTER TABLE businesses ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0");
+  } catch {
+    return;
+  }
+  db.exec("UPDATE businesses SET hidden = 1 WHERE id = 'campuslink'");
 }
 
 function parseTodo(row: Record<string, unknown>): Todo {
@@ -883,6 +898,15 @@ export const db = {
 
   updateBusinessTagline(id: string, tagline: string) {
     getDb().prepare("UPDATE businesses SET tagline = ? WHERE id = ?").run(tagline.trim(), id);
+  },
+
+  // ---- Hidden businesses (kept out of the sidebar + dashboard; data untouched) ----
+  hiddenBusinessIds(): string[] {
+    return (getDb().prepare("SELECT id FROM businesses WHERE hidden = 1").all() as { id: string }[]).map((r) => r.id);
+  },
+
+  setBusinessHidden(id: string, hidden: boolean) {
+    getDb().prepare("UPDATE businesses SET hidden = ? WHERE id = ?").run(hidden ? 1 : 0, id);
   },
 
   // ---- Team members ----

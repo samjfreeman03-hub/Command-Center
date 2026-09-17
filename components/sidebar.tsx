@@ -2,13 +2,38 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { BUSINESSES } from "@/lib/businesses";
-import { LayoutDashboard, Mail, Calendar, ExternalLink, LogOut, Sun, Moon, X } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { BUSINESSES, type Business } from "@/lib/businesses";
+import { LayoutDashboard, Mail, Calendar, ExternalLink, LogOut, Sun, Moon, X, ChevronRight, Eye } from "lucide-react";
 
-export function Sidebar({ onLogout, onClose }: { onLogout?: () => void; onClose?: () => void }) {
+export function Sidebar({
+  onLogout,
+  onClose,
+  hiddenBusinessIds,
+}: {
+  onLogout?: () => void;
+  onClose?: () => void;
+  hiddenBusinessIds: string[];
+}) {
   const pathname = usePathname();
+  const router = useRouter();
   const [theme, setTheme] = useState<"light" | "dark" | null>(null);
+
+  const visible = BUSINESSES.filter((b) => !hiddenBusinessIds.includes(b.id));
+  const hidden = BUSINESSES.filter((b) => hiddenBusinessIds.includes(b.id));
+  const isActive = (b: Business) => pathname === `/b/${b.id}` || pathname.startsWith(`/b/${b.id}/`);
+  // Open the Hidden group automatically while viewing one of its businesses
+  const [showHidden, setShowHidden] = useState(false);
+  const hiddenOpen = showHidden || hidden.some(isActive);
+
+  async function unhide(id: string) {
+    await fetch(`/api/businesses/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ hidden: false }),
+    });
+    router.refresh();
+  }
 
   useEffect(() => {
     const stored = localStorage.getItem("theme") as "light" | "dark" | null;
@@ -84,28 +109,47 @@ export function Sidebar({ onLogout, onClose }: { onLogout?: () => void; onClose?
           Businesses
         </div>
         <div className="space-y-0.5">
-          {BUSINESSES.map((b) => {
-            const href = `/b/${b.id}`;
-            const active = pathname === href || pathname.startsWith(`${href}/`);
-            return (
-              <NavItem
-                key={b.id}
-                href={href}
-                active={active}
-                icon={
-                  <span
-                    className="w-5 h-5 rounded-md flex items-center justify-center shrink-0 text-white text-[10px] font-bold shadow-sm"
-                    style={{ backgroundColor: b.hex }}
-                  >
-                    {b.name.charAt(0)}
-                  </span>
-                }
-              >
-                {b.name}
-              </NavItem>
-            );
-          })}
+          {visible.map((b) => (
+            <NavItem key={b.id} href={`/b/${b.id}`} active={isActive(b)} icon={<BrandTile business={b} />}>
+              {b.name}
+            </NavItem>
+          ))}
         </div>
+
+        {/* Hidden businesses: out of the way, one click to reach or restore */}
+        {hidden.length > 0 && (
+          <div className="mt-3">
+            <button
+              onClick={() => setShowHidden((v) => !v)}
+              className="w-full flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-medium text-zinc-400 dark:text-zinc-600 hover:text-zinc-600 dark:hover:text-zinc-400 transition-colors"
+              aria-expanded={hiddenOpen}
+            >
+              <ChevronRight size={11} className={`transition-transform ${hiddenOpen ? "rotate-90" : ""}`} />
+              Hidden · {hidden.length}
+            </button>
+            {hiddenOpen && (
+              <div className="space-y-0.5">
+                {hidden.map((b) => (
+                  <div key={b.id} className="flex items-center gap-1">
+                    <div className="flex-1 min-w-0 opacity-60 hover:opacity-100 transition-opacity">
+                      <NavItem href={`/b/${b.id}`} active={isActive(b)} icon={<BrandTile business={b} />}>
+                        {b.name}
+                      </NavItem>
+                    </div>
+                    <button
+                      onClick={() => unhide(b.id)}
+                      title={`Unhide ${b.name}`}
+                      aria-label={`Unhide ${b.name}`}
+                      className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                    >
+                      <Eye size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Bottom bar */}
@@ -127,6 +171,17 @@ export function Sidebar({ onLogout, onClose }: { onLogout?: () => void; onClose?
         )}
       </div>
     </aside>
+  );
+}
+
+function BrandTile({ business }: { business: Business }) {
+  return (
+    <span
+      className="w-5 h-5 rounded-md flex items-center justify-center shrink-0 text-white text-[10px] font-bold shadow-sm"
+      style={{ backgroundColor: business.hex }}
+    >
+      {business.name.charAt(0)}
+    </span>
   );
 }
 

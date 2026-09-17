@@ -28,11 +28,17 @@ function laNow() {
 }
 
 export default function Dashboard() {
-  const openTodos = db.listTodos({ status: "open" });
-  const pipelineSummary = db.pipelineSummary();
-  const todoCounts = db.todoCounts();
+  // Hidden businesses stay out of every dashboard number, not just the cards.
+  const hiddenIds = new Set(db.hiddenBusinessIds());
+  const shown = <T extends { business_id: string }>(rows: T[]) => rows.filter((r) => !hiddenIds.has(r.business_id));
+  const businesses = BUSINESSES.filter((b) => !hiddenIds.has(b.id));
+  const hiddenBusinesses = BUSINESSES.filter((b) => hiddenIds.has(b.id));
+
+  const openTodos = shown(db.listTodos({ status: "open" }));
+  const pipelineSummary = shown(db.pipelineSummary());
+  const todoCounts = shown(db.todoCounts());
   const scratchpad = db.getAppState("scratchpad") ?? "";
-  const nowInitiatives = db.activeNowInitiatives();
+  const nowInitiatives = shown(db.activeNowInitiatives());
 
   const todosByBusiness = new Map(todoCounts.map((t) => [t.business_id, t.open_count]));
   const pipelineByBusiness = new Map(pipelineSummary.map((p) => [p.business_id, p]));
@@ -67,8 +73,8 @@ export default function Dashboard() {
       </header>
 
       {/* Business cards */}
-      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-10">
-        {BUSINESSES.map((b) => {
+      <section className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 ${hiddenBusinesses.length > 0 ? "mb-3" : "mb-10"}`}>
+        {businesses.map((b) => {
           const pipe = pipelineByBusiness.get(b.id);
           const open = todosByBusiness.get(b.id) ?? 0;
           const focus = initiativesByBusiness.get(b.id) ?? [];
@@ -131,6 +137,20 @@ export default function Dashboard() {
           );
         })}
       </section>
+
+      {hiddenBusinesses.length > 0 && (
+        <p className="mb-10 px-1 text-xs text-zinc-400 dark:text-zinc-600">
+          Hidden:{" "}
+          {hiddenBusinesses.map((b, i) => (
+            <span key={b.id}>
+              {i > 0 && ", "}
+              <Link href={`/b/${b.id}`} className="underline-offset-2 hover:underline hover:text-zinc-600 dark:hover:text-zinc-400">
+                {b.name}
+              </Link>
+            </span>
+          ))}
+        </p>
+      )}
 
       {/* Lower panels */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
