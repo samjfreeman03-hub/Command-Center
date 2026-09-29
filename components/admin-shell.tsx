@@ -75,11 +75,16 @@ export function AdminShell({
         <div className="hidden h-dvh shrink-0 md:block">
           <Sidebar onLogout={logout} hiddenBusinessIds={hiddenBusinessIds} />
         </div>
-        {/* Canvas: full-bleed on phones, an inset rounded surface on desktop */}
+        {/* Canvas: full-bleed on phones, an inset rounded surface on desktop.
+            overflow-x must be `clip`, never `hidden`: `hidden` silently turns
+            this into a scroll container on phones (overflow-y computes to
+            auto), and sticky children then position against its padded inner
+            edge instead of the screen. With a notch that pushed the tab bar
+            down over the content. `clip` contains overflow without that. */}
         <main
           ref={canvasRef}
           id="canvas"
-          className="mobile-content-offset min-w-0 flex-1 overflow-x-hidden bg-canvas md:my-2 md:mr-2 md:overflow-y-auto md:rounded-2xl md:border md:border-line md:pt-0 md:shadow-card"
+          className="mobile-content-offset min-w-0 flex-1 overflow-x-clip bg-canvas md:my-2 md:mr-2 md:overflow-y-auto md:rounded-2xl md:border md:border-line md:pt-0 md:shadow-card"
         >
           {children}
         </main>

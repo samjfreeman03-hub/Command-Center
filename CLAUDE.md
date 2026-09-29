@@ -1374,6 +1374,13 @@ DESIGN.md wins. Highlights:
   + a menu); todo and initiative rows showed the desktop hover cluster
   permanently (now a single "…" `Menu`); CRM toolbar wrapped badly (two rows,
   scrolling filter row). New primitive: `components/ui/menu.tsx`.
+- **Notch bug (2026-09-29), found from Sam's real-iPhone screenshot:** the
+  canvas had `overflow-x-hidden`, which made it a scroll container on phones.
+  The sticky tab bar then positioned against the canvas's padded inner edge, so
+  the notch padding (about 60pt) pushed the bar down over the panel's toolbar.
+  Fixed with `overflow-x-clip`. Invisible in the preview browser because it has
+  no notch; DESIGN.md §3b has the snippet to simulate one. Same pass: header
+  actions moved from `z-30` to `z-[25]` so they scroll under the fixed top bar.
 
 ---
 
@@ -1422,4 +1429,4 @@ DESIGN.md wins. Highlights:
 *End of CLAUDE.md.* Update whenever a major architectural change ships — same
 session as the change, not later. `git log --oneline` + commit bodies fill any
 gap between this doc and the code.
-Last updated: 2026-09-28 (PT).
+Last updated: 2026-09-29 (PT).

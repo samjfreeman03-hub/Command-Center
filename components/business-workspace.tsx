@@ -159,7 +159,9 @@ function Workspace({
             <h1 className="truncate text-xl font-semibold tracking-tight text-ink">{business.name}</h1>
             <div className="text-[13px] text-ink-3">{tagline}</div>
           </div>
-          {actions && <div className="relative z-30 flex shrink-0 items-center gap-1.5">{actions}</div>}
+          {/* Above the sticky tab bar (z-20) so its menu can overlap the tabs,
+              but below the fixed phone top bar (z-30) so it scrolls under it. */}
+          {actions && <div className="relative z-[25] flex shrink-0 items-center gap-1.5">{actions}</div>}
         </div>
       </header>
 

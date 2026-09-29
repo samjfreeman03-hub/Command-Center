@@ -119,6 +119,19 @@ import { cn } from "@/lib/cn";
   this.
 - Page width is fixed: nothing may overflow horizontally except the tab strip
   and the pipeline board, which scroll inside themselves.
+- Never put `overflow-x-hidden` (or any `overflow-*-hidden`) on an ancestor of
+  a sticky element. `hidden` on one axis makes the other compute to `auto`,
+  which turns the element into a scroll container; sticky children then
+  position against its padded inner edge. Use `overflow-x-clip`.
+- Stacking on phones, lowest to highest: sticky tab bar `z-20`, header actions
+  `z-[25]`, fixed top bar `z-30`, drawer `z-40/50`, modals `z-[60]`+.
+- The preview browser has no notch, so `env(safe-area-inset-top)` is 0 there
+  and notch bugs are invisible. When touching the shell, header, or anything
+  sticky, simulate one before shipping by injecting:
+  `.mobile-header{padding-top:60px!important}
+  .mobile-content-offset{padding-top:calc(3.25rem + 60px)!important}
+  .tabs-sticky{top:calc(3.25rem + 60px)!important}`
+  then check the tab bar at scroll 0 and after scrolling.
 
 ## 4. Panel anatomy
 
