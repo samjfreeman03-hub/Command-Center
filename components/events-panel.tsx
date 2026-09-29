@@ -200,7 +200,7 @@ export function EventsPanel({
             </>
           )}
         </div>
-        <Button variant="primary" onClick={() => setEditor({ mode: "new" })}>
+        <Button variant="primary" onClick={() => setEditor({ mode: "new" })} className="ml-auto shrink-0">
           <Plus size={14} /> New event
         </Button>
       </div>

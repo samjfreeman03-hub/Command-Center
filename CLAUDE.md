@@ -1368,6 +1368,12 @@ DESIGN.md wins. Highlights:
   switch notes no longer touches the new note's state, and refs are updated
   immediately so the queued follow-up save cannot POST a duplicate note.
 - Copy rule everywhere: no em or en dashes in UI text, sentence case.
+- **Phone pass (2026-09-28):** see DESIGN.md §3b. Fixed: active tab could sit
+  off-screen after a deep link (strip now auto-scrolls + fade hints); iOS zoomed
+  on every input (16px on phones); header held three cramped buttons (now Share
+  + a menu); todo and initiative rows showed the desktop hover cluster
+  permanently (now a single "…" `Menu`); CRM toolbar wrapped badly (two rows,
+  scrolling filter row). New primitive: `components/ui/menu.tsx`.
 
 ---
 
@@ -1416,4 +1422,4 @@ DESIGN.md wins. Highlights:
 *End of CLAUDE.md.* Update whenever a major architectural change ships — same
 session as the change, not later. `git log --oneline` + commit bodies fill any
 gap between this doc and the code.
-Last updated: 2026-09-17 (PT).
+Last updated: 2026-09-28 (PT).

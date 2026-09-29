@@ -3,14 +3,13 @@
 import { useEffect, useState } from "react";
 import type { Initiative, InitiativeLink } from "@/lib/types";
 import { INITIATIVE_KINDS, INITIATIVE_HORIZONS, INITIATIVE_STATUSES } from "@/lib/types";
-import {
-  Plus, Trash2, X, Target, CalendarDays, ArrowRight, ArrowUp, ArrowDown, CircleCheck, Circle, PauseCircle, Link2,
-} from "lucide-react";
+import { Plus, Trash2, X, Target, CalendarDays, ArrowRight, ArrowUp, ArrowDown, CircleCheck, Circle, PauseCircle, Link2, Pencil } from "lucide-react";
 import { useShareHeaders } from "@/lib/share-context";
 import { usePanelState } from "@/lib/panel-cache";
 import { cn } from "@/lib/cn";
 import { AutoTextarea } from "@/components/auto-textarea";
 import { Button, IconButton } from "@/components/ui/button";
+import { Menu } from "@/components/ui/menu";
 import { Input, Field, textareaClass, FieldGroup } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { confirmDialog, toast } from "@/components/ui/host";
@@ -389,7 +388,19 @@ function InitiativeRow({
 
       {/* Quick move between horizons, no modal needed */}
       {isActive && (
-        <div className="-my-1 -mr-1.5 flex shrink-0 items-center transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
+        <div className="-my-1 -mr-2 shrink-0 md:hidden">
+          <Menu
+            size="sm"
+            items={[
+              { label: "Edit", icon: <Pencil size={13} />, onSelect: onOpen },
+              ...(sooner ? [{ label: `Move to ${horizonLabel(sooner)}`, icon: <ArrowUp size={14} />, onSelect: () => onMove(sooner) }] : []),
+              ...(later ? [{ label: `Move to ${horizonLabel(later)}`, icon: <ArrowDown size={14} />, onSelect: () => onMove(later) }] : []),
+            ]}
+          />
+        </div>
+      )}
+      {isActive && (
+        <div className="-my-1 -mr-1.5 hidden shrink-0 items-center transition-opacity md:flex md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
           {sooner && (
             <IconButton size="sm" label={`Move to ${horizonLabel(sooner)}`} onClick={() => onMove(sooner)}>
               <ArrowUp size={14} />

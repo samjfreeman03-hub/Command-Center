@@ -111,6 +111,16 @@ body {
 
 ::selection { background: color-mix(in srgb, var(--ink) 16%, transparent); }
 
+/* iOS Safari zooms the page when a focused control's font is under 16px.
+   Every text control is 14px in the design, so bump them on phones only. */
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
 /* ── Safe area utilities ─────────────────────────────────────────── */
 
 /* Mobile header: sits under the status bar (safe-area-inset-top) */

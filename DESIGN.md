@@ -62,6 +62,7 @@ import { Modal } from "@/components/ui/modal";
 import { confirmDialog, toast } from "@/components/ui/host";
 import { Badge, BrandTile, Card, EmptyState, Kbd, SectionHeader } from "@/components/ui/display";
 import { Segmented } from "@/components/ui/segmented";
+import { Menu } from "@/components/ui/menu";
 import { cn } from "@/lib/cn";
 ```
 
@@ -96,6 +97,28 @@ import { cn } from "@/lib/cn";
 - `<SectionHeader title count hint action>` above a group.
 - `<EmptyState icon title body action>` for every empty list. Always offer the
   next step as the action.
+- `<Menu items label size align>` is a small dropdown ("…" trigger by default).
+  Use it to fold several actions into one tap target on phones.
+- `<Segmented wrap={false}>` keeps one row and scrolls horizontally, for
+  filter rows on phones.
+
+## 3b. Phones (below md)
+
+- Row actions: never show a cluster of icon buttons on phones. Render a single
+  `<Menu>` there (`md:hidden`) and keep the hover cluster for desktop
+  (`hidden md:flex … md:opacity-0 md:group-hover:opacity-100`). Todos and
+  Initiatives are the reference implementations.
+- Header actions: one labeled primary action plus a `<Menu>` on phones; the
+  full set inline from `sm` up (see `app/b/[slug]/business-view.tsx`).
+- Toolbars: search + primary button on the first row, filters on a second row
+  with `Segmented wrap={false}`. Give a wrapping primary button `ml-auto`.
+- Text controls are forced to 16px on phones in `globals.css` so iOS Safari
+  does not zoom on focus. Do not fight it with smaller sizes.
+- The business tab strip scrolls; the active tab is auto-scrolled into view and
+  fade hints appear on the side with more tabs. Deep links to far tabs rely on
+  this.
+- Page width is fixed: nothing may overflow horizontally except the tab strip
+  and the pipeline board, which scroll inside themselves.
 
 ## 4. Panel anatomy
 

@@ -337,7 +337,7 @@ export function CommandPalette({ hiddenBusinessIds }: { hiddenBusinessIds: strin
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder={placeholder}
-            className="h-13 min-w-0 flex-1 bg-transparent text-[15px] text-ink outline-none placeholder:text-ink-4"
+            className="h-13 min-w-0 flex-1 bg-transparent text-base text-ink outline-none placeholder:text-ink-4 md:text-[15px]"
             autoComplete="off"
             spellCheck={false}
           />

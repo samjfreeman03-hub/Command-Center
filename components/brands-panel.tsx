@@ -158,30 +158,30 @@ export function BrandsPanel({
     <div>
       {/* Toolbar */}
       <div className="mb-5 space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-            {/* Local icon input: PrefixInput's `prefix` prop is typed as a string (clashes with the native attribute). */}
-            <div className="relative w-full sm:w-60">
-              <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3" />
-              <Input
-                className="pl-8"
-                type="search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search contacts"
-                aria-label="Search contacts"
-              />
-            </div>
-            <Segmented size="sm" options={filterOptions} value={filter} onChange={setFilter} />
-            {filtersActive && (
-              <span className="text-xs tabular-nums text-ink-3">
-                {filtered.length} of {brands.length}
-              </span>
-            )}
+        <div className="flex items-center gap-2">
+          {/* Local icon input: PrefixInput's `prefix` prop is typed as a string (clashes with the native attribute). */}
+          <div className="relative min-w-0 flex-1 sm:max-w-60">
+            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3" />
+            <Input
+              className="pl-8"
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search contacts"
+              aria-label="Search contacts"
+            />
           </div>
           <Button variant="primary" onClick={() => setEditor({ mode: "new" })} className="shrink-0">
-            <Plus size={14} /> New contact
+            <Plus size={14} /> <span className="hidden sm:inline">New contact</span><span className="sm:hidden">New</span>
           </Button>
+        </div>
+        <div className="flex items-center gap-2">
+          <Segmented size="sm" wrap={false} options={filterOptions} value={filter} onChange={setFilter} className="min-w-0" />
+          {filtersActive && (
+            <span className="shrink-0 text-xs tabular-nums text-ink-3">
+              {filtered.length} of {brands.length}
+            </span>
+          )}
         </div>
 
         {/* Industries filter (shared tag pool, feature-flagged per business) */}

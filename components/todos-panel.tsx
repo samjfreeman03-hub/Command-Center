@@ -7,6 +7,7 @@ import { useShareHeaders } from "@/lib/share-context";
 import { usePanelState } from "@/lib/panel-cache";
 import { refreshNav } from "@/lib/ui-events";
 import { Button, IconButton } from "@/components/ui/button";
+import { Menu } from "@/components/ui/menu";
 import { confirmDialog, toast } from "@/components/ui/host";
 import { Badge, Card, EmptyState, SectionHeader } from "@/components/ui/display";
 import { Segmented } from "@/components/ui/segmented";
@@ -685,7 +686,22 @@ function TodoRow({
         )}
       </div>
 
-      <div className="-my-1 flex shrink-0 items-center gap-0.5 transition-opacity focus-within:opacity-100 md:opacity-0 md:group-hover:opacity-100">
+      {/* Phones: one menu keeps the title readable. Desktop: hover cluster. */}
+      <div className="-my-1 -mr-2 shrink-0 md:hidden">
+        <AssigneeMenu members={members} selected={todo.assignee_ids ?? []} onChange={(ids) => onSetAssignees(todo.id, ids)} align="right">
+          {(toggleAssign) => (
+            <Menu
+              size="sm"
+              items={[
+                { label: "Edit", icon: <Pencil size={13} />, onSelect: startEdit },
+                ...(members.length > 0 ? [{ label: "Assign", icon: <UserCircle2 size={14} />, onSelect: toggleAssign }] : []),
+                { label: "Delete", icon: <Trash2 size={14} />, onSelect: () => onDelete(todo.id), danger: true },
+              ]}
+            />
+          )}
+        </AssigneeMenu>
+      </div>
+      <div className="-my-1 hidden shrink-0 items-center gap-0.5 transition-opacity focus-within:opacity-100 md:flex md:opacity-0 md:group-hover:opacity-100">
         <IconButton label="Edit" size="sm" onClick={startEdit}>
           <Pencil size={13} />
         </IconButton>

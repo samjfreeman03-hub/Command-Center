@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { brandVars, type Business } from "@/lib/businesses";
 import type {
   Todo, Lead, LeadCategory, BizEvent, Initiative, Note, ChatMessage, BusinessResource, TeamMember, BrandContact, OutreachTarget,
@@ -129,6 +129,25 @@ function Workspace({
 
   const column = "mx-auto w-full max-w-6xl";
   const wide = WIDE_TABS.includes(tab);
+
+  // On phones the tab strip scrolls. Keep the active tab in view (a deep link
+  // to Notes used to land with its tab off-screen) and show fade hints only on
+  // the side that has more tabs.
+  const stripRef = useRef<HTMLDivElement>(null);
+  const [fade, setFade] = useState({ left: false, right: false });
+  const measureFade = useCallback(() => {
+    const el = stripRef.current;
+    if (!el) return;
+    setFade({ left: el.scrollLeft > 4, right: el.scrollLeft + el.clientWidth < el.scrollWidth - 4 });
+  }, []);
+  useEffect(() => {
+    const el = stripRef.current;
+    if (!el) return;
+    el.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ inline: "center", block: "nearest" });
+    measureFade();
+    window.addEventListener("resize", measureFade);
+    return () => window.removeEventListener("resize", measureFade);
+  }, [tab, measureFade]);
   return (
     <div className="brand-scope flex min-h-full flex-col" style={brandVars(business)}>
       {banner}
@@ -140,13 +159,15 @@ function Workspace({
             <h1 className="truncate text-xl font-semibold tracking-tight text-ink">{business.name}</h1>
             <div className="text-[13px] text-ink-3">{tagline}</div>
           </div>
-          {actions && <div className="flex shrink-0 items-center gap-1.5">{actions}</div>}
+          {actions && <div className="relative z-30 flex shrink-0 items-center gap-1.5">{actions}</div>}
         </div>
       </header>
 
       {/* Tabs (sticky while the panel scrolls) */}
-      <div className={cn(stickyClass, "mt-4 shrink-0 border-b border-line bg-canvas/85 px-4 backdrop-blur-md sm:px-8")}>
-        <div className={cn(column, "scrollbar-none -mb-px flex gap-0.5 overflow-x-auto")} role="tablist">
+      <div className={cn(stickyClass, "relative mt-4 shrink-0 border-b border-line bg-canvas/85 px-4 backdrop-blur-md sm:px-8")}>
+        {fade.left && <span aria-hidden className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-gradient-to-r from-canvas to-transparent" />}
+        {fade.right && <span aria-hidden className="pointer-events-none absolute inset-y-0 right-0 z-10 w-10 bg-gradient-to-l from-canvas to-transparent" />}
+        <div ref={stripRef} onScroll={measureFade} className={cn(column, "scrollbar-none -mb-px flex gap-0.5 overflow-x-auto")} role="tablist">
           {tabs.map((t) => {
             const active = tab === t.id;
             const count = counts[t.id];

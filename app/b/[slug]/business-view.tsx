@@ -8,6 +8,7 @@ import type { TabId } from "@/lib/tabs";
 import { OUTREACH_BUSINESS_IDS } from "@/lib/outreach-config";
 import { BusinessWorkspace, type WorkspaceData } from "@/components/business-workspace";
 import { Button, IconButton } from "@/components/ui/button";
+import { Menu } from "@/components/ui/menu";
 import { toast } from "@/components/ui/host";
 import { Link2, Pencil, Send, Eye, EyeOff } from "lucide-react";
 
@@ -99,26 +100,39 @@ export function BusinessView({
     </button>
   );
 
+  const hasOutreach = OUTREACH_BUSINESS_IDS.includes(business.id);
+  const shareOutreach = () => copyLink(`/s/${shareToken}/outreach`, "Outreach link copied");
+  const shareTeam = () => copyLink(`/s/${shareToken}`, "Team link copied");
+
   const actions = (
     <>
-      {!hidden && (
-        <IconButton label="Hide from sidebar and dashboard (nothing is deleted)" onClick={() => setBusinessHidden(true)}>
-          <EyeOff size={15} />
-        </IconButton>
-      )}
-      {OUTREACH_BUSINESS_IDS.includes(business.id) && (
-        <Button
-          onClick={() => copyLink(`/s/${shareToken}/outreach`, "Outreach link copied")}
-          title="Copy a link to just the Outreach tab (same team password)"
-        >
-          <Send size={13} />
-          <span className="hidden sm:inline">Share outreach</span>
-        </Button>
-      )}
-      <Button onClick={() => copyLink(`/s/${shareToken}`, "Team link copied")} title="Copy the full team share link">
+      {/* Phones: one Share button plus a menu. Wider: every action inline. */}
+      <Button onClick={shareTeam} title="Copy the full team share link">
         <Link2 size={13} />
-        <span className="hidden sm:inline">Share</span>
+        Share
       </Button>
+      <div className="sm:hidden">
+        <Menu
+          label="More"
+          items={[
+            ...(hasOutreach ? [{ label: "Share outreach link", icon: <Send size={13} />, onSelect: shareOutreach }] : []),
+            ...(!hidden ? [{ label: "Hide this business", icon: <EyeOff size={13} />, onSelect: () => setBusinessHidden(true) }] : []),
+          ]}
+        />
+      </div>
+      <div className="hidden items-center gap-1.5 sm:flex">
+        {hasOutreach && (
+          <Button onClick={shareOutreach} title="Copy a link to just the Outreach tab (same team password)">
+            <Send size={13} />
+            Share outreach
+          </Button>
+        )}
+        {!hidden && (
+          <IconButton label="Hide from sidebar and dashboard (nothing is deleted)" onClick={() => setBusinessHidden(true)}>
+            <EyeOff size={15} />
+          </IconButton>
+        )}
+      </div>
     </>
   );
 
