@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { leadCategoriesEnabled } from "@/lib/pipeline-config";
 import { eventsEnabled } from "@/lib/events-config";
 import { BusinessView } from "./business-view";
+import { todayLA } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,7 @@ export default async function BusinessPage({
 
   const data = {
     initiatives: db.listInitiatives(slug),
+    ious: db.listIous(slug),
     todos: db.listTodos({ businessId: slug }),
     leads: db.listLeads({ businessId: slug }),
     events: eventsEnabled(slug) ? db.listEvents(slug) : [],
@@ -46,6 +48,7 @@ export default async function BusinessPage({
       leadCategories={leadCategoriesEnabled(slug) ? db.listLeadCategories(slug) : []}
       leadCategoriesEnabled={leadCategoriesEnabled(slug)}
       initialHidden={db.hiddenBusinessIds().includes(slug)}
+      today={todayLA()}
     />
   );
 }

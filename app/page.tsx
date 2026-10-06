@@ -6,6 +6,7 @@ import { ArrowRight, ChevronRight, ListTodo, Target, TrendingUp, CalendarClock }
 import { DashboardTodos } from "@/components/dashboard-todos";
 import { ScratchpadPanel } from "@/components/scratchpad-panel";
 import { MoneyPanel } from "@/components/money-panel";
+import { todayLA } from "@/lib/dates";
 import { TodayAttention, type AttentionItem } from "@/components/today-attention";
 import { BrandTile, Card, EmptyState, SectionHeader } from "@/components/ui/display";
 
@@ -26,7 +27,7 @@ function laNow() {
   const now = new Date();
   const hour = Number(new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: false, timeZone: LA_TZ }).format(now));
   const dateLabel = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: LA_TZ }).format(now);
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone: LA_TZ }).format(now); // YYYY-MM-DD
+  const today = todayLA();
   const greeting = hour < 5 ? "Burning the midnight oil" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   return { dateLabel, greeting, today };
 }

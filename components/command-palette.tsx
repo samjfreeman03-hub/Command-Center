@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   Search, CornerDownLeft, LayoutGrid, Sparkles, Plus, SunMoon, ArrowLeft, Target, ListTodo, TrendingUp,
-  Building2, StickyNote, CalendarDays, Send, Loader2,
+  Building2, StickyNote, CalendarDays, Send, Loader2, Wallet,
 } from "lucide-react";
 import { BUSINESSES, getBusiness, type Business } from "@/lib/businesses";
 import { tabsForBusiness } from "@/lib/tabs";
@@ -33,6 +33,7 @@ const CREATABLE = [
   { kind: "lead", label: "New lead", tab: "pipeline", Icon: TrendingUp },
   { kind: "contact", label: "New CRM contact", tab: "brands", Icon: Building2 },
   { kind: "note", label: "New note", tab: "notes", Icon: StickyNote },
+  { kind: "iou", label: "New money entry", tab: "money", Icon: Wallet },
 ] as const;
 
 type CreateKind = (typeof CREATABLE)[number]["kind"];
@@ -49,10 +50,11 @@ const HIT_ICONS: Record<SearchHit["type"], React.ReactNode> = {
   note: <StickyNote size={14} />,
   event: <CalendarDays size={14} />,
   outreach: <Send size={14} />,
+  iou: <Wallet size={14} />,
 };
 
 const HIT_LABELS: Record<SearchHit["type"], string> = {
-  initiative: "Initiatives", todo: "Todos", lead: "Pipeline", contact: "CRM", note: "Notes", event: "Events", outreach: "Outreach",
+  initiative: "Initiatives", todo: "Todos", lead: "Pipeline", contact: "CRM", note: "Notes", event: "Events", outreach: "Outreach", iou: "Money",
 };
 
 /**

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { brandVars, type Business } from "@/lib/businesses";
 import type {
-  Todo, Lead, LeadCategory, BizEvent, Initiative, Note, ChatMessage, BusinessResource, TeamMember, BrandContact, OutreachTarget,
+  Todo, Lead, LeadCategory, BizEvent, Initiative, Iou, Note, ChatMessage, BusinessResource, TeamMember, BrandContact, OutreachTarget,
 } from "@/lib/types";
 import { tabsForBusiness, type TabId } from "@/lib/tabs";
 import { PanelCacheProvider, usePanelValue } from "@/lib/panel-cache";
@@ -19,9 +19,12 @@ import { ResourcesPanel } from "@/components/resources-panel";
 import { NotesPanel } from "@/components/notes-panel";
 import { ChatPanel } from "@/components/chat-panel";
 import { TeamPanel } from "@/components/team-panel";
+import { MoneyPanel } from "@/components/money-panel";
 
 export type WorkspaceData = {
   initiatives: Initiative[];
+  /** Owner only; share pages pass []. */
+  ious: Iou[];
   todos: Todo[];
   leads: Lead[];
   events: BizEvent[];
@@ -53,6 +56,10 @@ type Props = {
   onTabChange?: (tab: TabId) => void;
   /** Share pages have no fixed mobile header, so their tabs stick to the very top. */
   stickyClass?: "tabs-sticky" | "tabs-sticky-top";
+  /** Team share page: owner-only tabs (Money) are hidden. */
+  share?: boolean;
+  /** YYYY-MM-DD in Sam's timezone, from the server. */
+  today: string;
 };
 
 /** Tabs whose content needs the full canvas width instead of the readable column. */
@@ -75,9 +82,9 @@ export function BusinessWorkspace(props: Props) {
 
 function Workspace({
   business, data, initialTab, openId, autoNew, leadCategories = [], leadCategoriesEnabled = false,
-  tagline, actions, banner, onTabChange, stickyClass = "tabs-sticky",
+  tagline, actions, banner, onTabChange, stickyClass = "tabs-sticky", share, today,
 }: Props) {
-  const tabs = tabsForBusiness(business.id);
+  const tabs = tabsForBusiness(business.id, { share });
   const resolve = (t?: string) => (tabs.find((x) => x.id === t)?.id ?? "initiatives") as TabId;
   const [tab, setTabState] = useState<TabId>(resolve(initialTab));
   const [members, setMembers] = useState<TeamMember[]>(data.members);
@@ -119,12 +126,13 @@ function Workspace({
   const leads = usePanelValue("leads", data.leads);
   const initiatives = usePanelValue("initiatives", data.initiatives);
   const events = usePanelValue("events", data.events);
-  const today = new Date().toISOString().slice(0, 10);
+  const ious = usePanelValue("ious", data.ious);
   const counts: Partial<Record<TabId, number>> = {
     initiatives: initiatives.filter((i) => i.status === "active" && i.horizon === "now").length,
     todos: todos.filter((t) => t.status === "open").length,
     pipeline: leads.filter((l) => l.stage !== "won" && l.stage !== "lost").length,
     events: events.filter((e) => e.status !== "completed" && e.status !== "cancelled" && (!e.date || e.date >= today)).length,
+    money: ious.filter((i) => i.status === "open").length,
   };
 
   const column = "mx-auto w-full max-w-6xl";
@@ -200,6 +208,7 @@ function Workspace({
         {tab === "todos"       && <TodosPanel businessId={business.id} initial={data.todos} members={members} {...link} />}
         {tab === "pipeline"    && <PipelinePanel businessId={business.id} initial={data.leads} categories={leadCategories} categoriesEnabled={leadCategoriesEnabled} {...link} />}
         {tab === "events"      && <EventsPanel businessId={business.id} initial={data.events} {...link} />}
+        {tab === "money"       && !share && <MoneyPanel business={business} initial={data.ious} today={today} hideHeader {...link} />}
         {tab === "outreach"    && <OutreachPanel businessId={business.id} initial={data.outreach} openId={link.openId} />}
         {tab === "brands"      && <BrandsPanel businessId={business.id} initial={data.brands} categories={leadCategories} categoriesEnabled={leadCategoriesEnabled} {...link} />}
         {tab === "resources"   && <ResourcesPanel businessId={business.id} initial={data.resources} />}

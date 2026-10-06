@@ -4,6 +4,7 @@ import { BUSINESSES } from "@/lib/businesses";
 import { hasSharePasswordAuth } from "@/lib/server-auth";
 import { eventsEnabled } from "@/lib/events-config";
 import { SharedView } from "./shared-view";
+import { todayLA } from "@/lib/dates";
 import { SharePasswordGate } from "./share-password-gate";
 
 export const dynamic = "force-dynamic";
@@ -47,6 +48,7 @@ export default async function SharePage({
 
   const data = {
     initiatives: db.listInitiatives(businessId),
+    ious: [],
     todos: db.listTodos({ businessId }),
     leads: db.listLeads({ businessId }),
     events: eventsEnabled(businessId) ? db.listEvents(businessId) : [],
@@ -64,6 +66,7 @@ export default async function SharePage({
       shareToken={token}
       tagline={db.getBusinessTagline(businessId) ?? business.tagline}
       data={data}
+      today={todayLA()}
     />
   );
 }

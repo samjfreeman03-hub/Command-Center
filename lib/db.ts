@@ -922,15 +922,15 @@ export const db = {
   },
 
   // ---- IOUs (money owed in either direction; dashboard) ----
-  listIous(): Iou[] {
+  listIous(businessId?: string): Iou[] {
     return getDb()
       .prepare(
-        `SELECT * FROM ious ORDER BY
+        `SELECT * FROM ious ${businessId ? "WHERE business_id = ?" : ""} ORDER BY
            CASE status WHEN 'open' THEN 0 ELSE 1 END,
            CASE WHEN due_date IS NULL THEN 1 ELSE 0 END, due_date ASC,
            created_at DESC`
       )
-      .all() as Iou[];
+      .all(...(businessId ? [businessId] : [])) as Iou[];
   },
 
   getIou(id: number): Iou | undefined {
@@ -1036,6 +1036,10 @@ export const db = {
       ...run(
         `SELECT 'event' AS type, id, business_id, name AS title, COALESCE(date, 'Date TBD') AS subtitle, 'events' AS tab
          FROM events WHERE ${m(["name", "venue", "city", "notes"])} ORDER BY date DESC LIMIT ?`, p(4)),
+      ...run(
+        `SELECT 'iou' AS type, id, business_id, party AS title,
+                (CASE direction WHEN 'owe' THEN 'you owe' ELSE 'owes you' END) || CASE WHEN amount_cents IS NOT NULL THEN ' $' || CAST(amount_cents / 100 AS INTEGER) ELSE '' END || CASE WHEN status = 'settled' THEN ' · settled' ELSE '' END AS subtitle, 'money' AS tab
+         FROM ious WHERE ${m(["party", "note"])} ORDER BY status = 'settled', updated_at DESC LIMIT ?`, p(2)),
       ...run(
         `SELECT 'outreach' AS type, id, business_id, brand_name AS title, person_name || ' · ' || status AS subtitle, 'outreach' AS tab
          FROM outreach_targets WHERE ${m(["brand_name", "person_name", "person_title"])} ORDER BY updated_at DESC LIMIT ?`, p(3)),

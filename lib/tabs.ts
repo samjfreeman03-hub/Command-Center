@@ -1,5 +1,5 @@
 import {
-  Target, ListTodo, TrendingUp, CalendarDays, Send, Building2, FolderOpen, StickyNote, MessageSquare, Users,
+  Target, ListTodo, TrendingUp, CalendarDays, Send, Building2, FolderOpen, StickyNote, MessageSquare, Users, Wallet,
 } from "lucide-react";
 import { OUTREACH_BUSINESS_IDS } from "./outreach-config";
 import { EVENTS_BUSINESS_IDS } from "./events-config";
@@ -9,6 +9,7 @@ export const TABS = [
   { id: "initiatives", label: "Initiatives", Icon: Target },
   { id: "todos",       label: "Todos",       Icon: ListTodo },
   { id: "pipeline",    label: "Pipeline",    Icon: TrendingUp },
+  { id: "money",       label: "Money",       Icon: Wallet },
   { id: "events",      label: "Events",      Icon: CalendarDays },
   { id: "outreach",    label: "Outreach",    Icon: Send },
   { id: "brands",      label: "CRM",         Icon: Building2 },
@@ -20,11 +21,15 @@ export const TABS = [
 
 export type TabId = (typeof TABS)[number]["id"];
 
-/** Feature-flagged tabs: Outreach (FLAIR + MTRNM), Events (TechSpace + MTRNM + FLAIR). */
-export function tabsForBusiness(businessId: string) {
+/**
+ * Feature-flagged tabs: Outreach (FLAIR + MTRNM), Events (TechSpace + MTRNM + FLAIR).
+ * Money is owner-only (the IOU API is admin-only), so it is dropped on share pages.
+ */
+export function tabsForBusiness(businessId: string, opts?: { share?: boolean }) {
   return TABS.filter(
     (t) =>
       (t.id !== "outreach" || OUTREACH_BUSINESS_IDS.includes(businessId)) &&
-      (t.id !== "events" || EVENTS_BUSINESS_IDS.includes(businessId))
+      (t.id !== "events" || EVENTS_BUSINESS_IDS.includes(businessId)) &&
+      (t.id !== "money" || !opts?.share)
   );
 }

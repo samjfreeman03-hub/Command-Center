@@ -10,16 +10,18 @@ export function SharedView({
   shareToken,
   tagline,
   data,
+  today,
 }: {
   business: Business;
   shareToken: string;
   tagline: string;
   data: WorkspaceData;
+  today: string;
 }) {
   return (
     <ShareTokenContext.Provider value={shareToken}>
       <div className="min-h-dvh bg-canvas">
-        <BusinessWorkspace business={business} data={data} tagline={tagline} stickyClass="tabs-sticky-top" />
+        <BusinessWorkspace business={business} data={data} tagline={tagline} stickyClass="tabs-sticky-top" share today={today} />
       </div>
     </ShareTokenContext.Provider>
   );

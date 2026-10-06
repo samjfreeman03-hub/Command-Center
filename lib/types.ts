@@ -339,7 +339,7 @@ export type OutreachTarget = {
 
 /** One global-search result (see db.search). Deep-links to /b/<business_id>?tab=<tab>&open=<id>. */
 export type SearchHit = {
-  type: "initiative" | "todo" | "lead" | "contact" | "note" | "event" | "outreach";
+  type: "initiative" | "todo" | "lead" | "contact" | "note" | "event" | "outreach" | "iou";
   id: number;
   business_id: string;
   title: string;

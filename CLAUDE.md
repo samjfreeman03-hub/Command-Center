@@ -199,7 +199,7 @@ business's data. Don't bypass it; don't reimplement it.
 | `lead_categories`    | User-defined tag registry (Stealth; shared pipeline+CRM) |
 | `events`             | Hosted events (TechSpace/MTRNM/FLAIR) — see §25   |
 | `initiatives`        | High-level strategic items, all businesses — see §26b |
-| `ious`               | Money owed in either direction (dashboard Money panel) — see §33 |
+| `ious`               | Money owed in either direction (dashboard + per-business Money tab) — see §33 |
 | `app_state`          | Key-value store (e.g. dashboard scratchpad); GET/PUT /api/scratchpad |
 
 JSON-array TEXT columns (decoded by parse helpers in `lib/db.ts`):
@@ -1439,6 +1439,16 @@ DESIGN.md wins. Highlights:
   a check to settle (Undo toast), settled list collapsed, one `Modal` for
   add/edit. `GET/POST /api/ious`, `PATCH/DELETE /api/ious/[id]`, admin only;
   body cleaning lives in `lib/ious.ts`.
+- **Money tab on every business page (2026-10-06):** `TABS` in `lib/tabs.ts`
+  has `money` (after Pipeline). `tabsForBusiness(id, { share: true })` drops it
+  on team share pages because the IOU API is admin-only; share pages pass
+  `ious: []`. The same `MoneyPanel` renders there with `business` set: entries
+  filtered by `db.listIous(businessId)`, the company field locked to that
+  business in the modal, labels phrased from that business's side ("Owed to
+  FLAIR" / "FLAIR owes"; "They owe you" on Personal). Dashboard and tab share
+  the `ious` panel-cache key. Global search returns IOUs (`type: "iou"`, deep
+  link `?tab=money&open=<id>`); the palette has "New money entry".
+  `lib/dates.ts` `todayLA()` is the one place that computes today's date.
 - Overdue or due-today open IOUs appear in Needs attention as kind `money`
   ("Collect $X from Y" / "Pay $X to Y", links to `/#money`).
 - Ask AI gets a MONEY OWED block in its system prompt (read only, no tools yet).

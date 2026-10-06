@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { usePanelState } from "@/lib/panel-cache";
 import { Plus, Check, Wallet, ChevronDown } from "lucide-react";
 import type { Iou } from "@/lib/types";
-import { BUSINESSES, getBusiness } from "@/lib/businesses";
+import { BUSINESSES, getBusiness, type Business } from "@/lib/businesses";
 import { Button, IconButton } from "@/components/ui/button";
 import { Input, Select, PrefixInput, Field, FieldGroup, textareaClass } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
@@ -51,11 +52,37 @@ function toBody(f: Form) {
   };
 }
 
-/** Dashboard money tracker: who owes whom, for which company, settle in place. */
-export function MoneyPanel({ initial, today }: { initial: Iou[]; today: string }) {
-  const [items, setItems] = useState(initial);
-  const [editor, setEditor] = useState<{ mode: "new" } | { mode: "edit"; iou: Iou } | null>(null);
+/**
+ * Money tracker: who owes whom, for which company, settle in place.
+ * On the dashboard it shows everything; inside a business page (`business`
+ * set) it shows only that business's entries and new ones are filed there.
+ */
+export function MoneyPanel({
+  initial, today, business, openId, autoNew, hideHeader,
+}: {
+  initial: Iou[];
+  today: string;
+  business?: Business;
+  /** Deep link: open this entry's editor on mount. */
+  openId?: number;
+  /** Deep link: open the add form on mount. */
+  autoNew?: boolean;
+  /** Business tab: the workspace toolbar replaces the section header. */
+  hideHeader?: boolean;
+}) {
+  const [items, setItems] = usePanelState("ious", initial);
+  const [editor, setEditor] = useState<{ mode: "new" } | { mode: "edit"; iou: Iou } | null>(autoNew ? { mode: "new" } : null);
   const [showSettled, setShowSettled] = useState(false);
+
+  useEffect(() => {
+    if (openId == null) return;
+    const found = items.find((i) => i.id === openId);
+    if (found) {
+      setEditor({ mode: "edit", iou: found });
+      if (found.status === "settled") setShowSettled(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId]);
 
   const open = items.filter((i) => i.status === "open");
   const owe = open.filter((i) => i.direction === "owe");
@@ -64,7 +91,7 @@ export function MoneyPanel({ initial, today }: { initial: Iou[]; today: string }
   const sum = (list: Iou[]) => list.reduce((s, i) => s + (i.amount_cents ?? 0), 0);
 
   async function save(form: Form) {
-    const body = toBody(form);
+    const body = toBody(business ? { ...form, business_id: business.id } : form);
     if (editor?.mode === "edit") {
       const prev = items;
       setItems((list) => list.map((i) => (i.id === editor.iou.id ? { ...i, ...body } : i)));
@@ -107,28 +134,45 @@ export function MoneyPanel({ initial, today }: { initial: Iou[]; today: string }
 
   return (
     <div id="money" className="scroll-mt-16">
-      <SectionHeader
-        title="Money"
-        hint={hint}
-        action={
-          <Button size="sm" onClick={() => setEditor({ mode: "new" })}>
-            <Plus size={13} /> Add
+      {hideHeader ? (
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-[13px] text-ink-3">
+            {open.length === 0 ? "Nothing outstanding" : (
+              <>
+                {owed.length > 0 && <><span className="font-medium tabular-nums text-emerald-600 dark:text-emerald-400">{money(sum(owed))}</span> owed to {business?.id === "personal" ? "you" : business?.name}</>}
+                {owed.length > 0 && owe.length > 0 && <span className="mx-2 text-ink-4">·</span>}
+                {owe.length > 0 && <><span className="font-medium tabular-nums text-red-600 dark:text-red-400">{money(sum(owe))}</span> {business?.id === "personal" ? "you owe" : `${business?.name} owes`}</>}
+              </>
+            )}
+          </div>
+          <Button variant="primary" onClick={() => setEditor({ mode: "new" })}>
+            <Plus size={14} /> New entry
           </Button>
-        }
-      />
+        </div>
+      ) : (
+        <SectionHeader
+          title="Money"
+          hint={hint}
+          action={
+            <Button size="sm" onClick={() => setEditor({ mode: "new" })}>
+              <Plus size={13} /> Add
+            </Button>
+          }
+        />
+      )}
       <Card>
         {open.length === 0 && settled.length === 0 ? (
           <EmptyState
             icon={<Wallet size={18} />}
             title="Nothing outstanding"
-            body="Track who owes you and who you owe, for each company or personally."
+            body={business ? (business.id === "personal" ? "Track who owes you and who you owe personally." : `Track who owes ${business.name} and who ${business.name} owes.`) : "Track who owes you and who you owe, for each company or personally."}
             action={<Button onClick={() => setEditor({ mode: "new" })}><Plus size={14} /> Add an entry</Button>}
             className="py-10"
           />
         ) : (
           <div className="divide-y divide-line">
-            {owed.length > 0 && <Group label="Owed to you" total={money(sum(owed))} tone="green" items={owed} today={today} onEdit={(i) => setEditor({ mode: "edit", iou: i })} onSettle={(i) => setStatus(i, "settled")} />}
-            {owe.length > 0 && <Group label="You owe" total={money(sum(owe))} tone="red" items={owe} today={today} onEdit={(i) => setEditor({ mode: "edit", iou: i })} onSettle={(i) => setStatus(i, "settled")} />}
+            {owed.length > 0 && <Group label={business && business.id !== "personal" ? `Owed to ${business.name}` : "Owed to you"} total={money(sum(owed))} tone="green" items={owed} today={today} inBusinessTab={!!business} onEdit={(i) => setEditor({ mode: "edit", iou: i })} onSettle={(i) => setStatus(i, "settled")} />}
+            {owe.length > 0 && <Group label={business && business.id !== "personal" ? `${business.name} owes` : "You owe"} total={money(sum(owe))} tone="red" items={owe} today={today} inBusinessTab={!!business} onEdit={(i) => setEditor({ mode: "edit", iou: i })} onSettle={(i) => setStatus(i, "settled")} />}
             {open.length === 0 && <div className="px-4 py-6 text-center text-[13px] text-ink-3">All settled up.</div>}
             {settled.length > 0 && (
               <div>
@@ -143,7 +187,7 @@ export function MoneyPanel({ initial, today }: { initial: Iou[]; today: string }
                 {showSettled && (
                   <div className="divide-y divide-line border-t border-line">
                     {settled.map((i) => (
-                      <Row key={i.id} iou={i} today={today} settled onEdit={() => setEditor({ mode: "edit", iou: i })} onToggle={() => setStatus(i, "open")} />
+                      <Row key={i.id} iou={i} today={today} settled inBusinessTab={!!business} onEdit={() => setEditor({ mode: "edit", iou: i })} onToggle={() => setStatus(i, "open")} />
                     ))}
                   </div>
                 )}
@@ -155,7 +199,8 @@ export function MoneyPanel({ initial, today }: { initial: Iou[]; today: string }
 
       <IouModal
         open={editor !== null}
-        initial={editor?.mode === "edit" ? toForm(editor.iou) : EMPTY}
+        business={business}
+        initial={editor?.mode === "edit" ? toForm(editor.iou) : { ...EMPTY, business_id: business?.id ?? "personal" }}
         editing={editor?.mode === "edit"}
         onClose={() => setEditor(null)}
         onSave={save}
@@ -165,8 +210,8 @@ export function MoneyPanel({ initial, today }: { initial: Iou[]; today: string }
   );
 }
 
-function Group({ label, total, tone, items, today, onEdit, onSettle }: {
-  label: string; total: string | null; tone: "green" | "red"; items: Iou[]; today: string;
+function Group({ label, total, tone, items, today, inBusinessTab, onEdit, onSettle }: {
+  label: string; total: string | null; tone: "green" | "red"; items: Iou[]; today: string; inBusinessTab?: boolean;
   onEdit: (i: Iou) => void; onSettle: (i: Iou) => void;
 }) {
   return (
@@ -178,13 +223,13 @@ function Group({ label, total, tone, items, today, onEdit, onSettle }: {
         {total && <span className={cn("ml-auto text-xs font-semibold tabular-nums", tone === "green" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400")}>{total}</span>}
       </div>
       <div className="divide-y divide-line">
-        {items.map((i) => <Row key={i.id} iou={i} today={today} onEdit={() => onEdit(i)} onToggle={() => onSettle(i)} />)}
+        {items.map((i) => <Row key={i.id} iou={i} today={today} inBusinessTab={inBusinessTab} onEdit={() => onEdit(i)} onToggle={() => onSettle(i)} />)}
       </div>
     </div>
   );
 }
 
-function Row({ iou, today, settled, onEdit, onToggle }: { iou: Iou; today: string; settled?: boolean; onEdit: () => void; onToggle: () => void }) {
+function Row({ iou, today, settled, inBusinessTab, onEdit, onToggle }: { iou: Iou; today: string; settled?: boolean; inBusinessTab?: boolean; onEdit: () => void; onToggle: () => void }) {
   const business = getBusiness(iou.business_id);
   const overdue = !settled && !!iou.due_date && iou.due_date < today;
   const amount = money(iou.amount_cents);
@@ -207,7 +252,9 @@ function Row({ iou, today, settled, onEdit, onToggle }: { iou: Iou; today: strin
           {iou.due_date && !settled && <Badge tone={overdue ? "red" : "neutral"}>{overdue ? "Overdue · " : "Due "}{shortDate(iou.due_date)}</Badge>}
         </div>
         <div className="mt-0.5 flex items-center gap-1.5 text-xs text-ink-3">
-          {business && iou.business_id !== "personal" ? (
+          {inBusinessTab ? (
+            <span className="truncate">{iou.direction === "owe" ? (iou.business_id === "personal" ? "You owe them" : "We owe them") : (iou.business_id === "personal" ? "They owe you" : "They owe us")}</span>
+          ) : business && iou.business_id !== "personal" ? (
             <><BrandTile business={business} size="xs" /> <span className="truncate">{iou.direction === "owe" ? `${business.name} owes` : `owes ${business.name}`}</span></>
           ) : (
             <span className="truncate">{iou.direction === "owe" ? "You owe personally" : "Owes you personally"}</span>
@@ -224,8 +271,8 @@ function Row({ iou, today, settled, onEdit, onToggle }: { iou: Iou; today: strin
   );
 }
 
-function IouModal({ open, initial, editing, onClose, onSave, onDelete }: {
-  open: boolean; initial: Form; editing?: boolean; onClose: () => void; onSave: (f: Form) => void; onDelete?: () => void;
+function IouModal({ open, initial, editing, business, onClose, onSave, onDelete }: {
+  open: boolean; initial: Form; editing?: boolean; business?: Business; onClose: () => void; onSave: (f: Form) => void; onDelete?: () => void;
 }) {
   const [form, setForm] = useState<Form>(initial);
   const [key, setKey] = useState<Form | null>(null);
@@ -260,13 +307,22 @@ function IouModal({ open, initial, editing, onClose, onSave, onDelete }: {
         <Field label="Amount">
           <PrefixInput prefix="$" inputMode="decimal" value={form.amount} onChange={(e) => set("amount", e.target.value)} placeholder="0" />
         </Field>
-        <Field label={form.direction === "owe" ? "Who owes it" : "Owed to"} hint={form.direction === "owe" ? "Which company is on the hook, or you personally" : "Which company they owe, or you personally"}>
-          <Select value={form.business_id} onChange={(e) => set("business_id", e.target.value)}>
-            {[...BUSINESSES].sort((a, b) => (a.id === "personal" ? -1 : b.id === "personal" ? 1 : 0)).map((b) => (
-              <option key={b.id} value={b.id}>{b.id === "personal" ? "Me personally" : b.name}</option>
-            ))}
-          </Select>
-        </Field>
+        {business ? (
+          <FieldGroup label={form.direction === "owe" ? "Who owes it" : "Owed to"}>
+            <div className="flex h-10 items-center gap-2 rounded-lg bg-sunken px-3 text-sm text-ink-2 ring-1 ring-inset ring-line md:h-9">
+              {business.id !== "personal" && <BrandTile business={business} size="xs" />}
+              {business.id === "personal" ? "Me personally" : business.name}
+            </div>
+          </FieldGroup>
+        ) : (
+          <Field label={form.direction === "owe" ? "Who owes it" : "Owed to"} hint={form.direction === "owe" ? "Which company is on the hook, or you personally" : "Which company they owe, or you personally"}>
+            <Select value={form.business_id} onChange={(e) => set("business_id", e.target.value)}>
+              {[...BUSINESSES].sort((a, b) => (a.id === "personal" ? -1 : b.id === "personal" ? 1 : 0)).map((b) => (
+                <option key={b.id} value={b.id}>{b.id === "personal" ? "Me personally" : b.name}</option>
+              ))}
+            </Select>
+          </Field>
+        )}
         <Field label="Due date">
           <Input type="date" value={form.due_date} onChange={(e) => set("due_date", e.target.value)} />
         </Field>

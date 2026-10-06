@@ -24,6 +24,7 @@ export function BusinessView({
   leadCategories,
   leadCategoriesEnabled,
   initialHidden,
+  today,
 }: {
   business: Business;
   data: WorkspaceData;
@@ -35,6 +36,7 @@ export function BusinessView({
   leadCategories: LeadCategory[];
   leadCategoriesEnabled: boolean;
   initialHidden: boolean;
+  today: string;
 }) {
   const router = useRouter();
   const [hidden, setHidden] = useState(initialHidden);
@@ -164,6 +166,7 @@ export function BusinessView({
       actions={actions}
       banner={banner}
       onTabChange={onTabChange}
+      today={today}
     />
   );
 }
