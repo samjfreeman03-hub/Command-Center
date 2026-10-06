@@ -779,9 +779,9 @@ function LeadModal({
             />
           </FieldGroup>
         )}
-        <Field label="Notes" className="sm:col-span-2">
+        <FieldGroup label="Notes" className="sm:col-span-2">
           <RichTextarea value={notes} onChange={(e) => setNotes(e.target.value)} minRows={4} className={textareaClass} />
-        </Field>
+        </FieldGroup>
         <div className="sm:col-span-2">
           {lead ? (
             <Attachments leadId={lead.id} onCount={onAttachmentCount} />

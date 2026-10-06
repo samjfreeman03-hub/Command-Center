@@ -55,6 +55,15 @@ export function RichTextarea({
     if (autoFocus) ref.current?.focus();
   }, [autoFocus]);
 
+  // A <label> ancestor would make the toolbar's Bold button the label's
+  // control: every tap in the box would activate that button instead of
+  // placing the caret (and on iOS the keyboard never opens). Use FieldGroup.
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "production" && ref.current?.closest("label")) {
+      console.warn("RichTextarea must not be wrapped in <Field>/<label>; use <FieldGroup> instead.");
+    }
+  }, []);
+
   const emit = useCallback(() => {
     const el = ref.current;
     if (!el) return;

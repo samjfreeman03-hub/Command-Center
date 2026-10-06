@@ -87,6 +87,9 @@ import { cn } from "@/lib/cn";
   render it with `<FormattedText text={…} />`; for sliced previews use
   `stripMarkup()`. `AutoTextarea` remains only for text that is copied out
   verbatim (outreach drafts) or sent straight to the AI as a brief.
+  Always wrap `RichTextarea` in `<FieldGroup>`, never `<Field>`: a label would
+  adopt the editor's Bold button as its control and taps in the box would hit
+  that button instead of placing the cursor (no keyboard on iOS).
 - `<Modal open onClose title description footer size onSubmit>` is the only
   modal. Bottom sheet on phones, centered dialog on desktop, Esc and backdrop
   close, sticky header and footer. Pass `onSubmit` so Enter submits and a

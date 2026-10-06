@@ -1456,6 +1456,12 @@ DESIGN.md wins. Highlights:
 - `AutoTextarea` is kept only for outreach drafts (copied verbatim into
   LinkedIn/Gmail) and the Suggest-brands brief.
 - Phones: `[contenteditable]` is included in the 16px rule so iOS does not zoom.
+- **Bug fixed same day:** `RichTextarea` was wrapped in `<Field>` (a `<label>`).
+  Buttons are labelable and editable divs are not, so the label adopted the
+  editor's Bold button as its control: every tap in the box activated that
+  button instead of placing the caret, and on iPhone the keyboard never opened.
+  All six call sites now use `<FieldGroup>`; the editor warns in dev if it
+  ever finds a `<label>` ancestor again.
 
 ---
 

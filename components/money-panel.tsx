@@ -270,9 +270,9 @@ function IouModal({ open, initial, editing, onClose, onSave, onDelete }: {
         <Field label="Due date">
           <Input type="date" value={form.due_date} onChange={(e) => set("due_date", e.target.value)} />
         </Field>
-        <Field label="Note" className="sm:col-span-2">
+        <FieldGroup label="Note" className="sm:col-span-2">
           <RichTextarea value={form.note} onChange={(e) => set("note", e.target.value)} minRows={2} className={textareaClass} placeholder="What it's for, how they'll pay, anything to remember" />
-        </Field>
+        </FieldGroup>
       </div>
     </Modal>
   );

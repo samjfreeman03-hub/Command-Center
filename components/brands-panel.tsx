@@ -539,7 +539,7 @@ function ContactModal({
           </FieldGroup>
         )}
 
-        <Field label="Notes">
+        <FieldGroup label="Notes">
           <RichTextarea
             value={draft.notes}
             onChange={(e) => setField("notes", e.target.value)}
@@ -547,7 +547,7 @@ function ContactModal({
             minRows={4}
             className={textareaClass}
           />
-        </Field>
+        </FieldGroup>
 
         {brand ? (
           <Attachments brandId={brand.id} shareHeaders={shareHeaders} />

@@ -425,9 +425,9 @@ function EventModal({
         <FieldGroup label="Sponsors" className="col-span-2">
           <ChipsInput label="Sponsors" values={form.sponsors} onChange={(v) => set("sponsors", v)} placeholder="Type a sponsor and press Enter" tone="sky" />
         </FieldGroup>
-        <Field label="Notes" className="col-span-2">
+        <FieldGroup label="Notes" className="col-span-2">
           <RichTextarea value={form.notes} onChange={(e) => set("notes", e.target.value)} minRows={4} className={textareaClass} placeholder="Run of show, open items, vendor details…" />
-        </Field>
+        </FieldGroup>
       </div>
     </Modal>
   );

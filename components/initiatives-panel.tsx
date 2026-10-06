@@ -497,9 +497,9 @@ function InitiativeModal({
         <FieldGroup label="Links" className="col-span-2">
           <LinksEditor links={form.links} onChange={(v) => set("links", v)} />
         </FieldGroup>
-        <Field label="Notes" className="col-span-2">
+        <FieldGroup label="Notes" className="col-span-2">
           <RichTextarea value={form.notes} onChange={(e) => set("notes", e.target.value)} minRows={4} className={textareaClass} placeholder="Context, why it matters, key people, open questions…" />
-        </Field>
+        </FieldGroup>
       </div>
     </Modal>
   );

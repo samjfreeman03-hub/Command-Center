@@ -13,7 +13,7 @@ import { AutoTextarea } from "@/components/auto-textarea";
 import { RichTextarea } from "@/components/rich-textarea";
 import { FormattedText } from "@/components/formatted-text";
 import { Button, IconButton } from "@/components/ui/button";
-import { Input, Select, Field, textareaClass } from "@/components/ui/input";
+import { Input, Select, Field, textareaClass, FieldGroup } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { confirmDialog, toast } from "@/components/ui/host";
 import { Badge, Card, EmptyState, SectionHeader, type BadgeTone } from "@/components/ui/display";
@@ -1155,14 +1155,14 @@ function AddTargetModal({
             </Select>
           </Field>
         </div>
-        <Field label="Notes" hint="Optional. Anything the drafter should know.">
+        <FieldGroup label="Notes" hint="Optional. Anything the drafter should know.">
           <RichTextarea
             value={form.notes}
             onChange={(e) => setField("notes", e.target.value)}
             minRows={3}
             className={textareaClass}
           />
-        </Field>
+        </FieldGroup>
       </div>
     </Modal>
   );
