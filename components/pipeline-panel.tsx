@@ -23,7 +23,7 @@ import { useShareHeaders } from "@/lib/share-context";
 import { usePanelState } from "@/lib/panel-cache";
 import { cn } from "@/lib/cn";
 import { categoryColor, CategoryBadges, CategoryMultiSelect, CatPill } from "@/components/category-ui";
-import { AutoTextarea } from "@/components/auto-textarea";
+import { RichTextarea } from "@/components/rich-textarea";
 import { Button, IconButton } from "@/components/ui/button";
 import { Input, Select, PrefixInput, Field, textareaClass, FieldGroup } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
@@ -780,7 +780,7 @@ function LeadModal({
           </FieldGroup>
         )}
         <Field label="Notes" className="sm:col-span-2">
-          <AutoTextarea value={notes} onChange={(e) => setNotes(e.target.value)} minRows={4} className={textareaClass} />
+          <RichTextarea value={notes} onChange={(e) => setNotes(e.target.value)} minRows={4} className={textareaClass} />
         </Field>
         <div className="sm:col-span-2">
           {lead ? (

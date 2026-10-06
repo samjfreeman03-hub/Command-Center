@@ -81,6 +81,26 @@ export const LEAD_STAGES: Lead["stage"][] = [
  * key client/relationship, or something important to keep top of mind.
  * Higher level than todos (which are single actionable tasks).
  */
+/**
+ * Money owed in either direction. `business_id` is who the money is for:
+ * a company, or "personal" when it is Sam himself.
+ */
+export type Iou = {
+  id: number;
+  /** owe: Sam/the business owes `party`. owed: `party` owes Sam/the business. */
+  direction: "owe" | "owed";
+  party: string;
+  business_id: string;
+  amount_cents: number | null;
+  note: string | null;
+  /** YYYY-MM-DD */
+  due_date: string | null;
+  status: "open" | "settled";
+  created_at: number;
+  updated_at: number;
+  settled_at: number | null;
+};
+
 export type Initiative = {
   id: number;
   business_id: string;

@@ -10,7 +10,8 @@ import {
 import { useShareHeaders } from "@/lib/share-context";
 import { usePanelState } from "@/lib/panel-cache";
 import { categoryColor, CategoryMultiSelect, CategoryBadges, CatPill } from "@/components/category-ui";
-import { AutoTextarea } from "@/components/auto-textarea";
+import { RichTextarea } from "@/components/rich-textarea";
+import { FormattedText } from "@/components/formatted-text";
 import { Button, IconButton } from "@/components/ui/button";
 import { Input, Field, textareaClass, FieldGroup } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
@@ -347,7 +348,7 @@ function BrandRow({
             )}
           </div>
         )}
-        {brand.notes && <p className="mt-1 line-clamp-1 text-xs text-ink-3">{brand.notes}</p>}
+        {brand.notes && <p className="mt-1 line-clamp-1 text-xs text-ink-3"><FormattedText text={brand.notes} /></p>}
       </div>
       {brand.email && (
         <div className="shrink-0 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
@@ -539,7 +540,7 @@ function ContactModal({
         )}
 
         <Field label="Notes">
-          <AutoTextarea
+          <RichTextarea
             value={draft.notes}
             onChange={(e) => setField("notes", e.target.value)}
             placeholder="Any context about this contact or relationship"

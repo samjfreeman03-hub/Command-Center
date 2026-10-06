@@ -7,7 +7,8 @@ import { Plus, Trash2, X, Target, CalendarDays, ArrowRight, ArrowUp, ArrowDown, 
 import { useShareHeaders } from "@/lib/share-context";
 import { usePanelState } from "@/lib/panel-cache";
 import { cn } from "@/lib/cn";
-import { AutoTextarea } from "@/components/auto-textarea";
+import { RichTextarea } from "@/components/rich-textarea";
+import { FormattedText } from "@/components/formatted-text";
 import { Button, IconButton } from "@/components/ui/button";
 import { Menu } from "@/components/ui/menu";
 import { Input, Field, textareaClass, FieldGroup } from "@/components/ui/input";
@@ -365,7 +366,7 @@ function InitiativeRow({
               <span className="truncate">{initiative.next_step}</span>
             </div>
           )}
-          {initiative.notes && <p className="mt-1 line-clamp-1 text-xs text-ink-3">{initiative.notes}</p>}
+          {initiative.notes && <p className="mt-1 line-clamp-1 text-xs text-ink-3"><FormattedText text={initiative.notes} /></p>}
         </button>
         {initiative.links.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -497,7 +498,7 @@ function InitiativeModal({
           <LinksEditor links={form.links} onChange={(v) => set("links", v)} />
         </FieldGroup>
         <Field label="Notes" className="col-span-2">
-          <AutoTextarea value={form.notes} onChange={(e) => set("notes", e.target.value)} minRows={4} className={textareaClass} placeholder="Context, why it matters, key people, open questions…" />
+          <RichTextarea value={form.notes} onChange={(e) => set("notes", e.target.value)} minRows={4} className={textareaClass} placeholder="Context, why it matters, key people, open questions…" />
         </Field>
       </div>
     </Modal>

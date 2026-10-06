@@ -9,7 +9,8 @@ import {
 import { useShareHeaders } from "@/lib/share-context";
 import { usePanelState } from "@/lib/panel-cache";
 import { cn } from "@/lib/cn";
-import { AutoTextarea } from "@/components/auto-textarea";
+import { RichTextarea } from "@/components/rich-textarea";
+import { FormattedText } from "@/components/formatted-text";
 import { Button } from "@/components/ui/button";
 import { Input, Field, textareaClass, FieldGroup } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
@@ -325,7 +326,7 @@ function EventRow({ event, muted, onOpen }: { event: BizEvent; muted?: boolean; 
               ))}
             </div>
           )}
-          {event.notes && <p className="mt-1 line-clamp-1 text-xs text-ink-3">{event.notes}</p>}
+          {event.notes && <p className="mt-1 line-clamp-1 text-xs text-ink-3"><FormattedText text={event.notes} /></p>}
         </div>
       </button>
       {event.event_link && (
@@ -425,7 +426,7 @@ function EventModal({
           <ChipsInput label="Sponsors" values={form.sponsors} onChange={(v) => set("sponsors", v)} placeholder="Type a sponsor and press Enter" tone="sky" />
         </FieldGroup>
         <Field label="Notes" className="col-span-2">
-          <AutoTextarea value={form.notes} onChange={(e) => set("notes", e.target.value)} minRows={4} className={textareaClass} placeholder="Run of show, open items, vendor details…" />
+          <RichTextarea value={form.notes} onChange={(e) => set("notes", e.target.value)} minRows={4} className={textareaClass} placeholder="Run of show, open items, vendor details…" />
         </Field>
       </div>
     </Modal>

@@ -45,6 +45,7 @@ over docs.
 30. Design System + App Shell (read `DESIGN.md` first)
 31. Command Layer: Cmd+K, Global Search, Ask AI
 32. Today Dashboard + Scratchpad Filing
+33. Money Panel + Rich Text
 
 ---
 
@@ -198,6 +199,7 @@ business's data. Don't bypass it; don't reimplement it.
 | `lead_categories`    | User-defined tag registry (Stealth; shared pipeline+CRM) |
 | `events`             | Hosted events (TechSpace/MTRNM/FLAIR) — see §25   |
 | `initiatives`        | High-level strategic items, all businesses — see §26b |
+| `ious`               | Money owed in either direction (dashboard Money panel) — see §33 |
 | `app_state`          | Key-value store (e.g. dashboard scratchpad); GET/PUT /api/scratchpad |
 
 JSON-array TEXT columns (decoded by parse helpers in `lib/db.ts`):
@@ -1426,7 +1428,38 @@ DESIGN.md wins. Highlights:
 
 ---
 
+## 33. Money Panel + Rich Text (2026-10-06)
+
+### Money (IOUs)
+- Dashboard panel (`components/money-panel.tsx`, left column after the
+  scratchpad). Table `ious`: direction (`owe` = Sam/the business owes `party`,
+  `owed` = `party` owes Sam/the business), party, `business_id` (a company, or
+  `personal` = Sam himself), amount_cents, note, due_date, status
+  (`open|settled`), settled_at. Groups "Owed to you" / "You owe" with totals,
+  a check to settle (Undo toast), settled list collapsed, one `Modal` for
+  add/edit. `GET/POST /api/ious`, `PATCH/DELETE /api/ious/[id]`, admin only;
+  body cleaning lives in `lib/ious.ts`.
+- Overdue or due-today open IOUs appear in Needs attention as kind `money`
+  ("Collect $X from Y" / "Pay $X to Y", links to `/#money`).
+- Ask AI gets a MONEY OWED block in its system prompt (read only, no tools yet).
+
+### Rich text (bold + underline everywhere)
+- `components/rich-textarea.tsx` replaced `AutoTextarea` in every writing box:
+  scratchpad, note bodies, and the notes fields of leads, CRM contacts,
+  initiatives, events, outreach targets, and IOUs. contentEditable with
+  `execCommand` bold/underline, Cmd+B / Cmd+U, a B/U bar on focus, plain-text
+  paste, grows like AutoTextarea.
+- Storage is unchanged: plain text with `**bold**` / `__underline__` markers
+  (`lib/markup.ts`: `markupToHtml`, `htmlToMarkup`, `stripMarkup`). Displays
+  use `<FormattedText>`; note-list previews use `stripMarkup`. The AI sees the
+  markers as ordinary markdown-style emphasis.
+- `AutoTextarea` is kept only for outreach drafts (copied verbatim into
+  LinkedIn/Gmail) and the Suggest-brands brief.
+- Phones: `[contenteditable]` is included in the 16px rule so iOS does not zoom.
+
+---
+
 *End of CLAUDE.md.* Update whenever a major architectural change ships — same
 session as the change, not later. `git log --oneline` + commit bodies fill any
 gap between this doc and the code.
-Last updated: 2026-09-29 (PT).
+Last updated: 2026-10-06 (PT).

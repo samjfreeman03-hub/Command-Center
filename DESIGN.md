@@ -78,8 +78,15 @@ import { cn } from "@/lib/cn";
   `Field` is a `<label>` and would forward label clicks to the first button.
 - `<Select>` is a styled native select. Use `<Segmented>` instead when there
   are 2 to 5 short options (stage, priority, status, type, view toggle).
-- `AutoTextarea` (components/auto-textarea.tsx) stays the control for notes;
-  give it `className={textareaClass}`.
+- `RichTextarea` (components/rich-textarea.tsx) is the control for every
+  multi-line text box a person writes in (notes, descriptions, the scratchpad,
+  note bodies). Same props as a textarea; bold and underline via Cmd+B / Cmd+U
+  or the B/U bar that appears while focused. The value is plain text with
+  `**bold**` and `__underline__` markers (lib/markup.ts), so the database,
+  APIs, search and AI context are unchanged. Wherever that text is displayed,
+  render it with `<FormattedText text={…} />`; for sliced previews use
+  `stripMarkup()`. `AutoTextarea` remains only for text that is copied out
+  verbatim (outreach drafts) or sent straight to the AI as a brief.
 - `<Modal open onClose title description footer size onSubmit>` is the only
   modal. Bottom sheet on phones, centered dialog on desktop, Esc and backdrop
   close, sticky header and footer. Pass `onSubmit` so Enter submits and a

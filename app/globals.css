@@ -116,10 +116,23 @@ body {
 @media (max-width: 767px) {
   input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
   textarea,
-  select {
+  select,
+  [contenteditable="true"] {
     font-size: 16px !important;
   }
 }
+
+/* Rich text boxes (components/rich-textarea.tsx) */
+.rich-text { cursor: text; }
+.rich-text:empty::before,
+.rich-text[data-empty="true"]::before {
+  content: attr(data-placeholder);
+  color: var(--ink-4);
+  pointer-events: none;
+  white-space: pre-wrap;
+}
+.rich-text b, .rich-text strong { font-weight: 600; }
+.rich-text u { text-decoration: underline; text-underline-offset: 2px; }
 
 /* ── Safe area utilities ─────────────────────────────────────────── */
 

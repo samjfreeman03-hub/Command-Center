@@ -10,6 +10,8 @@ import {
 import { useShareHeaders } from "@/lib/share-context";
 import { getOutreachConfig } from "@/lib/outreach-config";
 import { AutoTextarea } from "@/components/auto-textarea";
+import { RichTextarea } from "@/components/rich-textarea";
+import { FormattedText } from "@/components/formatted-text";
 import { Button, IconButton } from "@/components/ui/button";
 import { Input, Select, Field, textareaClass } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
@@ -1154,7 +1156,7 @@ function AddTargetModal({
           </Field>
         </div>
         <Field label="Notes" hint="Optional. Anything the drafter should know.">
-          <AutoTextarea
+          <RichTextarea
             value={form.notes}
             onChange={(e) => setField("notes", e.target.value)}
             minRows={3}
@@ -1695,7 +1697,7 @@ function TargetCard({
           {target.notes && target.notes.trim() && (
             <div>
               <SubLabel icon={StickyNote}>Notes</SubLabel>
-              <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink-2">{target.notes}</p>
+              <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink-2"><FormattedText text={target.notes} /></p>
             </div>
           )}
 

@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
 import { BUSINESSES } from "./businesses";
-import type { Todo, Lead, LeadCategory, BizEvent, Initiative, InitiativeLink, Note, ChatMessage, LeadAttachment, BusinessResource, TeamMember, BrandContact, BrandAttachment, OutreachTarget, OutreachStatus, SearchHit } from "./types";
+import type { Todo, Lead, LeadCategory, BizEvent, Initiative, Iou, InitiativeLink, Note, ChatMessage, LeadAttachment, BusinessResource, TeamMember, BrandContact, BrandAttachment, OutreachTarget, OutreachStatus, SearchHit } from "./types";
 
 // Email row types (internal to db.ts)
 type RawEmailRow = {
@@ -109,6 +109,20 @@ function migrate(db: Database.Database) {
       updated_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_events_business ON events(business_id);
+
+    CREATE TABLE IF NOT EXISTS ious (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      direction TEXT NOT NULL CHECK(direction IN ('owe', 'owed')),
+      party TEXT NOT NULL,
+      business_id TEXT NOT NULL DEFAULT 'personal' REFERENCES businesses(id),
+      amount_cents INTEGER,
+      note TEXT,
+      due_date TEXT,
+      status TEXT NOT NULL DEFAULT 'open',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      settled_at INTEGER
+    );
 
     CREATE TABLE IF NOT EXISTS initiatives (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -905,6 +919,65 @@ export const db = {
 
   updateBusinessTagline(id: string, tagline: string) {
     getDb().prepare("UPDATE businesses SET tagline = ? WHERE id = ?").run(tagline.trim(), id);
+  },
+
+  // ---- IOUs (money owed in either direction; dashboard) ----
+  listIous(): Iou[] {
+    return getDb()
+      .prepare(
+        `SELECT * FROM ious ORDER BY
+           CASE status WHEN 'open' THEN 0 ELSE 1 END,
+           CASE WHEN due_date IS NULL THEN 1 ELSE 0 END, due_date ASC,
+           created_at DESC`
+      )
+      .all() as Iou[];
+  },
+
+  getIou(id: number): Iou | undefined {
+    return getDb().prepare("SELECT * FROM ious WHERE id = ?").get(id) as Iou | undefined;
+  },
+
+  createIou(input: {
+    direction: Iou["direction"];
+    party: string;
+    business_id?: string;
+    amount_cents?: number | null;
+    note?: string | null;
+    due_date?: string | null;
+  }): Iou {
+    const now = Date.now();
+    const result = getDb()
+      .prepare(
+        `INSERT INTO ious (direction, party, business_id, amount_cents, note, due_date, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(input.direction, input.party.trim(), input.business_id ?? "personal", input.amount_cents ?? null, input.note ?? null, input.due_date ?? null, now, now);
+    return this.getIou(Number(result.lastInsertRowid))!;
+  },
+
+  updateIou(id: number, patch: Partial<Iou>): Iou | undefined {
+    const allowed = ["direction", "party", "business_id", "amount_cents", "note", "due_date", "status"] as const;
+    const sets: string[] = [];
+    const args: unknown[] = [];
+    for (const key of allowed) {
+      if (key in patch) {
+        sets.push(`${key} = ?`);
+        args.push((patch as Record<string, unknown>)[key] ?? null);
+      }
+    }
+    if (sets.length === 0) return this.getIou(id);
+    if ("status" in patch) {
+      sets.push("settled_at = ?");
+      args.push(patch.status === "settled" ? Date.now() : null);
+    }
+    sets.push("updated_at = ?");
+    args.push(Date.now(), id);
+    getDb().prepare(`UPDATE ious SET ${sets.join(", ")} WHERE id = ?`).run(...args);
+    return this.getIou(id);
+  },
+
+  deleteIou(id: number) {
+    getDb().prepare("DELETE FROM ious WHERE id = ?").run(id);
   },
 
   // ---- Ask AI (global, cross-business chat; admin only) ----

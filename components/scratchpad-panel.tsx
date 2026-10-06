@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Loader2, Trash2, AlertTriangle, Sparkles, Undo2, Send } from "lucide-react";
-import { AutoTextarea } from "@/components/auto-textarea";
+import { RichTextarea } from "@/components/rich-textarea";
 import { BUSINESSES } from "@/lib/businesses";
 import { Button, IconButton } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
@@ -275,14 +275,14 @@ export function ScratchpadPanel({ initialValue }: { initialValue: string }) {
         }
       />
       <Card className="transition-[border-color,box-shadow] focus-within:border-line-strong focus-within:shadow-lift">
-        <AutoTextarea
+        <RichTextarea
           value={value}
           onChange={(e) => changeValue(e.target.value)}
           aria-label="Scratchpad"
           minRows={7}
           maxHeightPx={520}
           placeholder={"Dump anything here. It saves as you type.\n\n- call the venue back\n- flair: send method the renewal proposal friday\n- idea: rooftop for TechWeek closing"}
-          className="block w-full resize-none bg-transparent px-4 pt-3.5 pb-2 text-sm leading-relaxed text-ink outline-none placeholder:text-ink-4"
+          className="block w-full bg-transparent px-4 pt-3.5 pb-2 pr-20 text-sm leading-relaxed text-ink outline-none"
         />
         <div className="flex flex-wrap items-center gap-1.5 border-t border-line bg-sunken/50 px-2.5 py-2">
           <Button size="sm" variant="brand" onClick={proposeFiling} disabled={busy || !value.trim()} loading={filing} title="Turn lines into real todos, deals and initiatives in the right business">

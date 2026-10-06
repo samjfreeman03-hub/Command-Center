@@ -5,6 +5,7 @@ import { eventsEnabled } from "@/lib/events-config";
 import { ArrowRight, ChevronRight, ListTodo, Target, TrendingUp, CalendarClock } from "lucide-react";
 import { DashboardTodos } from "@/components/dashboard-todos";
 import { ScratchpadPanel } from "@/components/scratchpad-panel";
+import { MoneyPanel } from "@/components/money-panel";
 import { TodayAttention, type AttentionItem } from "@/components/today-attention";
 import { BrandTile, Card, EmptyState, SectionHeader } from "@/components/ui/display";
 
@@ -57,6 +58,7 @@ export default function Dashboard() {
   const pipelineSummary = shown(db.pipelineSummary());
   const todoCounts = shown(db.todoCounts());
   const scratchpad = db.getAppState("scratchpad") ?? "";
+  const ious = db.listIous();
   const initiatives = businesses.flatMap((b) => db.listInitiatives(b.id)).filter((i) => i.status === "active");
   const nowInitiatives = initiatives.filter((i) => i.horizon === "now");
   const events = businesses
@@ -104,6 +106,16 @@ export default function Dashboard() {
       });
     }
   }
+  for (const i of ious) {
+    if (i.status !== "open" || !i.due_date || i.due_date > today) continue;
+    const amt = i.amount_cents != null ? `$${(i.amount_cents / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })} ` : "";
+    attention.push({
+      key: `iou-${i.id}`, kind: "money", businessId: i.business_id,
+      title: i.direction === "owe" ? `Pay ${amt}to ${i.party}` : `Collect ${amt}from ${i.party}`,
+      context: i.business_id === "personal" ? "Personally" : "", when: when(i.due_date), overdue: i.due_date < today,
+      href: "/#money", sort: i.due_date,
+    });
+  }
   attention.sort((a, b) => Number(b.overdue) - Number(a.overdue) || a.sort.localeCompare(b.sort));
 
   // ── Coming up: the next 7 days (events: 14) ──
@@ -145,7 +157,7 @@ export default function Dashboard() {
 
       {/* Two independent columns on desktop. On phones the wrappers dissolve
           (display: contents) so the order-* classes interleave the sections:
-          attention, scratchpad, coming up, businesses, todos. */}
+          attention, scratchpad, money, coming up, businesses, todos. */}
       <div className="flex flex-col gap-8 lg:grid lg:grid-cols-3 lg:items-start lg:gap-x-6">
         <div className="contents lg:col-span-2 lg:block lg:space-y-8">
           {/* Needs attention */}
@@ -158,8 +170,13 @@ export default function Dashboard() {
             <ScratchpadPanel initialValue={scratchpad} />
           </section>
 
+          {/* Money owed in either direction */}
+          <section className="order-3">
+            <MoneyPanel initial={ious} today={today} />
+          </section>
+
           {/* Businesses */}
-          <section className="order-4">
+          <section className="order-5">
             <SectionHeader title="Businesses" />
             <Card>
               <div className="divide-y divide-line">
@@ -210,7 +227,7 @@ export default function Dashboard() {
         </div>
         <div className="contents lg:block lg:space-y-8">
           {/* Coming up */}
-          <section className="order-3">
+          <section className="order-4">
             <SectionHeader title="Coming up" hint="Next 7 days" />
             <Card>
               {upcoming.length === 0 ? (
@@ -242,7 +259,7 @@ export default function Dashboard() {
           </section>
 
           {/* All open todos by business */}
-          <section className="order-5">
+          <section className="order-6">
             <SectionHeader title="Open todos" count={openTodos.length || undefined} />
             <Card>
               <DashboardTodos initialTodos={openTodos} />

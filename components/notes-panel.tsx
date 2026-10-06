@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { RichTextarea } from "@/components/rich-textarea";
+import { stripMarkup } from "@/lib/markup";
 import type { Note } from "@/lib/types";
 import { Plus, Trash2, FileText, ArrowLeft, Check, Loader2, AlertTriangle, Search } from "lucide-react";
 import { format, isSameYear, isToday } from "date-fns";
@@ -321,7 +323,7 @@ export function NotesPanel({
             )}
             {visible.map((n) => {
               const active = selected?.id === n.id;
-              const preview = n.content.trim().split("\n").find((l) => l.trim())?.trim();
+              const preview = stripMarkup(n.content).trim().split("\n").find((l) => l.trim())?.trim();
               return (
                 <button
                   key={n.id}
@@ -390,12 +392,12 @@ export function NotesPanel({
               className="w-full bg-transparent text-xl font-semibold tracking-tight text-ink outline-none placeholder:text-ink-4"
             />
             {/* Grows with its content where the browser supports field-sizing; elsewhere it scrolls inside. */}
-            <textarea
+            <RichTextarea
               value={draftContent}
               onChange={(e) => setDraftContent(e.target.value)}
               placeholder="Start writing. Saves automatically."
               aria-label="Note content"
-              className="scroll-touch mt-3 min-h-[50vh] w-full flex-1 resize-none bg-transparent text-base leading-7 text-ink outline-none [field-sizing:content] placeholder:text-ink-4 md:text-sm md:leading-7"
+              className="scroll-touch mt-3 min-h-[50vh] w-full bg-transparent text-base leading-7 text-ink outline-none md:text-sm md:leading-7"
             />
           </div>
         ) : (

@@ -112,6 +112,15 @@ RULES
 - When asked what needs attention or to plan the day or week, prioritize: overdue items first, then items due today, then the Now initiatives' next steps, then near-term events and deal next actions. Be specific and brief, grouped by business.
 - Write plainly and concisely. Never use em dashes or en dashes. Short paragraphs or simple dash bullets only, no tables, no headers larger than a bold line.
 
+== MONEY OWED (dashboard IOUs; business_id "personal" = Sam himself) ==
+${(() => {
+  const open = db.listIous().filter((i) => i.status === "open");
+  if (!open.length) return "- none outstanding";
+  return open
+    .map((i) => `- ${i.direction === "owe" ? `${i.business_id === "personal" ? "Sam" : i.business_id} owes ${i.party}` : `${i.party} owes ${i.business_id === "personal" ? "Sam" : i.business_id}`}${i.amount_cents != null ? ` $${(i.amount_cents / 100).toLocaleString()}` : ""}${i.due_date ? `, due ${i.due_date}${i.due_date < today ? " (OVERDUE)" : ""}` : ""}${i.note ? `, note: ${i.note}` : ""}`)
+    .join("\n");
+})()}
+
 == CURRENT STATE OF EVERY BUSINESS ==
 ${blocks}`;
 
