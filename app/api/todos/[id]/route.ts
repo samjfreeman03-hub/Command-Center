@@ -11,6 +11,12 @@ export async function PATCH(
   if (!bizId || !(await canAccessBusiness(bizId))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  if (db.todoIsMirrored(Number(id))) {
+    return NextResponse.json(
+      { error: "Managed in FLAIR OS. Changes arrive with write-back (phase 2).", code: "flair_os_managed" },
+      { status: 409 }
+    );
+  }
   const body = await req.json().catch(() => null);
   if (body && "assignee_ids" in body) {
     const todo = db.setTodoAssignees(Number(id), Array.isArray(body.assignee_ids) ? body.assignee_ids : []);
@@ -36,6 +42,12 @@ export async function DELETE(
   const bizId = db.getTodoBizId(Number(id));
   if (!bizId || !(await canAccessBusiness(bizId))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (db.todoIsMirrored(Number(id))) {
+    return NextResponse.json(
+      { error: "Managed in FLAIR OS. Changes arrive with write-back (phase 2).", code: "flair_os_managed" },
+      { status: 409 }
+    );
   }
   db.deleteTodo(Number(id));
   return NextResponse.json({ ok: true });

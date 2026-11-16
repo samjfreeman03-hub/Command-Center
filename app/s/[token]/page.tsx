@@ -5,6 +5,7 @@ import { hasSharePasswordAuth } from "@/lib/server-auth";
 import { eventsEnabled } from "@/lib/events-config";
 import { SharedView } from "./shared-view";
 import { todayLA } from "@/lib/dates";
+import { flairOsEnabled } from "@/lib/flair-os/config";
 import { SharePasswordGate } from "./share-password-gate";
 
 export const dynamic = "force-dynamic";
@@ -67,6 +68,7 @@ export default async function SharePage({
       tagline={db.getBusinessTagline(businessId) ?? business.tagline}
       data={data}
       today={todayLA()}
+      flairOsEnabled={flairOsEnabled(businessId)}
     />
   );
 }

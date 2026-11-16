@@ -10,6 +10,13 @@ export type Todo = {
   assignee_ids: number[];
   created_at: number;
   completed_at: number | null;
+  /** FLAIR OS task uuid. Present means the todo is managed in FLAIR OS. */
+  flair_os_id?: string | null;
+  flair_os_deal_id?: string | null;
+  /** Command Center lead this mirrored task belongs to. */
+  lead_id?: number | null;
+  flair_os_assignee?: string | null;
+  flair_os_updated_at?: number | null;
 };
 
 export type Lead = {
@@ -18,7 +25,12 @@ export type Lead = {
   name: string;
   company: string | null;
   contact_email: string | null;
-  stage: "new" | "contacted" | "qualified" | "proposal" | "won" | "lost";
+  /**
+   * The six Command Center stages, plus `parked` and `nurture`, which only
+   * appear on leads mirrored from FLAIR OS (its sales_status rollup). The
+   * create form and drag targets stay on the six.
+   */
+  stage: "new" | "contacted" | "qualified" | "proposal" | "won" | "lost" | "parked" | "nurture";
   value_cents: number | null;
   next_action: string | null;
   next_action_date: string | null;
@@ -29,6 +41,22 @@ export type Lead = {
   attachment_count?: number;
   created_at: number;
   updated_at: number;
+  // ── FLAIR OS mirror (null on every lead that is not mirrored) ──
+  /** FLAIR OS deal uuid. Present means the lead is managed in FLAIR OS. */
+  flair_os_id?: string | null;
+  /** Exact FLAIR OS stage slug; `stage` above is the display rollup. */
+  flair_os_stage?: string | null;
+  flair_os_sales_status?: string | null;
+  flair_os_owner?: string | null;
+  /** FLAIR OS updated_at as epoch ms. */
+  flair_os_updated_at?: number | null;
+  /** FLAIR OS free-text deal notes, read-only here. */
+  flair_os_notes?: string | null;
+  flair_os_client_id?: string | null;
+  /** Set when a mirrored deal stopped appearing in FLAIR OS. */
+  flair_os_missing_at?: number | null;
+  contact_name?: string | null;
+  contact_phone?: string | null;
 };
 
 export type LeadCategory = {
@@ -75,6 +103,14 @@ export const LEAD_STAGES: Lead["stage"][] = [
   "won",
   "lost",
 ];
+
+/** Stages that exist only as FLAIR OS rollups (parked and nurture deals). */
+export const MIRROR_ONLY_STAGES: Lead["stage"][] = ["parked", "nurture"];
+
+/** A lead that is counted as open pipeline (not closed, parked, or nurturing). */
+export function isActiveStage(stage: Lead["stage"]): boolean {
+  return stage !== "won" && stage !== "lost" && stage !== "parked" && stage !== "nurture";
+}
 
 /**
  * Initiative — a high-level strategic item for a business: a major project,

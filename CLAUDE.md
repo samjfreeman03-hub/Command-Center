@@ -1473,9 +1473,51 @@ DESIGN.md wins. Highlights:
   All six call sites now use `<FieldGroup>`; the editor warns in dev if it
   ever finds a `<label>` ancestor again.
 
+## 16. FLAIR OS Mirror (phase 1, built 2026-11-15, branch `integrations/flair-os-mirror`)
+
+FLAIR OS is Tyler Rong's FLAIR sales system (Vercel + Supabase, HTTP MCP at
+`/api/mcp`). It is the **system of record** for FLAIR deals, deal tasks, and
+clients. The Command Center mirrors it read-only; write-back and the Wispr Flow
+meeting handoff are later phases. Full notes: `docs/integrations/FLAIR_OS_MIRROR_BUILD.md`,
+contract: `docs/integrations/FLAIR_OS_FIELD_CONTRACT.md` (main checkout).
+
+- **Everything lives under `lib/flair-os/`** (config, allowlist, MCP client,
+  normalizers, stage map, store, sync cycle, scheduler) plus
+  `components/flair-os-panel.tsx` and `app/api/flair-os/*`. The scheduler is
+  started from `instrumentation.ts`.
+- **Switches are env only**: `FLAIR_OS_MCP_URL`, `FLAIR_OS_MCP_KEY`,
+  `FLAIR_OS_SYNC_ENABLED`, `FLAIR_OS_SYNC_DRY_RUN`, `FLAIR_OS_SYNC_INTERVAL_MIN`
+  (0 = manual only). Unset means the feature does not exist in the UI. The key
+  is Railway env only, never in the repo.
+- **Allowlist is law.** Only the nine read tools in `lib/flair-os/allowlist.ts`
+  may be called. Never add a write or outreach tool there without the phase 2
+  plan; `scripts/flair-os-mock/test-mirror.mjs` fails if a denied or write tool
+  name shows up anywhere else under `lib/flair-os/`.
+- **Mirrored rows are locked.** `leads`/`todos` with `flair_os_id` answer 409
+  `flair_os_managed` on PATCH/DELETE; the UI shows a toast or the read-only
+  `MirroredLeadModal` instead. Missing deals are flagged
+  (`flair_os_missing_at`), never deleted. Field-level history is in
+  `flair_os_sync_log`.
+- **Stages `parked` and `nurture`** exist only for mirrored leads (from FLAIR OS
+  `sales_status`). `isActiveStage()` in `lib/types.ts` excludes them along with
+  won/lost; use it for any "active pipeline" count.
+- **Schema** is additive (`migrateFlairOs` in `lib/db.ts`): `flair_os_*`
+  columns on `leads`, `todos`, `brand_contacts`; tables `flair_os_sync_state`,
+  `flair_os_sync_log`, `flair_os_conflicts`, `flair_os_activities`,
+  `flair_os_profile_map`, `flair_os_meetings`.
+- **Access**: strip and mirrored leads follow `canAccessBusiness("flair")`;
+  sync, dry run, and pause are admin only. Share links read, never trigger.
+- **Local dev** uses the synthetic server in `scripts/flair-os-mock/`
+  (README there), shaped on the real server as probed 2026-11-15 (camelCase
+  list rows, limit max 100, no offset, lost deals hidden, no activity read).
+  The real key is in the gitignored `.env.flair-os.local`; first dry run and a
+  local-only real pull happened 2026-11-15 (71 deals). See
+  `docs/integrations/FLAIR_OS_MIRROR_BUILD.md` section 7.
+
+
 ---
 
 *End of CLAUDE.md.* Update whenever a major architectural change ships — same
 session as the change, not later. `git log --oneline` + commit bodies fill any
 gap between this doc and the code.
-Last updated: 2026-10-06 (PT).
+Last updated: 2026-11-15 (PT).

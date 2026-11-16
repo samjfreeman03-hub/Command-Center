@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
+import { isActiveStage } from "@/lib/types";
 import { BUSINESSES, getBusiness } from "@/lib/businesses";
 import { eventsEnabled } from "@/lib/events-config";
 import { ArrowRight, ChevronRight, ListTodo, Target, TrendingUp, CalendarClock } from "lucide-react";
@@ -55,7 +56,7 @@ export default function Dashboard() {
   const hiddenBusinesses = BUSINESSES.filter((b) => hiddenIds.has(b.id));
 
   const openTodos = shown(db.listTodos({ status: "open" }));
-  const leads = shown(db.listLeads()).filter((l) => l.stage !== "won" && l.stage !== "lost");
+  const leads = shown(db.listLeads()).filter((l) => isActiveStage(l.stage));
   const pipelineSummary = shown(db.pipelineSummary());
   const todoCounts = shown(db.todoCounts());
   const scratchpad = db.getAppState("scratchpad") ?? "";
