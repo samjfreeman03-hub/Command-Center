@@ -38,8 +38,123 @@ function getDb(): Database.Database {
   migrateAlter(db);
   seed(db);
   migrateHiddenBusinesses(db);
+  migrateFlairOs(db);
   _db = db;
   return db;
+}
+
+/**
+ * The raw connection, for feature modules that keep their own SQL
+ * (lib/flair-os/store.ts). Everything else goes through `db` below.
+ */
+export function rawDb(): Database.Database {
+  return getDb();
+}
+
+/**
+ * FLAIR OS mirror (docs/integrations/FLAIR_OS_FIELD_CONTRACT.md, section 7).
+ * Columns on leads, todos, and brand_contacts hold the FLAIR OS identity and
+ * exact values; the tables hold sync state, the change log, conflicts,
+ * mirrored activities, the profile map, and meeting handoffs. All additive.
+ */
+function migrateFlairOs(db: Database.Database) {
+  const alters = [
+    "ALTER TABLE leads ADD COLUMN flair_os_id TEXT",
+    "ALTER TABLE leads ADD COLUMN flair_os_stage TEXT",
+    "ALTER TABLE leads ADD COLUMN flair_os_sales_status TEXT",
+    "ALTER TABLE leads ADD COLUMN flair_os_owner TEXT",
+    "ALTER TABLE leads ADD COLUMN flair_os_updated_at INTEGER",
+    "ALTER TABLE leads ADD COLUMN flair_os_notes TEXT",
+    "ALTER TABLE leads ADD COLUMN flair_os_client_id TEXT",
+    "ALTER TABLE leads ADD COLUMN flair_os_missing_at INTEGER",
+    "ALTER TABLE leads ADD COLUMN contact_name TEXT",
+    "ALTER TABLE leads ADD COLUMN contact_phone TEXT",
+    "ALTER TABLE todos ADD COLUMN flair_os_id TEXT",
+    "ALTER TABLE todos ADD COLUMN flair_os_deal_id TEXT",
+    "ALTER TABLE todos ADD COLUMN lead_id INTEGER",
+    "ALTER TABLE todos ADD COLUMN flair_os_assignee TEXT",
+    "ALTER TABLE todos ADD COLUMN flair_os_updated_at INTEGER",
+    "ALTER TABLE brand_contacts ADD COLUMN flair_os_client_id TEXT",
+  ];
+  for (const sql of alters) {
+    try { db.exec(sql); } catch { /* already exists */ }
+  }
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_leads_flair_os_id ON leads(flair_os_id) WHERE flair_os_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_todos_flair_os_id ON todos(flair_os_id) WHERE flair_os_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_brands_flair_os_client ON brand_contacts(flair_os_client_id) WHERE flair_os_client_id IS NOT NULL;
+
+    CREATE TABLE IF NOT EXISTS flair_os_sync_state (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      pull_paused INTEGER NOT NULL DEFAULT 0,
+      push_paused INTEGER NOT NULL DEFAULT 1,
+      last_run_at INTEGER,
+      last_ok_at INTEGER,
+      last_error TEXT,
+      last_summary TEXT,
+      known_stages TEXT NOT NULL DEFAULT '[]',
+      updated_at INTEGER NOT NULL
+    );
+    INSERT OR IGNORE INTO flair_os_sync_state (id, updated_at) VALUES (1, ${Date.now()});
+
+    CREATE TABLE IF NOT EXISTS flair_os_sync_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      at INTEGER NOT NULL,
+      direction TEXT NOT NULL,
+      trigger TEXT NOT NULL,
+      record_kind TEXT NOT NULL,
+      flair_os_id TEXT,
+      local_id INTEGER,
+      action TEXT NOT NULL,
+      changes TEXT,
+      result TEXT NOT NULL,
+      message TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_flair_os_log_at ON flair_os_sync_log(at);
+
+    CREATE TABLE IF NOT EXISTS flair_os_conflicts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      at INTEGER NOT NULL,
+      record_kind TEXT NOT NULL,
+      flair_os_id TEXT,
+      local_id INTEGER,
+      field TEXT NOT NULL,
+      local_value TEXT,
+      remote_value TEXT,
+      resolved_at INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS flair_os_activities (
+      id TEXT PRIMARY KEY,
+      flair_os_deal_id TEXT NOT NULL,
+      lead_id INTEGER,
+      kind TEXT NOT NULL,
+      body TEXT,
+      actor TEXT,
+      occurred_at INTEGER,
+      fetched_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_flair_os_activities_lead ON flair_os_activities(lead_id);
+
+    CREATE TABLE IF NOT EXISTS flair_os_profile_map (
+      profile_id TEXT PRIMARY KEY,
+      display_name TEXT NOT NULL,
+      member_id INTEGER,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS flair_os_meetings (
+      wispr_meeting_id TEXT PRIMARY KEY,
+      title TEXT,
+      started_at INTEGER,
+      attendees TEXT,
+      match_kind TEXT NOT NULL DEFAULT 'unknown',
+      lead_id INTEGER,
+      status TEXT NOT NULL DEFAULT 'not_sent',
+      sent_ids TEXT,
+      updated_at INTEGER NOT NULL
+    );
+  `);
 }
 
 function migrate(db: Database.Database) {
@@ -522,6 +637,8 @@ export const db = {
         WHEN 'new' THEN 3
         WHEN 'won' THEN 4
         WHEN 'lost' THEN 5
+        WHEN 'nurture' THEN 6
+        WHEN 'parked' THEN 7
       END,
       updated_at DESC`;
     return (getDb().prepare(sql).all(...args) as Record<string, unknown>[]).map(parseLead);
@@ -1176,6 +1293,18 @@ export const db = {
   getTodoBizId(id: number): string | null {
     const row = getDb().prepare("SELECT business_id FROM todos WHERE id = ?").get(id) as { business_id: string } | undefined;
     return row?.business_id ?? null;
+  },
+
+  /** True when the lead is a FLAIR OS mirror row (edits must go through FLAIR OS). */
+  leadIsMirrored(id: number): boolean {
+    const row = getDb().prepare("SELECT flair_os_id FROM leads WHERE id = ?").get(id) as { flair_os_id: string | null } | undefined;
+    return !!row?.flair_os_id;
+  },
+
+  /** True when the todo is a FLAIR OS mirror row. */
+  todoIsMirrored(id: number): boolean {
+    const row = getDb().prepare("SELECT flair_os_id FROM todos WHERE id = ?").get(id) as { flair_os_id: string | null } | undefined;
+    return !!row?.flair_os_id;
   },
 
   getLeadBizId(id: number): string | null {

@@ -1,0 +1,281 @@
+#!/usr/bin/env node
+/**
+ * Phase 1 mirror test: drives the Command Center against the synthetic
+ * FLAIR OS server and checks the database, the log, the guards, and the
+ * allowlist. Needs both servers running:
+ *
+ *   PORT=3777 MOCK_TEST_HOOKS=1 node scripts/flair-os-mock/server.mjs
+ *   ADMIN_PASSWORD=cc-ui-preview-2026 PORT=3006 FLAIR_OS_MCP_URL=http://127.0.0.1:3777/api/mcp \
+ *     FLAIR_OS_MCP_KEY=cc-mock-key FLAIR_OS_SYNC_INTERVAL_MIN=0 FLAIR_OS_MIN_GAP_MS=50 npm run dev
+ *
+ *   node scripts/flair-os-mock/test-mirror.mjs
+ *
+ * Writes docs/integrations/results/mirror-test-results.json and exits
+ * non-zero on any failure.
+ */
+import fs from "node:fs";
+import path from "node:path";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+
+const require = createRequire(import.meta.url);
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const Database = require(path.join(ROOT, "node_modules", "better-sqlite3"));
+
+const CC = process.env.CC_URL || "http://127.0.0.1:3006";
+const MOCK = process.env.MOCK_URL || "http://127.0.0.1:3777";
+const PASSWORD = process.env.CC_PASSWORD || "cc-ui-preview-2026";
+const DB_PATH = process.env.CC_DB || path.join(ROOT, "data", "command-center.db");
+const CC_KEY = process.env.FLAIR_OS_MOCK_CC_KEY || "cc-mock-key";
+const FULL_KEY = process.env.FLAIR_OS_MOCK_FULL_KEY || "full-mock-key";
+
+const READ_ALLOWLIST = [
+  "list_pipeline_stages", "get_pipeline_summary", "search_pipeline", "get_pipeline_counts",
+  "get_pipeline_deal", "list_pipeline_tasks", "list_clients", "search_clients", "get_client",
+];
+// Allowed by Tyler's scope but never called by the mirror.
+const ALLOWED_UNUSED = ["get_admin_stats"];
+const DENIED_NAMES = [
+  "send_outreach_email", "claim_outreach_lead", "archive_outreach_lead", "cleanup_pipeline_junk",
+  "create_pipeline_deals_batch", "set_pipeline_deal_logo", "clear_pipeline_deal_logo",
+  "upsert_school_contact", "update_pipeline_deal_contact",
+];
+const WRITE_NAMES = ["create_pipeline_deal", "update_pipeline_deal", "add_pipeline_activity", "create_pipeline_task", "complete_pipeline_task", "upsert_meeting_note"];
+
+const results = [];
+let cookie = "";
+function check(name, ok, detail) {
+  results.push({ name, ok: !!ok, detail: detail ?? null });
+  console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail && !ok ? `  (${typeof detail === "string" ? detail : JSON.stringify(detail)})` : ""}`);
+}
+async function cc(pathname, init = {}) {
+  const headers = { ...(init.headers || {}) };
+  if (cookie && !headers["x-share-token"] && init.noCookie !== true) headers.cookie = cookie;
+  if (init.body && typeof init.body !== "string") { init.body = JSON.stringify(init.body); headers["content-type"] = "application/json"; }
+  const res = await fetch(CC + pathname, { ...init, headers, redirect: "manual" });
+  let json = null;
+  try { json = await res.clone().json(); } catch { /* not json */ }
+  return { status: res.status, json, headers: res.headers };
+}
+async function mock(pathname, body) {
+  const res = await fetch(MOCK + pathname, { method: body ? "POST" : "GET", headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  return res.json();
+}
+async function mcp(key, name, args = {}) {
+  const res = await fetch(MOCK + "/api/mcp", {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }),
+  });
+  return { status: res.status, json: await res.json().catch(() => null) };
+}
+const db = () => new Database(DB_PATH, { readonly: true, fileMustExist: true });
+/** Remove everything a previous run mirrored so the checks start from a clean mirror. */
+function resetMirror() {
+  const d = new Database(DB_PATH, { fileMustExist: true });
+  try {
+    d.exec(`DELETE FROM flair_os_activities;
+      DELETE FROM todos WHERE flair_os_id IS NOT NULL;
+      DELETE FROM leads WHERE flair_os_id IS NOT NULL;
+      DELETE FROM brand_contacts WHERE flair_os_client_id IS NOT NULL;
+      DELETE FROM flair_os_sync_log;
+      DELETE FROM flair_os_conflicts;
+      UPDATE flair_os_sync_state SET pull_paused = 0, last_run_at = NULL, last_ok_at = NULL, last_error = NULL, last_summary = NULL;`);
+  } finally { d.close(); }
+}
+const one = (sql, ...args) => { const d = db(); try { return d.prepare(sql).get(...args); } finally { d.close(); } };
+const all = (sql, ...args) => { const d = db(); try { return d.prepare(sql).all(...args); } finally { d.close(); } };
+
+const DEAL = {
+  cbs: "d0000000-0000-4000-8000-000000000001",
+  forever21: "d0000000-0000-4000-8000-000000000002",
+  glossier: "d0000000-0000-4000-8000-000000000003",
+  celsius: "d0000000-0000-4000-8000-000000000004",
+  kraft: "d0000000-0000-4000-8000-000000000009",
+  bumble: "d0000000-0000-4000-8000-000000000011",
+  chipotle: "d0000000-0000-4000-8000-000000000012",
+  fenty: "d0000000-0000-4000-8000-000000000013",
+  redbull: "d0000000-0000-4000-8000-000000000014",
+};
+const TASK1 = "a0000000-0000-4000-8000-000000000001";
+const TASK4 = "a0000000-0000-4000-8000-000000000004";
+
+async function main() {
+  // 0. Static allowlist scan: no denied or write tool name under lib/flair-os except the documented list in allowlist.ts.
+  const files = fs.readdirSync(path.join(ROOT, "lib", "flair-os")).map((f) => path.join(ROOT, "lib", "flair-os", f));
+  files.push(path.join(ROOT, "components", "flair-os-panel.tsx"));
+  const offenders = [];
+  for (const f of files) {
+    const src = fs.readFileSync(f, "utf8");
+    for (const n of DENIED_NAMES) if (src.includes(n)) offenders.push(`${path.basename(f)}:${n}`);
+    if (!f.endsWith("allowlist.ts")) for (const n of WRITE_NAMES) if (src.includes(n)) offenders.push(`${path.basename(f)}:${n}`);
+  }
+  check("static: no denied or write tool names in the mirror code", offenders.length === 0, offenders);
+
+  // 1. Servers up, login.
+  const ping = await fetch(MOCK + "/__test/state").then((r) => r.json()).catch(() => null);
+  check("mock server reachable with test hooks", !!ping && ping.deals === 14, ping);
+  const login = await fetch(CC + "/api/auth", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ password: PASSWORD }) });
+  const setCookie = login.headers.get("set-cookie") || "";
+  cookie = setCookie.split(";")[0];
+  check("admin login", login.ok && cookie.startsWith("cc_session="), login.status);
+
+  await mock("/__test/reset", {});
+  await mock("/__test/calls/clear", {});
+  resetMirror();
+
+  // 2. Status before any pull.
+  let status = await cc("/api/flair-os/status");
+  check("status route enabled for admin", status.status === 200 && status.json?.enabled === true && status.json?.canSync === true, status.json);
+
+  // 3. Dry run writes nothing.
+  const before = one("SELECT COUNT(*) AS n FROM leads WHERE flair_os_id IS NOT NULL").n;
+  const dry = await cc("/api/flair-os/sync", { method: "POST", body: { dryRun: true } });
+  check("dry run reports 14 deals to create", dry.status === 200 && dry.json?.ok && dry.json.dry_run && dry.json.deals.seen === 14 && dry.json.deals.created === 14, dry.json?.deals);
+  const afterDry = one("SELECT COUNT(*) AS n FROM leads WHERE flair_os_id IS NOT NULL").n;
+  check("dry run wrote no leads", afterDry === before, { before, afterDry });
+  const dryLog = all("SELECT result FROM flair_os_sync_log WHERE record_kind = 'deal' ORDER BY id DESC LIMIT 14");
+  check("dry run entries are marked dry_run in the log", dryLog.length === 14 && dryLog.every((r) => r.result === "dry_run"), dryLog.slice(0, 3));
+
+  // 4. Real pull.
+  const pull = await cc("/api/flair-os/sync", { method: "POST", body: {} });
+  check("first pull creates 14 deals, 10 tasks, 4 clients", pull.status === 200 && pull.json?.ok && pull.json.deals.created === 14 && pull.json.tasks.created === 10 && pull.json.clients.created === 4, pull.json && { deals: pull.json.deals, tasks: pull.json.tasks, clients: pull.json.clients, error: pull.json.error });
+  check("first pull stays inside the polling budget (under 30 calls)", pull.json?.calls > 0 && pull.json.calls < 30, pull.json?.calls);
+  check("first pull raised no cap warnings", Array.isArray(pull.json?.warnings) && pull.json.warnings.length === 0, pull.json?.warnings);
+  const leads = all("SELECT id, name, company, stage, flair_os_id, flair_os_stage, flair_os_sales_status, flair_os_owner, value_cents, contact_email, business_id FROM leads WHERE flair_os_id IS NOT NULL");
+  check("14 mirrored leads, all under the flair business", leads.length === 14 && leads.every((l) => l.business_id === "flair"), leads.length);
+  const by = Object.fromEntries(leads.map((l) => [l.flair_os_id, l]));
+  check("stage map: engaged rolls up to qualified (CBS)", by[DEAL.cbs]?.stage === "qualified" && by[DEAL.cbs]?.flair_os_stage === "engaged", by[DEAL.cbs]);
+  check("stage map: outreach with no activity rolls up to new (Forever 21)", by[DEAL.forever21]?.stage === "new", by[DEAL.forever21]);
+  check("stage map: proposal-owed rolls up to proposal (Glossier)", by[DEAL.glossier]?.stage === "proposal", by[DEAL.glossier]);
+  check("stage map: ambassador-sourcing rolls up to qualified (Celsius)", by[DEAL.celsius]?.stage === "qualified", by[DEAL.celsius]);
+  check("stage map: outreach with lastContacted rolls up to contacted (Red Bull)", by[DEAL.redbull]?.stage === "contacted", by[DEAL.redbull]);
+  check("stage map: campaign rolls up to won (Kraft Heinz)", by[DEAL.kraft]?.stage === "won", by[DEAL.kraft]);
+  check("stage map: paused stage becomes parked (Chipotle)", by[DEAL.chipotle]?.stage === "parked" && by[DEAL.chipotle]?.flair_os_stage === "paused", by[DEAL.chipotle]);
+  check("stage map: sales_status nurture becomes nurture (Fenty)", by[DEAL.fenty]?.stage === "nurture", by[DEAL.fenty]);
+  check("fields: CBS keeps owner, value in cents, contact email", by[DEAL.cbs]?.flair_os_owner === "Sam Freeman" && by[DEAL.cbs]?.value_cents === 8500000 && by[DEAL.cbs]?.contact_email === "emma.sandoval@example.com" && by[DEAL.cbs]?.name === "Emma Sandoval" && by[DEAL.cbs]?.company === "CBS / Paramount", by[DEAL.cbs]);
+  const cbsDetail = one("SELECT flair_os_updated_at, flair_os_client_id FROM leads WHERE flair_os_id = ?", DEAL.cbs);
+  const kraftDetail = one("SELECT flair_os_updated_at, flair_os_client_id FROM leads WHERE flair_os_id = ?", DEAL.kraft);
+  check("detail enrichment fills updated_at and client link on the first pull", !!cbsDetail?.flair_os_updated_at && !!kraftDetail?.flair_os_updated_at && kraftDetail?.flair_os_client_id === "c1000000-0000-4000-8000-000000000003", { cbsDetail, kraftDetail });
+  const todos = all("SELECT id, title, status, due_date, lead_id, flair_os_id, flair_os_deal_id, flair_os_assignee, business_id FROM todos WHERE flair_os_id IS NOT NULL");
+  check("10 mirrored todos, every one linked to its lead", todos.length === 10 && todos.every((t) => t.lead_id && t.business_id === "flair"), todos.map((t) => [t.title, t.lead_id]));
+  const t4 = todos.find((t) => t.flair_os_id === TASK4);
+  check("completed FLAIR OS task mirrors as done", t4?.status === "done", t4);
+  const t1 = todos.find((t) => t.flair_os_id === TASK1);
+  check("task fields: due date, assignee, lead link (CBS task)", t1?.due_date === "2026-11-17" && t1?.flair_os_assignee === "Sam Freeman" && t1?.lead_id === by[DEAL.cbs]?.id, t1);
+  const clients = all("SELECT brand_name, website, status, flair_os_client_id FROM brand_contacts WHERE flair_os_client_id IS NOT NULL");
+  check("4 clients mirrored into the CRM as partners", clients.length === 4 && clients.every((c) => c.status === "active_partner" || c.status === "past_partner"), clients);
+  const activitiesRoute = await cc(`/api/flair-os/leads/${by[DEAL.cbs]?.id}/activities`);
+  check("activities route answers (FLAIR OS exposes no activity read yet, so empty)", activitiesRoute.status === 200 && Array.isArray(activitiesRoute.json?.activities) && activitiesRoute.json.activities.length === 0, activitiesRoute.json);
+
+  // 5. Idempotent second pull.
+  const again = await cc("/api/flair-os/sync", { method: "POST", body: {} });
+  check("second pull changes nothing", again.json?.ok && again.json.deals.created === 0 && again.json.deals.updated === 0 && again.json.deals.unchanged === 14 && again.json.tasks.updated === 0 && again.json.clients.updated === 0, again.json && { deals: again.json.deals, tasks: again.json.tasks });
+
+  // 6. A change in FLAIR OS arrives with a field-level log entry.
+  await mock("/__test/mutate", { dealId: DEAL.cbs, patch: { stage: "proposal", deal_value: 90000, waiting_on: "Proposal owed by Friday" } });
+  const third = await cc("/api/flair-os/sync", { method: "POST", body: {} });
+  const cbsNow = one("SELECT stage, flair_os_stage, value_cents, next_action FROM leads WHERE flair_os_id = ?", DEAL.cbs);
+  check("stage change in FLAIR OS updates exactly one lead", third.json?.deals.updated === 1 && cbsNow.stage === "proposal" && cbsNow.flair_os_stage === "proposal" && cbsNow.value_cents === 9000000 && cbsNow.next_action === "Proposal owed by Friday", { summary: third.json?.deals, cbsNow });
+  // The list pull logs the stage change; the detail enrichment that follows logs updated_at. Look across both.
+  const logRows = all("SELECT changes FROM flair_os_sync_log WHERE record_kind = 'deal' AND flair_os_id = ? AND action = 'updated' ORDER BY id DESC LIMIT 3", DEAL.cbs);
+  const changes = logRows.flatMap((r) => (r.changes ? JSON.parse(r.changes) : []));
+  const stageChange = changes.find((c) => c.field === "flair_os_stage");
+  check("log records old and new values for the change", stageChange?.from === "engaged" && stageChange?.to === "proposal", changes);
+
+  // 7a. A deal moved to lost disappears from the list; the mirror asks for it by id and shows it as lost.
+  await mock("/__test/mutate", { dealId: DEAL.bumble, patch: { stage: "lost" } });
+  const lostPull = await cc("/api/flair-os/sync", { method: "POST", body: {} });
+  const bumbleLost = one("SELECT stage, flair_os_stage, flair_os_missing_at FROM leads WHERE flair_os_id = ?", DEAL.bumble);
+  check("deal moved to lost shows as lost, not missing", lostPull.json?.deals.missing === 0 && bumbleLost?.stage === "lost" && bumbleLost?.flair_os_stage === "lost" && !bumbleLost?.flair_os_missing_at, { summary: lostPull.json?.deals, bumbleLost });
+  // 7b. A deal removed in FLAIR OS is flagged, never deleted.
+  await mock("/__test/remove", { dealId: DEAL.bumble });
+  const fourth = await cc("/api/flair-os/sync", { method: "POST", body: {} });
+  const bumble = one("SELECT id, flair_os_missing_at FROM leads WHERE flair_os_id = ?", DEAL.bumble);
+  check("removed deal is kept and flagged missing", fourth.json?.deals.missing === 1 && !!bumble && !!bumble.flair_os_missing_at, { summary: fourth.json?.deals, bumble });
+  status = await cc("/api/flair-os/status");
+  check("drift report shows 1 missing", status.json?.drift?.leads_missing === 1 && status.json.drift.leads_mirrored === 14, status.json?.drift);
+
+  // 8. Task completion in FLAIR OS mirrors.
+  await mock("/__test/mutate-task", { taskId: TASK1, patch: { status: "done", completed_at: new Date().toISOString() } });
+  const fifth = await cc("/api/flair-os/sync", { method: "POST", body: {} });
+  const t1Now = one("SELECT status, completed_at FROM todos WHERE flair_os_id = ?", TASK1);
+  check("task completed in FLAIR OS becomes a done todo", fifth.json?.tasks.updated === 1 && t1Now.status === "done" && !!t1Now.completed_at, { summary: fifth.json?.tasks, t1Now });
+
+  // 9. Phase 1 guards: mirrored rows cannot be edited or deleted here.
+  const cbsId = by[DEAL.cbs]?.id;
+  const patchLead = await cc(`/api/leads/${cbsId}`, { method: "PATCH", body: { name: "Should not stick" } });
+  const delLead = await cc(`/api/leads/${cbsId}`, { method: "DELETE" });
+  const patchTodo = await cc(`/api/todos/${t1.id}`, { method: "PATCH", body: { title: "Should not stick" } });
+  const delTodo = await cc(`/api/todos/${t1.id}`, { method: "DELETE" });
+  const stillThere = one("SELECT name FROM leads WHERE id = ?", cbsId);
+  check("PATCH and DELETE on a mirrored lead return 409 and change nothing", patchLead.status === 409 && delLead.status === 409 && stillThere?.name === "Emma Sandoval", { patch: patchLead.status, del: delLead.status, name: stillThere?.name });
+  check("PATCH and DELETE on a mirrored todo return 409", patchTodo.status === 409 && delTodo.status === 409, { patch: patchTodo.status, del: delTodo.status });
+  // A local FLAIR lead is still editable.
+  const local = await cc("/api/leads", { method: "POST", body: { business_id: "flair", name: "Local only lead", company: "Local Co" } });
+  const localPatch = await cc(`/api/leads/${local.json?.id}`, { method: "PATCH", body: { stage: "contacted" } });
+  const localDel = await cc(`/api/leads/${local.json?.id}`, { method: "DELETE" });
+  check("a local (non-mirrored) FLAIR lead is still editable and deletable", local.status === 200 && localPatch.status === 200 && localDel.status === 200, { local: local.status, patch: localPatch.status, del: localDel.status });
+
+  // 10. Pause blocks scheduled pulls, manual still works, resume.
+  const pause = await cc("/api/flair-os/settings", { method: "PATCH", body: { pull_paused: true } });
+  status = await cc("/api/flair-os/status");
+  check("pause flag persists", pause.status === 200 && status.json?.state?.pull_paused === true, status.json?.state);
+  const manualWhilePaused = await cc("/api/flair-os/sync", { method: "POST", body: { dryRun: true } });
+  check("manual dry run still allowed while paused", manualWhilePaused.status === 200 && manualWhilePaused.json?.ok, manualWhilePaused.json?.error);
+  await cc("/api/flair-os/settings", { method: "PATCH", body: { pull_paused: false } });
+  status = await cc("/api/flair-os/status");
+  check("resume clears the flag", status.json?.state?.pull_paused === false, status.json?.state);
+
+  // 11. Runtime allowlist: every call the Command Center made was an allowlisted read.
+  const calls = (await mock("/__test/calls")).calls;
+  const used = [...new Set(calls.map((c) => c.tool))];
+  check("Command Center only called allowlisted read tools", calls.length > 0 && calls.every((c) => c.allowed && c.scope === "command_center" && READ_ALLOWLIST.includes(c.tool)), { used, total: calls.length });
+  check("every call carried the command_center key, never the full key", calls.every((c) => c.scope === "command_center"), used);
+
+  // 12. The mock enforces scope like Tyler's P0 (denied tool with the CC key fails, works with the full key).
+  const denied = await mcp(CC_KEY, "cleanup_pipeline_junk");
+  const allowedFull = await mcp(FULL_KEY, "get_pipeline_counts");
+  const noKey = await fetch(MOCK + "/api/mcp", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+  const deniedText = denied.json?.result?.content?.[0]?.text ?? "";
+  check("mock: destructive tool refused for the command_center key", /not allowed for the Command Center MCP key/.test(deniedText), denied.json);
+  const unusedCalled = calls.some((c) => ALLOWED_UNUSED.includes(c.tool));
+  check("mirror never calls get_admin_stats even though the key allows it", !unusedCalled, used);
+  check("mock: full key still works, missing key is 401", allowedFull.json?.result && noKey.status === 401, { full: allowedFull.status, noKey: noKey.status });
+
+  // 13. Share token: read allowed, sync refused.
+  await cc("/b/flair"); // ensures the share token exists
+  const tokenRow = one("SELECT token FROM share_tokens WHERE business_id = 'flair'");
+  if (tokenRow) {
+    const shareStatus = await cc("/api/flair-os/status", { headers: { "x-share-token": tokenRow.token }, noCookie: true });
+    const shareSync = await cc("/api/flair-os/sync", { method: "POST", body: {}, headers: { "x-share-token": tokenRow.token }, noCookie: true });
+    const shareSettings = await cc("/api/flair-os/settings", { method: "PATCH", body: { pull_paused: true }, headers: { "x-share-token": tokenRow.token }, noCookie: true });
+    check("share token can read status but not sync or change settings", shareStatus.status === 200 && shareStatus.json?.canSync === false && shareSync.status === 401 && shareSettings.status === 401, { status: shareStatus.status, sync: shareSync.status, settings: shareSettings.status });
+  } else {
+    check("share token can read status but not sync or change settings", false, "no share token row");
+  }
+  // Another business's share token must not read FLAIR OS status.
+  const otherToken = one("SELECT token FROM share_tokens WHERE business_id != 'flair' LIMIT 1");
+  if (otherToken) {
+    const cross = await cc("/api/flair-os/status", { headers: { "x-share-token": otherToken.token }, noCookie: true });
+    check("another business's share token is refused", cross.status === 401, cross.status);
+  }
+  const anon = await cc("/api/flair-os/status", { noCookie: true });
+  check("anonymous request is refused", anon.status === 401, anon.status);
+
+  // 14. Restore mock state for the browser walk-through.
+  await mock("/__test/reset", {});
+
+  const passed = results.filter((r) => r.ok).length;
+  const out = { ran_at: new Date().toISOString(), cc: CC, mock: MOCK, passed, failed: results.length - passed, total: results.length, results };
+  const dir = path.join(ROOT, "docs", "integrations", "results");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "mirror-test-results.json"), JSON.stringify(out, null, 2));
+  console.log(`\n${passed}/${results.length} checks passed`);
+  process.exit(passed === results.length ? 0 : 1);
+}
+
+main().catch((e) => {
+  console.error("test runner crashed:", e);
+  process.exit(2);
+});

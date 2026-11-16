@@ -6,12 +6,13 @@ import type {
   Todo, Lead, LeadCategory, BizEvent, Initiative, Iou, Note, ChatMessage, BusinessResource, TeamMember, BrandContact, OutreachTarget,
 } from "@/lib/types";
 import { tabsForBusiness, type TabId } from "@/lib/tabs";
+import { isActiveStage } from "@/lib/types";
 import { PanelCacheProvider, usePanelValue } from "@/lib/panel-cache";
 import { BrandTile } from "@/components/ui/display";
 import { cn } from "@/lib/cn";
 import { InitiativesPanel } from "@/components/initiatives-panel";
 import { TodosPanel } from "@/components/todos-panel";
-import { PipelinePanel } from "@/components/pipeline-panel";
+import { PipelinePanel, type FlairOsPanelProps } from "@/components/pipeline-panel";
 import { EventsPanel } from "@/components/events-panel";
 import { OutreachPanel } from "@/components/outreach-panel";
 import { BrandsPanel } from "@/components/brands-panel";
@@ -46,6 +47,8 @@ type Props = {
   autoNew?: boolean;
   leadCategories?: LeadCategory[];
   leadCategoriesEnabled?: boolean;
+  /** FLAIR OS mirror on the pipeline tab (FLAIR only, server-decided). */
+  flairOs?: FlairOsPanelProps;
   /** Line under the business name (the admin view passes an editable one). */
   tagline: React.ReactNode;
   /** Buttons on the right of the header. */
@@ -81,7 +84,7 @@ export function BusinessWorkspace(props: Props) {
 }
 
 function Workspace({
-  business, data, initialTab, openId, autoNew, leadCategories = [], leadCategoriesEnabled = false,
+  business, data, initialTab, openId, autoNew, leadCategories = [], leadCategoriesEnabled = false, flairOs,
   tagline, actions, banner, onTabChange, stickyClass = "tabs-sticky", share, today,
 }: Props) {
   const tabs = tabsForBusiness(business.id, { share });
@@ -130,7 +133,7 @@ function Workspace({
   const counts: Partial<Record<TabId, number>> = {
     initiatives: initiatives.filter((i) => i.status === "active" && i.horizon === "now").length,
     todos: todos.filter((t) => t.status === "open").length,
-    pipeline: leads.filter((l) => l.stage !== "won" && l.stage !== "lost").length,
+    pipeline: leads.filter((l) => isActiveStage(l.stage)).length,
     events: events.filter((e) => e.status !== "completed" && e.status !== "cancelled" && (!e.date || e.date >= today)).length,
     money: ious.filter((i) => i.status === "open").length,
   };
@@ -206,7 +209,7 @@ function Workspace({
       <div key={tab} className={cn("panel-in pb-safe-10 w-full flex-1 px-4 pt-5 sm:px-8 sm:pt-6", !wide && column)}>
         {tab === "initiatives" && <InitiativesPanel businessId={business.id} initial={data.initiatives} {...link} />}
         {tab === "todos"       && <TodosPanel businessId={business.id} initial={data.todos} members={members} {...link} />}
-        {tab === "pipeline"    && <PipelinePanel businessId={business.id} initial={data.leads} categories={leadCategories} categoriesEnabled={leadCategoriesEnabled} {...link} />}
+        {tab === "pipeline"    && <PipelinePanel businessId={business.id} initial={data.leads} categories={leadCategories} categoriesEnabled={leadCategoriesEnabled} flairOs={flairOs} {...link} />}
         {tab === "events"      && <EventsPanel businessId={business.id} initial={data.events} {...link} />}
         {tab === "money"       && !share && <MoneyPanel business={business} initial={data.ious} today={today} hideHeader {...link} />}
         {tab === "outreach"    && <OutreachPanel businessId={business.id} initial={data.outreach} openId={link.openId} />}

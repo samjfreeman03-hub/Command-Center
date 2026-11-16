@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import type { Lead, LeadAttachment, LeadCategory } from "@/lib/types";
-import { LEAD_STAGES } from "@/lib/types";
+import { LEAD_STAGES, MIRROR_ONLY_STAGES, isActiveStage } from "@/lib/types";
+import { FlairOsStrip, MirroredLeadModal, FlairOsBadge } from "@/components/flair-os-panel";
 import {
   Plus,
   Trash2,
@@ -40,7 +41,14 @@ const STAGE_LABELS: Record<Stage, string> = {
   proposal: "Proposal",
   won: "Won",
   lost: "Lost",
+  parked: "Parked",
+  nurture: "Nurture",
 };
+
+/** Columns that render quiet (dashed, dimmed): closed deals and FLAIR OS holds. */
+function isQuiet(stage: Stage) {
+  return !isActiveStage(stage);
+}
 
 const UNCATEGORIZED = "__uncategorized__";
 
@@ -72,11 +80,19 @@ function shortDate(ymd: string) {
 
 type Editor = { mode: "new" } | { mode: "edit"; id: number } | null;
 
+export type FlairOsPanelProps = {
+  /** The FLAIR page mirrors FLAIR OS (server flag, FLAIR only). */
+  enabled: boolean;
+  /** Owner view: may run a pull and pause it. Share views only read. */
+  canSync: boolean;
+};
+
 export function PipelinePanel({
   businessId,
   initial,
   categories: initialCategories = [],
   categoriesEnabled = false,
+  flairOs,
   openId,
   autoNew,
 }: {
@@ -84,10 +100,16 @@ export function PipelinePanel({
   initial: Lead[];
   categories?: LeadCategory[];
   categoriesEnabled?: boolean;
+  flairOs?: FlairOsPanelProps;
   openId?: number;
   autoNew?: boolean;
 }) {
   const [leads, setLeads] = usePanelState("leads", initial);
+  const mirrorOn = !!flairOs?.enabled;
+  // Parked and nurture columns exist only where FLAIR OS puts deals in them.
+  const stages: Stage[] = mirrorOn || leads.some((l) => MIRROR_ONLY_STAGES.includes(l.stage))
+    ? [...LEAD_STAGES, ...MIRROR_ONLY_STAGES]
+    : LEAD_STAGES;
   const [editor, setEditor] = useState<Editor>(autoNew ? { mode: "new" } : null);
   const [cats, setCats] = useState<LeadCategory[]>(initialCategories);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -205,6 +227,14 @@ export function PipelinePanel({
   async function moveLead(id: number, stage: Stage) {
     const lead = leadsRef.current.find((l) => l.id === id);
     if (!lead || lead.stage === stage) return;
+    if (lead.flair_os_id) {
+      toast("This lead is managed in FLAIR OS. Stage changes arrive with write-back.", { tone: "error" });
+      return;
+    }
+    if (MIRROR_ONLY_STAGES.includes(stage)) {
+      toast("Parked and nurture are set in FLAIR OS", { tone: "error" });
+      return;
+    }
     const ok = await update(id, { stage }, "Could not move the lead");
     if (ok && stage === "won") toast("Marked as won", { tone: "success" });
   }
@@ -233,7 +263,7 @@ export function PipelinePanel({
     }
   }
 
-  const active = leads.filter((l) => !isClosed(l.stage));
+  const active = leads.filter((l) => isActiveStage(l.stage));
   const totalPipeline = active.reduce((s, l) => s + (l.value_cents ?? 0), 0);
   const won = leads.filter((l) => l.stage === "won");
   const totalWon = won.reduce((s, l) => s + (l.value_cents ?? 0), 0);
@@ -242,7 +272,7 @@ export function PipelinePanel({
   const q = showSearch ? query.trim().toLowerCase() : "";
 
   const byStage = useMemo(() => {
-    const map: Record<Stage, Lead[]> = { new: [], contacted: [], qualified: [], proposal: [], won: [], lost: [] };
+    const map: Record<Stage, Lead[]> = { new: [], contacted: [], qualified: [], proposal: [], won: [], lost: [], parked: [], nurture: [] };
     for (const l of leads) {
       const catOk =
         !categoriesEnabled ||
@@ -266,6 +296,7 @@ export function PipelinePanel({
         allCategories={categoriesEnabled ? catNames : undefined}
         attachmentCount={attachmentCounts[l.id] ?? l.attachment_count ?? 0}
         dragging={draggingId === l.id}
+        mirrored={!!l.flair_os_id}
         onOpen={() => setEditor({ mode: "edit", id: l.id })}
         onDragStart={() => setDraggingId(l.id)}
         onDragEnd={() => {
@@ -278,6 +309,8 @@ export function PipelinePanel({
 
   return (
     <div>
+      {mirrorOn && flairOs && <FlairOsStrip canSync={flairOs.canSync} />}
+
       {/* Toolbar */}
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-3">
@@ -363,9 +396,9 @@ export function PipelinePanel({
         <>
           {/* Board (desktop) */}
           <div className="hidden gap-3 overflow-x-auto pb-3 md:flex">
-            {LEAD_STAGES.map((stage) => {
+            {stages.map((stage) => {
               const stageLeads = byStage[stage];
-              const quiet = isClosed(stage);
+              const quiet = isQuiet(stage);
               const isTarget = overStage === stage && draggingId !== null;
               const total = stageLeads.reduce((s, l) => s + (l.value_cents ?? 0), 0);
               return (
@@ -434,7 +467,7 @@ export function PipelinePanel({
               className="flex-nowrap! w-full overflow-x-auto scrollbar-none"
               value={mobileStage}
               onChange={setMobileStage}
-              options={LEAD_STAGES.map((s) => ({
+              options={stages.map((s) => ({
                 value: s,
                 label: (
                   <span className="whitespace-nowrap">
@@ -461,7 +494,15 @@ export function PipelinePanel({
         </>
       )}
 
-      {editor && (editor.mode === "new" || editingLead) && (
+      {editor && editor.mode === "edit" && editingLead?.flair_os_id ? (
+        <MirroredLeadModal
+          key={`mirror-${editingLead.id}`}
+          lead={editingLead}
+          stageLabel={STAGE_LABELS[editingLead.stage]}
+          onClose={() => setEditor(null)}
+          attachments={<Attachments leadId={editingLead.id} onCount={(n) => setAttachmentCounts((prev) => ({ ...prev, [editingLead.id]: n }))} />}
+        />
+      ) : editor && (editor.mode === "new" || editingLead) && (
         <LeadModal
           key={editor.mode === "edit" ? `edit-${editor.id}` : "new"}
           lead={editingLead}
@@ -545,6 +586,7 @@ function LeadCard({
   allCategories,
   attachmentCount,
   dragging,
+  mirrored = false,
   onOpen,
   onDragStart,
   onDragEnd,
@@ -553,18 +595,20 @@ function LeadCard({
   allCategories?: string[];
   attachmentCount: number;
   dragging: boolean;
+  /** Managed in FLAIR OS: shows the badge and cannot be dragged between stages. */
+  mirrored?: boolean;
   onOpen: () => void;
   onDragStart: () => void;
   onDragEnd: () => void;
 }) {
-  const overdue = !!lead.next_action_date && !isClosed(lead.stage) && lead.next_action_date < todayKey();
+  const overdue = !!lead.next_action_date && isActiveStage(lead.stage) && lead.next_action_date < todayKey();
   const hasNext = !!lead.next_action || !!lead.next_action_date;
 
   return (
     <div
       role="button"
       tabIndex={0}
-      draggable
+      draggable={!mirrored}
       onClick={onOpen}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -582,7 +626,8 @@ function LeadCard({
       className={cn(
         "cursor-pointer select-none rounded-xl border border-line bg-raised p-3 text-left shadow-card outline-none",
         "transition-[box-shadow,border-color,opacity] duration-150 hover:border-line-strong hover:shadow-lift",
-        "focus-visible:border-ink-3 focus-visible:ring-[3px] focus-visible:ring-ink/10 md:cursor-grab md:active:cursor-grabbing",
+        "focus-visible:border-ink-3 focus-visible:ring-[3px] focus-visible:ring-ink/10",
+        !mirrored && "md:cursor-grab md:active:cursor-grabbing",
         dragging && "opacity-40 shadow-lift"
       )}
     >
@@ -597,6 +642,12 @@ function LeadCard({
           </span>
         ) : null}
       </div>
+
+      {mirrored && (
+        <div className="mt-2">
+          <FlairOsBadge lead={lead} />
+        </div>
+      )}
 
       {hasNext && (
         <div className="mt-2 flex items-start gap-1.5 text-xs text-ink-2">

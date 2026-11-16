@@ -18,6 +18,10 @@ export function DashboardTodos({ initialTodos }: { initialTodos: Todo[] }) {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   async function complete(todo: Todo) {
+    if (todo.flair_os_id) {
+      toast("Managed in FLAIR OS. Complete it there until write-back arrives.");
+      return;
+    }
     const snapshot = todos;
     setTodos((prev) => prev.filter((t) => t.id !== todo.id));
     try {
@@ -86,6 +90,7 @@ export function DashboardTodos({ initialTodos }: { initialTodos: Todo[] }) {
                       <Check size={10} strokeWidth={3} />
                     </span>
                     <span className={cn("min-w-0 flex-1 truncate text-[13px]", t.priority === "low" ? "text-ink-3" : "text-ink")}>{t.title}</span>
+                    {t.flair_os_id && <Badge tone="sky">FLAIR OS</Badge>}
                     {t.priority === "high" && <Badge tone="amber">High</Badge>}
                   </button>
                 ))}

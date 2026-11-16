@@ -42,6 +42,7 @@ function byPriorityThenDate(a: Todo, b: Todo) {
   );
 }
 
+const FLAIR_OS_MANAGED = "Managed in FLAIR OS. Complete or change it there until write-back arrives.";
 const COMPLETE_DELAY_MS = 320;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -157,6 +158,10 @@ export function TodosPanel({
   async function setStatus(id: number, next: "open" | "done") {
     const before = todosRef.current.find((t) => t.id === id);
     if (!before || before.status === next) return;
+    if (before.flair_os_id) {
+      toast(FLAIR_OS_MANAGED);
+      return;
+    }
     const request = fetch(`/api/todos/${id}`, { method: "PATCH", headers: shareHeaders }).catch(() => null);
 
     if (next === "done") {
@@ -194,6 +199,10 @@ export function TodosPanel({
 
   async function update(id: number, patch: TodoPatch) {
     const before = todosRef.current.find((t) => t.id === id);
+    if (before?.flair_os_id) {
+      toast(FLAIR_OS_MANAGED);
+      return;
+    }
     setTodos((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
     const res = await fetch(`/api/todos/${id}`, {
       method: "PATCH",
@@ -211,6 +220,10 @@ export function TodosPanel({
 
   async function setAssignees(id: number, ids: number[]) {
     const before = todosRef.current.find((t) => t.id === id);
+    if (before?.flair_os_id) {
+      toast(FLAIR_OS_MANAGED);
+      return;
+    }
     setTodos((prev) => prev.map((t) => (t.id === id ? { ...t, assignee_ids: ids } : t)));
     const res = await fetch(`/api/todos/${id}`, {
       method: "PATCH",
@@ -224,6 +237,10 @@ export function TodosPanel({
   }
 
   async function remove(id: number) {
+    if (todosRef.current.find((t) => t.id === id)?.flair_os_id) {
+      toast(FLAIR_OS_MANAGED);
+      return;
+    }
     const ok = await confirmDialog({ title: "Delete this todo?", destructive: true, confirmLabel: "Delete" });
     if (!ok) return;
     const snapshot = todosRef.current;
@@ -676,6 +693,7 @@ function TodoRow({
         >
           {todo.title}
         </span>
+        {todo.flair_os_id && <Badge tone="sky">FLAIR OS</Badge>}
         {todo.due_date && <DueBadge dueDate={todo.due_date} muted={struck} />}
         {!struck && todo.priority === "high" && <Badge tone="amber">High</Badge>}
         {!struck && todo.priority === "low" && <span className="text-xs text-ink-3">Low</span>}

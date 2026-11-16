@@ -3,6 +3,7 @@ import { getBusiness } from "@/lib/businesses";
 import { db } from "@/lib/db";
 import { leadCategoriesEnabled } from "@/lib/pipeline-config";
 import { eventsEnabled } from "@/lib/events-config";
+import { flairOsEnabled } from "@/lib/flair-os/config";
 import { BusinessView } from "./business-view";
 import { todayLA } from "@/lib/dates";
 
@@ -47,6 +48,7 @@ export default async function BusinessPage({
       initialTagline={db.getBusinessTagline(slug) ?? business.tagline}
       leadCategories={leadCategoriesEnabled(slug) ? db.listLeadCategories(slug) : []}
       leadCategoriesEnabled={leadCategoriesEnabled(slug)}
+      flairOsEnabled={flairOsEnabled(slug)}
       initialHidden={db.hiddenBusinessIds().includes(slug)}
       today={todayLA()}
     />

@@ -1,0 +1,846 @@
+{
+  "ran_at": "2026-11-16T00:55:31.396Z",
+  "cc": "http://127.0.0.1:3006",
+  "mock": "http://127.0.0.1:3777",
+  "passed": 46,
+  "failed": 0,
+  "total": 46,
+  "results": [
+    {
+      "name": "static: no denied or write tool names in the mirror code",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "mock server reachable with test hooks",
+      "ok": true,
+      "detail": {
+        "deals": 14,
+        "tasks": 10,
+        "clients": 4
+      }
+    },
+    {
+      "name": "admin login",
+      "ok": true,
+      "detail": 200
+    },
+    {
+      "name": "status route enabled for admin",
+      "ok": true,
+      "detail": {
+        "enabled": true,
+        "canSync": true,
+        "dryRunDefault": false,
+        "inFlight": false,
+        "scheduler": {
+          "running": false,
+          "intervalMinutes": 0
+        },
+        "state": {
+          "pull_paused": false,
+          "push_paused": true,
+          "last_run_at": null,
+          "last_ok_at": null,
+          "last_error": null,
+          "last_summary": null,
+          "known_stages": [
+            "engaged",
+            "proposal-owed",
+            "proposal",
+            "contract",
+            "invoice",
+            "signed",
+            "campaign",
+            "accounting",
+            "closed",
+            "lost",
+            "outreach",
+            "ambassador-sourcing",
+            "paused"
+          ]
+        },
+        "drift": {
+          "leads_mirrored": 0,
+          "leads_missing": 0,
+          "leads_unknown_stage": 0,
+          "leads_local_only": 0,
+          "todos_mirrored": 0,
+          "clients_mirrored": 0,
+          "conflicts_open": 0,
+          "missing": [],
+          "local_only": []
+        },
+        "log": []
+      }
+    },
+    {
+      "name": "dry run reports 14 deals to create",
+      "ok": true,
+      "detail": {
+        "seen": 14,
+        "created": 14,
+        "updated": 0,
+        "unchanged": 0,
+        "missing": 0,
+        "unknown_stage": 0
+      }
+    },
+    {
+      "name": "dry run wrote no leads",
+      "ok": true,
+      "detail": {
+        "before": 0,
+        "afterDry": 0
+      }
+    },
+    {
+      "name": "dry run entries are marked dry_run in the log",
+      "ok": true,
+      "detail": [
+        {
+          "result": "dry_run"
+        },
+        {
+          "result": "dry_run"
+        },
+        {
+          "result": "dry_run"
+        }
+      ]
+    },
+    {
+      "name": "first pull creates 14 deals, 10 tasks, 4 clients",
+      "ok": true,
+      "detail": {
+        "deals": {
+          "seen": 14,
+          "created": 14,
+          "updated": 0,
+          "unchanged": 0,
+          "missing": 0,
+          "unknown_stage": 0
+        },
+        "tasks": {
+          "seen": 10,
+          "created": 10,
+          "updated": 0,
+          "unchanged": 0
+        },
+        "clients": {
+          "seen": 4,
+          "created": 4,
+          "updated": 0,
+          "unchanged": 0
+        },
+        "error": null
+      }
+    },
+    {
+      "name": "first pull stays inside the polling budget (under 30 calls)",
+      "ok": true,
+      "detail": 18
+    },
+    {
+      "name": "first pull raised no cap warnings",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "14 mirrored leads, all under the flair business",
+      "ok": true,
+      "detail": 14
+    },
+    {
+      "name": "stage map: engaged rolls up to qualified (CBS)",
+      "ok": true,
+      "detail": {
+        "id": 123,
+        "name": "Emma Sandoval",
+        "company": "CBS / Paramount",
+        "stage": "qualified",
+        "flair_os_id": "d0000000-0000-4000-8000-000000000001",
+        "flair_os_stage": "engaged",
+        "flair_os_sales_status": "active",
+        "flair_os_owner": "Sam Freeman",
+        "value_cents": 8500000,
+        "contact_email": "emma.sandoval@example.com",
+        "business_id": "flair"
+      }
+    },
+    {
+      "name": "stage map: outreach with no activity rolls up to new (Forever 21)",
+      "ok": true,
+      "detail": {
+        "id": 132,
+        "name": "Dana Kim",
+        "company": "Forever 21",
+        "stage": "new",
+        "flair_os_id": "d0000000-0000-4000-8000-000000000002",
+        "flair_os_stage": "outreach",
+        "flair_os_sales_status": "active",
+        "flair_os_owner": null,
+        "value_cents": null,
+        "contact_email": "dana.kim@forever21.com",
+        "business_id": "flair"
+      }
+    },
+    {
+      "name": "stage map: proposal-owed rolls up to proposal (Glossier)",
+      "ok": true,
+      "detail": {
+        "id": 126,
+        "name": "Priya Natarajan",
+        "company": "Glossier",
+        "stage": "proposal",
+        "flair_os_id": "d0000000-0000-4000-8000-000000000003",
+        "flair_os_stage": "proposal-owed",
+        "flair_os_sales_status": "active",
+        "flair_os_owner": "Tyler Rong",
+        "value_cents": null,
+        "contact_email": "priya@glossier.com",
+        "business_id": "flair"
+      }
+    },
+    {
+      "name": "stage map: ambassador-sourcing rolls up to qualified (Celsius)",
+      "ok": true,
+      "detail": {
+        "id": 125,
+        "name": "Marco Alvarez",
+        "company": "Celsius",
+        "stage": "qualified",
+        "flair_os_id": "d0000000-0000-4000-8000-000000000004",
+        "flair_os_stage": "ambassador-sourcing",
+        "flair_os_sales_status": "active",
+        "flair_os_owner": "Tyler Rong",
+        "value_cents": 4000000,
+        "contact_email": "marco.alvarez@celsius.com",
+        "business_id": "flair"
+      }
+    },
+    {
+      "name": "stage map: outreach with lastContacted rolls up to contacted (Red Bull)",
+      "ok": true,
+      "detail": {
+        "id": 133,
+        "name": "Max Keller",
+        "company": "Red Bull",
+        "stage": "contacted",
+        "flair_os_id": "d0000000-0000-4000-8000-000000000014",
+        "flair_os_stage": "outreach",
+        "flair_os_sales_status": "active",
+        "flair_os_owner": null,
+        "value_cents": null,
+        "contact_email": "max.keller@redbull.com",
+        "business_id": "flair"
+      }
+    },
+    {
+      "name": "stage map: campaign rolls up to won (Kraft Heinz)",
+      "ok": true,
+      "detail": {
+        "id": 130,
+        "name": "Ana Lopez",
+        "company": "Kraft Heinz",
+        "stage": "won",
+        "flair_os_id": "d0000000-0000-4000-8000-000000000009",
+        "flair_os_stage": "campaign",
+        "flair_os_sales_status": "active",
+        "flair_os_owner": "Tyler Rong",
+        "value_cents": 15000000,
+        "contact_email": "ana.lopez@kraftheinz.com",
+        "business_id": "flair"
+      }
+    },
+    {
+      "name": "stage map: paused stage becomes parked (Chipotle)",
+      "ok": true,
+      "detail": {
+        "id": 134,
+        "name": "Ravi Menon",
+        "company": "Chipotle",
+        "stage": "parked",
+        "flair_os_id": "d0000000-0000-4000-8000-000000000012",
+        "flair_os_stage": "paused",
+        "flair_os_sales_status": "active",
+        "flair_os_owner": "Tyler Rong",
+        "value_cents": null,
+        "contact_email": "ravi.menon@chipotle.com",
+        "business_id": "flair"
+      }
+    },
+    {
+      "name": "stage map: sales_status nurture becomes nurture (Fenty)",
+      "ok": true,
+      "detail": {
+        "id": 131,
+        "name": "Nia Carter",
+        "company": "Fenty Beauty",
+        "stage": "nurture",
+        "flair_os_id": "d0000000-0000-4000-8000-000000000013",
+        "flair_os_stage": "engaged",
+        "flair_os_sales_status": "nurture",
+        "flair_os_owner": "Tyler Rong",
+        "value_cents": null,
+        "contact_email": "nia@fentybeauty.com",
+        "business_id": "flair"
+      }
+    },
+    {
+      "name": "fields: CBS keeps owner, value in cents, contact email",
+      "ok": true,
+      "detail": {
+        "id": 123,
+        "name": "Emma Sandoval",
+        "company": "CBS / Paramount",
+        "stage": "qualified",
+        "flair_os_id": "d0000000-0000-4000-8000-000000000001",
+        "flair_os_stage": "engaged",
+        "flair_os_sales_status": "active",
+        "flair_os_owner": "Sam Freeman",
+        "value_cents": 8500000,
+        "contact_email": "emma.sandoval@example.com",
+        "business_id": "flair"
+      }
+    },
+    {
+      "name": "detail enrichment fills updated_at and client link on the first pull",
+      "ok": true,
+      "detail": {
+        "cbsDetail": {
+          "flair_os_updated_at": 1794675600000,
+          "flair_os_client_id": null
+        },
+        "kraftDetail": {
+          "flair_os_updated_at": 1794070800000,
+          "flair_os_client_id": "c1000000-0000-4000-8000-000000000003"
+        }
+      }
+    },
+    {
+      "name": "10 mirrored todos, every one linked to its lead",
+      "ok": true,
+      "detail": [
+        [
+          "Send vetting one-pager and demo video",
+          123
+        ],
+        [
+          "Put together creator list once brief lands",
+          123
+        ],
+        [
+          "Book intro call with Priya",
+          126
+        ],
+        [
+          "Send recap deck",
+          125
+        ],
+        [
+          "Write proposal",
+          127
+        ],
+        [
+          "Follow up on proposal",
+          124
+        ],
+        [
+          "Collect signed contract",
+          128
+        ],
+        [
+          "Send invoice 002",
+          129
+        ],
+        [
+          "Campaign kickoff call",
+          130
+        ],
+        [
+          "Check back on Q1 budget",
+          134
+        ]
+      ]
+    },
+    {
+      "name": "completed FLAIR OS task mirrors as done",
+      "ok": true,
+      "detail": {
+        "id": 84,
+        "title": "Send recap deck",
+        "status": "done",
+        "due_date": "2026-11-16",
+        "lead_id": 125,
+        "flair_os_id": "a0000000-0000-4000-8000-000000000004",
+        "flair_os_deal_id": "d0000000-0000-4000-8000-000000000004",
+        "flair_os_assignee": "Tyler Rong",
+        "business_id": "flair"
+      }
+    },
+    {
+      "name": "task fields: due date, assignee, lead link (CBS task)",
+      "ok": true,
+      "detail": {
+        "id": 81,
+        "title": "Send vetting one-pager and demo video",
+        "status": "open",
+        "due_date": "2026-11-17",
+        "lead_id": 123,
+        "flair_os_id": "a0000000-0000-4000-8000-000000000001",
+        "flair_os_deal_id": "d0000000-0000-4000-8000-000000000001",
+        "flair_os_assignee": "Sam Freeman",
+        "business_id": "flair"
+      }
+    },
+    {
+      "name": "4 clients mirrored into the CRM as partners",
+      "ok": true,
+      "detail": [
+        {
+          "brand_name": "SC Johnson",
+          "website": null,
+          "status": "active_partner",
+          "flair_os_client_id": "c1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "brand_name": "Disney",
+          "website": null,
+          "status": "active_partner",
+          "flair_os_client_id": "c1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "brand_name": "Kraft Heinz",
+          "website": null,
+          "status": "active_partner",
+          "flair_os_client_id": "c1000000-0000-4000-8000-000000000003"
+        },
+        {
+          "brand_name": "Oakley Meta",
+          "website": null,
+          "status": "active_partner",
+          "flair_os_client_id": "c1000000-0000-4000-8000-000000000004"
+        }
+      ]
+    },
+    {
+      "name": "activities route answers (FLAIR OS exposes no activity read yet, so empty)",
+      "ok": true,
+      "detail": {
+        "activities": []
+      }
+    },
+    {
+      "name": "second pull changes nothing",
+      "ok": true,
+      "detail": {
+        "deals": {
+          "seen": 14,
+          "created": 0,
+          "updated": 0,
+          "unchanged": 14,
+          "missing": 0,
+          "unknown_stage": 0
+        },
+        "tasks": {
+          "seen": 10,
+          "created": 0,
+          "updated": 0,
+          "unchanged": 10
+        }
+      }
+    },
+    {
+      "name": "stage change in FLAIR OS updates exactly one lead",
+      "ok": true,
+      "detail": {
+        "summary": {
+          "seen": 14,
+          "created": 0,
+          "updated": 1,
+          "unchanged": 13,
+          "missing": 0,
+          "unknown_stage": 0
+        },
+        "cbsNow": {
+          "stage": "proposal",
+          "flair_os_stage": "proposal",
+          "value_cents": 9000000,
+          "next_action": "Proposal owed by Friday"
+        }
+      }
+    },
+    {
+      "name": "log records old and new values for the change",
+      "ok": true,
+      "detail": [
+        {
+          "field": "flair_os_updated_at",
+          "from": 1794675600000,
+          "to": 1794790529954
+        },
+        {
+          "field": "stage",
+          "from": "qualified",
+          "to": "proposal"
+        },
+        {
+          "field": "flair_os_stage",
+          "from": "engaged",
+          "to": "proposal"
+        },
+        {
+          "field": "next_action",
+          "from": "Send vetting one-pager and demo video",
+          "to": "Proposal owed by Friday"
+        },
+        {
+          "field": "value_cents",
+          "from": 8500000,
+          "to": 9000000
+        },
+        {
+          "field": "flair_os_updated_at",
+          "from": null,
+          "to": 1794675600000
+        }
+      ]
+    },
+    {
+      "name": "deal moved to lost shows as lost, not missing",
+      "ok": true,
+      "detail": {
+        "summary": {
+          "seen": 13,
+          "created": 0,
+          "updated": 1,
+          "unchanged": 13,
+          "missing": 0,
+          "unknown_stage": 0
+        },
+        "bumbleLost": {
+          "stage": "lost",
+          "flair_os_stage": "lost",
+          "flair_os_missing_at": null
+        }
+      }
+    },
+    {
+      "name": "removed deal is kept and flagged missing",
+      "ok": true,
+      "detail": {
+        "summary": {
+          "seen": 13,
+          "created": 0,
+          "updated": 0,
+          "unchanged": 13,
+          "missing": 1,
+          "unknown_stage": 0
+        },
+        "bumble": {
+          "id": 136,
+          "flair_os_missing_at": 1794790530619
+        }
+      }
+    },
+    {
+      "name": "drift report shows 1 missing",
+      "ok": true,
+      "detail": {
+        "leads_mirrored": 14,
+        "leads_missing": 1,
+        "leads_unknown_stage": 0,
+        "leads_local_only": 0,
+        "todos_mirrored": 10,
+        "clients_mirrored": 4,
+        "conflicts_open": 0,
+        "missing": [
+          {
+            "id": 136,
+            "name": "Sophie Hart",
+            "company": "Bumble",
+            "flair_os_id": "d0000000-0000-4000-8000-000000000011",
+            "missing_at": 1794790530619
+          }
+        ],
+        "local_only": []
+      }
+    },
+    {
+      "name": "task completed in FLAIR OS becomes a done todo",
+      "ok": true,
+      "detail": {
+        "summary": {
+          "seen": 10,
+          "created": 0,
+          "updated": 1,
+          "unchanged": 9
+        },
+        "t1Now": {
+          "status": "done",
+          "completed_at": 1794790530874
+        }
+      }
+    },
+    {
+      "name": "PATCH and DELETE on a mirrored lead return 409 and change nothing",
+      "ok": true,
+      "detail": {
+        "patch": 409,
+        "del": 409,
+        "name": "Emma Sandoval"
+      }
+    },
+    {
+      "name": "PATCH and DELETE on a mirrored todo return 409",
+      "ok": true,
+      "detail": {
+        "patch": 409,
+        "del": 409
+      }
+    },
+    {
+      "name": "a local (non-mirrored) FLAIR lead is still editable and deletable",
+      "ok": true,
+      "detail": {
+        "local": 200,
+        "patch": 200,
+        "del": 200
+      }
+    },
+    {
+      "name": "pause flag persists",
+      "ok": true,
+      "detail": {
+        "pull_paused": true,
+        "push_paused": true,
+        "last_run_at": 1794790530757,
+        "last_ok_at": 1794790530925,
+        "last_error": null,
+        "last_summary": {
+          "ok": true,
+          "trigger": "manual",
+          "dry_run": false,
+          "started_at": 1794790530757,
+          "finished_at": 1794790530925,
+          "duration_ms": 168,
+          "calls": 4,
+          "deals": {
+            "seen": 13,
+            "created": 0,
+            "updated": 0,
+            "unchanged": 13,
+            "missing": 0,
+            "unknown_stage": 0
+          },
+          "tasks": {
+            "seen": 10,
+            "created": 0,
+            "updated": 1,
+            "unchanged": 9
+          },
+          "clients": {
+            "seen": 4,
+            "created": 0,
+            "updated": 0,
+            "unchanged": 4
+          },
+          "activities": {
+            "fetched": 0,
+            "deals_checked": 0
+          },
+          "stages": [
+            "engaged",
+            "proposal-owed",
+            "proposal",
+            "contract",
+            "invoice",
+            "signed",
+            "campaign",
+            "accounting",
+            "closed",
+            "lost",
+            "outreach",
+            "ambassador-sourcing",
+            "paused"
+          ],
+          "unknown_stages": [],
+          "warnings": [],
+          "error": null
+        },
+        "known_stages": [
+          "engaged",
+          "proposal-owed",
+          "proposal",
+          "contract",
+          "invoice",
+          "signed",
+          "campaign",
+          "accounting",
+          "closed",
+          "lost",
+          "outreach",
+          "ambassador-sourcing",
+          "paused"
+        ]
+      }
+    },
+    {
+      "name": "manual dry run still allowed while paused",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "resume clears the flag",
+      "ok": true,
+      "detail": {
+        "pull_paused": false,
+        "push_paused": true,
+        "last_run_at": 1794790531040,
+        "last_ok_at": 1794790531195,
+        "last_error": null,
+        "last_summary": {
+          "ok": true,
+          "trigger": "manual",
+          "dry_run": true,
+          "started_at": 1794790531040,
+          "finished_at": 1794790531195,
+          "duration_ms": 155,
+          "calls": 4,
+          "deals": {
+            "seen": 13,
+            "created": 0,
+            "updated": 0,
+            "unchanged": 13,
+            "missing": 0,
+            "unknown_stage": 0
+          },
+          "tasks": {
+            "seen": 10,
+            "created": 0,
+            "updated": 0,
+            "unchanged": 10
+          },
+          "clients": {
+            "seen": 4,
+            "created": 0,
+            "updated": 0,
+            "unchanged": 4
+          },
+          "activities": {
+            "fetched": 0,
+            "deals_checked": 0
+          },
+          "stages": [
+            "engaged",
+            "proposal-owed",
+            "proposal",
+            "contract",
+            "invoice",
+            "signed",
+            "campaign",
+            "accounting",
+            "closed",
+            "lost",
+            "outreach",
+            "ambassador-sourcing",
+            "paused"
+          ],
+          "unknown_stages": [],
+          "warnings": [],
+          "error": null
+        },
+        "known_stages": [
+          "engaged",
+          "proposal-owed",
+          "proposal",
+          "contract",
+          "invoice",
+          "signed",
+          "campaign",
+          "accounting",
+          "closed",
+          "lost",
+          "outreach",
+          "ambassador-sourcing",
+          "paused"
+        ]
+      }
+    },
+    {
+      "name": "Command Center only called allowlisted read tools",
+      "ok": true,
+      "detail": {
+        "used": [
+          "list_pipeline_stages",
+          "search_pipeline",
+          "get_pipeline_deal",
+          "list_pipeline_tasks",
+          "list_clients"
+        ],
+        "total": 63
+      }
+    },
+    {
+      "name": "every call carried the command_center key, never the full key",
+      "ok": true,
+      "detail": [
+        "list_pipeline_stages",
+        "search_pipeline",
+        "get_pipeline_deal",
+        "list_pipeline_tasks",
+        "list_clients"
+      ]
+    },
+    {
+      "name": "mock: destructive tool refused for the command_center key",
+      "ok": true,
+      "detail": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"ok\": false,\n  \"error\": \"Tool \\\"cleanup_pipeline_junk\\\" is not allowed for the Command Center MCP key. Allowed: list_pipeline_stages, get_pipeline_summary, search_pipeline, get_pipeline_counts, get_pipeline_deal, list_pipeline_tasks, list_clients, search_clients, get_client, get_admin_stats.\"\n}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "mirror never calls get_admin_stats even though the key allows it",
+      "ok": true,
+      "detail": [
+        "list_pipeline_stages",
+        "search_pipeline",
+        "get_pipeline_deal",
+        "list_pipeline_tasks",
+        "list_clients"
+      ]
+    },
+    {
+      "name": "mock: full key still works, missing key is 401",
+      "ok": true,
+      "detail": {
+        "full": 200,
+        "noKey": 401
+      }
+    },
+    {
+      "name": "share token can read status but not sync or change settings",
+      "ok": true,
+      "detail": {
+        "status": 200,
+        "sync": 401,
+        "settings": 401
+      }
+    },
+    {
+      "name": "anonymous request is refused",
+      "ok": true,
+      "detail": 401
+    }
+  ]
+}

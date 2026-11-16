@@ -23,6 +23,7 @@ export function BusinessView({
   initialTagline,
   leadCategories,
   leadCategoriesEnabled,
+  flairOsEnabled = false,
   initialHidden,
   today,
 }: {
@@ -35,6 +36,8 @@ export function BusinessView({
   initialTagline: string;
   leadCategories: LeadCategory[];
   leadCategoriesEnabled: boolean;
+  /** FLAIR OS mirror is configured for this business (server flag). */
+  flairOsEnabled?: boolean;
   initialHidden: boolean;
   today: string;
 }) {
@@ -162,6 +165,7 @@ export function BusinessView({
       autoNew={autoNew}
       leadCategories={leadCategories}
       leadCategoriesEnabled={leadCategoriesEnabled}
+      flairOs={flairOsEnabled ? { enabled: true, canSync: true } : undefined}
       tagline={taglineNode}
       actions={actions}
       banner={banner}
