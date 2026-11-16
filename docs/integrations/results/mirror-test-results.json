@@ -1,10 +1,10 @@
 {
-  "ran_at": "2026-11-16T00:55:31.396Z",
+  "ran_at": "2026-11-16T02:03:50.137Z",
   "cc": "http://127.0.0.1:3006",
   "mock": "http://127.0.0.1:3777",
-  "passed": 46,
+  "passed": 68,
   "failed": 0,
-  "total": 46,
+  "total": 68,
   "results": [
     {
       "name": "static: no denied or write tool names in the mirror code",
@@ -15,7 +15,7 @@
       "name": "mock server reachable with test hooks",
       "ok": true,
       "detail": {
-        "deals": 14,
+        "deals": 15,
         "tasks": 10,
         "clients": 4
       }
@@ -58,7 +58,158 @@
             "outreach",
             "ambassador-sourcing",
             "paused"
-          ]
+          ],
+          "counts": {
+            "total": 14,
+            "byStage": {
+              "Proposal Sent": 3,
+              "Outreach": 3,
+              "Proposal Owed": 1,
+              "Ambassador Sourcing": 1,
+              "Contract": 1,
+              "Invoice": 1,
+              "Active": 1,
+              "Closed": 1,
+              "Paused": 1,
+              "Engaged": 1
+            },
+            "byStatus": {
+              "active": 12,
+              "won": 2
+            },
+            "openPipelineValue": 0,
+            "bookedPipelineValue": 0,
+            "fetched_at": 1794794597574
+          }
+        },
+        "stages": [
+          {
+            "slug": "engaged",
+            "label": "Engaged",
+            "color": "#667085",
+            "sort_order": 0,
+            "is_won": false,
+            "is_lost": false,
+            "is_lifecycle": true
+          },
+          {
+            "slug": "proposal-owed",
+            "label": "Proposal Owed",
+            "color": "#667085",
+            "sort_order": 1,
+            "is_won": false,
+            "is_lost": false,
+            "is_lifecycle": true
+          },
+          {
+            "slug": "proposal",
+            "label": "Proposal Sent",
+            "color": "#667085",
+            "sort_order": 2,
+            "is_won": false,
+            "is_lost": false,
+            "is_lifecycle": true
+          },
+          {
+            "slug": "contract",
+            "label": "Contract",
+            "color": "#667085",
+            "sort_order": 3,
+            "is_won": false,
+            "is_lost": false,
+            "is_lifecycle": true
+          },
+          {
+            "slug": "invoice",
+            "label": "Invoice",
+            "color": "#667085",
+            "sort_order": 4,
+            "is_won": false,
+            "is_lost": false,
+            "is_lifecycle": true
+          },
+          {
+            "slug": "signed",
+            "label": "Signed",
+            "color": "#667085",
+            "sort_order": 5,
+            "is_won": true,
+            "is_lost": false,
+            "is_lifecycle": true
+          },
+          {
+            "slug": "campaign",
+            "label": "Active",
+            "color": "#667085",
+            "sort_order": 6,
+            "is_won": true,
+            "is_lost": false,
+            "is_lifecycle": true
+          },
+          {
+            "slug": "accounting",
+            "label": "Accounting",
+            "color": "#667085",
+            "sort_order": 7,
+            "is_won": true,
+            "is_lost": false,
+            "is_lifecycle": true
+          },
+          {
+            "slug": "closed",
+            "label": "Closed",
+            "color": "#667085",
+            "sort_order": 8,
+            "is_won": true,
+            "is_lost": false,
+            "is_lifecycle": true
+          },
+          {
+            "slug": "lost",
+            "label": "Lost",
+            "color": "#667085",
+            "sort_order": 9,
+            "is_won": false,
+            "is_lost": true,
+            "is_lifecycle": true
+          },
+          {
+            "slug": "outreach",
+            "label": "Outreach",
+            "color": "#667085",
+            "sort_order": 10,
+            "is_won": false,
+            "is_lost": false,
+            "is_lifecycle": true
+          },
+          {
+            "slug": "ambassador-sourcing",
+            "label": "Ambassador Sourcing",
+            "color": "#667085",
+            "sort_order": 11,
+            "is_won": false,
+            "is_lost": false,
+            "is_lifecycle": true
+          },
+          {
+            "slug": "paused",
+            "label": "Paused",
+            "color": "#667085",
+            "sort_order": 104,
+            "is_won": false,
+            "is_lost": false,
+            "is_lifecycle": false
+          }
+        ],
+        "reconciliation": {
+          "items": [],
+          "duplicates": {},
+          "counts": {
+            "same": 0,
+            "likely": 0,
+            "none": 0,
+            "separate": 0
+          }
         },
         "drift": {
           "leads_mirrored": 0,
@@ -75,11 +226,11 @@
       }
     },
     {
-      "name": "dry run reports 14 deals to create",
+      "name": "dry run reports 15 deals to create",
       "ok": true,
       "detail": {
-        "seen": 14,
-        "created": 14,
+        "seen": 15,
+        "created": 15,
         "updated": 0,
         "unchanged": 0,
         "missing": 0,
@@ -110,12 +261,12 @@
       ]
     },
     {
-      "name": "first pull creates 14 deals, 10 tasks, 4 clients",
+      "name": "first pull creates 15 deals, 10 tasks, 4 clients",
       "ok": true,
       "detail": {
         "deals": {
-          "seen": 14,
-          "created": 14,
+          "seen": 15,
+          "created": 15,
           "updated": 0,
           "unchanged": 0,
           "missing": 0,
@@ -139,7 +290,7 @@
     {
       "name": "first pull stays inside the polling budget (under 30 calls)",
       "ok": true,
-      "detail": 18
+      "detail": 20
     },
     {
       "name": "first pull raised no cap warnings",
@@ -147,15 +298,15 @@
       "detail": []
     },
     {
-      "name": "14 mirrored leads, all under the flair business",
+      "name": "15 mirrored leads, all under the flair business",
       "ok": true,
-      "detail": 14
+      "detail": 15
     },
     {
       "name": "stage map: engaged rolls up to qualified (CBS)",
       "ok": true,
       "detail": {
-        "id": 123,
+        "id": 158,
         "name": "Emma Sandoval",
         "company": "CBS / Paramount",
         "stage": "qualified",
@@ -172,7 +323,7 @@
       "name": "stage map: outreach with no activity rolls up to new (Forever 21)",
       "ok": true,
       "detail": {
-        "id": 132,
+        "id": 168,
         "name": "Dana Kim",
         "company": "Forever 21",
         "stage": "new",
@@ -189,7 +340,7 @@
       "name": "stage map: proposal-owed rolls up to proposal (Glossier)",
       "ok": true,
       "detail": {
-        "id": 126,
+        "id": 161,
         "name": "Priya Natarajan",
         "company": "Glossier",
         "stage": "proposal",
@@ -206,7 +357,7 @@
       "name": "stage map: ambassador-sourcing rolls up to qualified (Celsius)",
       "ok": true,
       "detail": {
-        "id": 125,
+        "id": 160,
         "name": "Marco Alvarez",
         "company": "Celsius",
         "stage": "qualified",
@@ -223,7 +374,7 @@
       "name": "stage map: outreach with lastContacted rolls up to contacted (Red Bull)",
       "ok": true,
       "detail": {
-        "id": 133,
+        "id": 169,
         "name": "Max Keller",
         "company": "Red Bull",
         "stage": "contacted",
@@ -240,7 +391,7 @@
       "name": "stage map: campaign rolls up to won (Kraft Heinz)",
       "ok": true,
       "detail": {
-        "id": 130,
+        "id": 165,
         "name": "Ana Lopez",
         "company": "Kraft Heinz",
         "stage": "won",
@@ -257,7 +408,7 @@
       "name": "stage map: paused stage becomes parked (Chipotle)",
       "ok": true,
       "detail": {
-        "id": 134,
+        "id": 170,
         "name": "Ravi Menon",
         "company": "Chipotle",
         "stage": "parked",
@@ -274,7 +425,7 @@
       "name": "stage map: sales_status nurture becomes nurture (Fenty)",
       "ok": true,
       "detail": {
-        "id": 131,
+        "id": 167,
         "name": "Nia Carter",
         "company": "Fenty Beauty",
         "stage": "nurture",
@@ -291,7 +442,7 @@
       "name": "fields: CBS keeps owner, value in cents, contact email",
       "ok": true,
       "detail": {
-        "id": 123,
+        "id": 158,
         "name": "Emma Sandoval",
         "company": "CBS / Paramount",
         "stage": "qualified",
@@ -324,43 +475,43 @@
       "detail": [
         [
           "Send vetting one-pager and demo video",
-          123
+          158
         ],
         [
           "Put together creator list once brief lands",
-          123
+          158
         ],
         [
           "Book intro call with Priya",
-          126
+          161
         ],
         [
           "Send recap deck",
-          125
+          160
         ],
         [
           "Write proposal",
-          127
+          162
         ],
         [
           "Follow up on proposal",
-          124
+          159
         ],
         [
           "Collect signed contract",
-          128
+          163
         ],
         [
           "Send invoice 002",
-          129
+          164
         ],
         [
           "Campaign kickoff call",
-          130
+          165
         ],
         [
           "Check back on Q1 budget",
-          134
+          170
         ]
       ]
     },
@@ -368,11 +519,11 @@
       "name": "completed FLAIR OS task mirrors as done",
       "ok": true,
       "detail": {
-        "id": 84,
+        "id": 104,
         "title": "Send recap deck",
         "status": "done",
         "due_date": "2026-11-16",
-        "lead_id": 125,
+        "lead_id": 160,
         "flair_os_id": "a0000000-0000-4000-8000-000000000004",
         "flair_os_deal_id": "d0000000-0000-4000-8000-000000000004",
         "flair_os_assignee": "Tyler Rong",
@@ -383,11 +534,11 @@
       "name": "task fields: due date, assignee, lead link (CBS task)",
       "ok": true,
       "detail": {
-        "id": 81,
+        "id": 101,
         "title": "Send vetting one-pager and demo video",
         "status": "open",
         "due_date": "2026-11-17",
-        "lead_id": 123,
+        "lead_id": 158,
         "flair_os_id": "a0000000-0000-4000-8000-000000000001",
         "flair_os_deal_id": "d0000000-0000-4000-8000-000000000001",
         "flair_os_assignee": "Sam Freeman",
@@ -436,10 +587,10 @@
       "ok": true,
       "detail": {
         "deals": {
-          "seen": 14,
+          "seen": 15,
           "created": 0,
           "updated": 0,
-          "unchanged": 14,
+          "unchanged": 15,
           "missing": 0,
           "unknown_stage": 0
         },
@@ -456,10 +607,10 @@
       "ok": true,
       "detail": {
         "summary": {
-          "seen": 14,
+          "seen": 15,
           "created": 0,
           "updated": 1,
-          "unchanged": 13,
+          "unchanged": 14,
           "missing": 0,
           "unknown_stage": 0
         },
@@ -478,7 +629,7 @@
         {
           "field": "flair_os_updated_at",
           "from": 1794675600000,
-          "to": 1794790529954
+          "to": 1794794628237
         },
         {
           "field": "stage",
@@ -512,10 +663,10 @@
       "ok": true,
       "detail": {
         "summary": {
-          "seen": 13,
+          "seen": 14,
           "created": 0,
           "updated": 1,
-          "unchanged": 13,
+          "unchanged": 14,
           "missing": 0,
           "unknown_stage": 0
         },
@@ -531,16 +682,16 @@
       "ok": true,
       "detail": {
         "summary": {
-          "seen": 13,
+          "seen": 14,
           "created": 0,
           "updated": 0,
-          "unchanged": 13,
+          "unchanged": 14,
           "missing": 1,
           "unknown_stage": 0
         },
         "bumble": {
-          "id": 136,
-          "flair_os_missing_at": 1794790530619
+          "id": 172,
+          "flair_os_missing_at": 1794794629001
         }
       }
     },
@@ -548,7 +699,7 @@
       "name": "drift report shows 1 missing",
       "ok": true,
       "detail": {
-        "leads_mirrored": 14,
+        "leads_mirrored": 15,
         "leads_missing": 1,
         "leads_unknown_stage": 0,
         "leads_local_only": 0,
@@ -557,11 +708,11 @@
         "conflicts_open": 0,
         "missing": [
           {
-            "id": 136,
+            "id": 172,
             "name": "Sophie Hart",
             "company": "Bumble",
             "flair_os_id": "d0000000-0000-4000-8000-000000000011",
-            "missing_at": 1794790530619
+            "missing_at": 1794794629001
           }
         ],
         "local_only": []
@@ -579,7 +730,7 @@
         },
         "t1Now": {
           "status": "done",
-          "completed_at": 1794790530874
+          "completed_at": 1794794629305
         }
       }
     },
@@ -610,109 +761,441 @@
       }
     },
     {
+      "name": "stage metadata: 13 FLAIR OS stages stored with label, color and order",
+      "ok": true,
+      "detail": [
+        {
+          "slug": "engaged",
+          "label": "Engaged",
+          "color": "#667085",
+          "sort_order": 0,
+          "is_won": false,
+          "is_lost": false,
+          "is_lifecycle": true
+        },
+        {
+          "slug": "proposal-owed",
+          "label": "Proposal Owed",
+          "color": "#667085",
+          "sort_order": 1,
+          "is_won": false,
+          "is_lost": false,
+          "is_lifecycle": true
+        },
+        {
+          "slug": "proposal",
+          "label": "Proposal Sent",
+          "color": "#667085",
+          "sort_order": 2,
+          "is_won": false,
+          "is_lost": false,
+          "is_lifecycle": true
+        }
+      ]
+    },
+    {
+      "name": "stage metadata: won, lost and non-lifecycle flags survive",
+      "ok": true,
+      "detail": {
+        "signed": {
+          "slug": "signed",
+          "label": "Signed",
+          "color": "#667085",
+          "sort_order": 5,
+          "is_won": true,
+          "is_lost": false,
+          "is_lifecycle": true
+        },
+        "lost": {
+          "slug": "lost",
+          "label": "Lost",
+          "color": "#667085",
+          "sort_order": 9,
+          "is_won": false,
+          "is_lost": true,
+          "is_lifecycle": true
+        },
+        "paused": {
+          "slug": "paused",
+          "label": "Paused",
+          "color": "#667085",
+          "sort_order": 104,
+          "is_won": false,
+          "is_lost": false,
+          "is_lifecycle": false
+        }
+      }
+    },
+    {
+      "name": "FLAIR OS counts stored for the board header",
+      "ok": true,
+      "detail": {
+        "total": 14,
+        "byStage": {
+          "Proposal Sent": 3,
+          "Outreach": 3,
+          "Proposal Owed": 1,
+          "Ambassador Sourcing": 1,
+          "Contract": 1,
+          "Invoice": 1,
+          "Active": 1,
+          "Closed": 1,
+          "Paused": 1,
+          "Engaged": 1
+        },
+        "byStatus": {
+          "active": 12,
+          "won": 2
+        },
+        "openPipelineValue": 0,
+        "bookedPipelineValue": 0,
+        "fetched_at": 1794794629357
+      }
+    },
+    {
+      "name": "card fields: opportunity name and last contacted mirrored",
+      "ok": true,
+      "detail": {
+        "cbsV2": {
+          "flair_os_opportunity": "FLAIR x CBS - Undercover Boss revival",
+          "flair_os_last_contacted_at": 1794416400000
+        },
+        "redbullV2": {
+          "flair_os_opportunity": null,
+          "flair_os_last_contacted_at": 1793984400000
+        }
+      }
+    },
+    {
+      "name": "duplicate marker: both Liquid Death deals point at each other",
+      "ok": true,
+      "detail": {
+        "d0000000-0000-4000-8000-000000000006": [
+          "d0000000-0000-4000-8000-000000000015"
+        ],
+        "d0000000-0000-4000-8000-000000000015": [
+          "d0000000-0000-4000-8000-000000000006"
+        ]
+      }
+    },
+    {
+      "name": "setup: four Command Center-only FLAIR leads and one attachment created",
+      "ok": true,
+      "detail": {
+        "a": 174,
+        "attach": 200
+      }
+    },
+    {
+      "name": "lane: email match is 'same' (Glossier)",
+      "ok": true,
+      "detail": {
+        "id": 174,
+        "name": "Priya Natarajan",
+        "company": "Glossier Inc.",
+        "contact_name": null,
+        "contact_email": "PRIYA@glossier.com",
+        "stage": "contacted",
+        "updated_at": 1794794629490,
+        "decision": null,
+        "verdict": "same",
+        "reason": "Same contact email",
+        "match": {
+          "flair_os_id": "d0000000-0000-4000-8000-000000000003",
+          "lead_id": 161,
+          "company": "Glossier",
+          "contact_name": "Priya Natarajan",
+          "stage": "proposal-owed"
+        }
+      }
+    },
+    {
+      "name": "lane: same company, different contact is 'likely' (Celsius)",
+      "ok": true,
+      "detail": {
+        "id": 175,
+        "name": "Someone Else",
+        "company": "The Celsius",
+        "contact_name": null,
+        "contact_email": null,
+        "stage": "new",
+        "updated_at": 1794794629495,
+        "decision": null,
+        "verdict": "likely",
+        "reason": "Same company, different contact",
+        "match": {
+          "flair_os_id": "d0000000-0000-4000-8000-000000000004",
+          "lead_id": 160,
+          "company": "Celsius",
+          "contact_name": "Marco Alvarez",
+          "stage": "ambassador-sourcing"
+        }
+      }
+    },
+    {
+      "name": "lane: no match is 'none' (Acme Rockets)",
+      "ok": true,
+      "detail": {
+        "id": 176,
+        "name": "Nobody",
+        "company": "Acme Rockets",
+        "contact_name": null,
+        "contact_email": null,
+        "stage": "new",
+        "updated_at": 1794794629501,
+        "decision": null,
+        "verdict": "none",
+        "reason": "Not in FLAIR OS",
+        "match": null
+      }
+    },
+    {
+      "name": "lane: normalized company plus contact name is 'same' (Forever 21)",
+      "ok": true,
+      "detail": {
+        "id": 177,
+        "name": "Dana Kim",
+        "company": "forever 21",
+        "contact_name": null,
+        "contact_email": null,
+        "stage": "new",
+        "updated_at": 1794794629508,
+        "decision": null,
+        "verdict": "same",
+        "reason": "Same company and contact",
+        "match": {
+          "flair_os_id": "d0000000-0000-4000-8000-000000000002",
+          "lead_id": 168,
+          "company": "Forever 21",
+          "contact_name": "Dana Kim",
+          "stage": "outreach"
+        }
+      }
+    },
+    {
+      "name": "lane counts: 2 same, 1 likely, 1 none, 0 separate",
+      "ok": true,
+      "detail": {
+        "same": 2,
+        "likely": 1,
+        "none": 1,
+        "separate": 0
+      }
+    },
+    {
+      "name": "link: lead keeps its id and private note, takes the FLAIR OS fields",
+      "ok": true,
+      "detail": {
+        "link": {
+          "ok": true,
+          "leadId": 174,
+          "dealId": "d0000000-0000-4000-8000-000000000003",
+          "folded": 161,
+          "reconciliation": {
+            "items": [
+              {
+                "id": 177,
+                "name": "Dana Kim",
+                "company": "forever 21",
+                "contact_name": null,
+                "contact_email": null,
+                "stage": "new",
+                "updated_at": 1794794629508,
+                "decision": null,
+                "verdict": "same",
+                "reason": "Same company and contact",
+                "match": {
+                  "flair_os_id": "d0000000-0000-4000-8000-000000000002",
+                  "lead_id": 168,
+                  "company": "Forever 21",
+                  "contact_name": "Dana Kim",
+                  "stage": "outreach"
+                }
+              },
+              {
+                "id": 176,
+                "name": "Nobody",
+                "company": "Acme Rockets",
+                "contact_name": null,
+                "contact_email": null,
+                "stage": "new",
+                "updated_at": 1794794629501,
+                "decision": null,
+                "verdict": "none",
+                "reason": "Not in FLAIR OS",
+                "match": null
+              },
+              {
+                "id": 175,
+                "name": "Someone Else",
+                "company": "The Celsius",
+                "contact_name": null,
+                "contact_email": null,
+                "stage": "new",
+                "updated_at": 1794794629495,
+                "decision": null,
+                "verdict": "likely",
+                "reason": "Same company, different contact",
+                "match": {
+                  "flair_os_id": "d0000000-0000-4000-8000-000000000004",
+                  "lead_id": 160,
+                  "company": "Celsius",
+                  "contact_name": "Marco Alvarez",
+                  "stage": "ambassador-sourcing"
+                }
+              }
+            ],
+            "duplicates": {
+              "d0000000-0000-4000-8000-000000000006": [
+                "d0000000-0000-4000-8000-000000000015"
+              ],
+              "d0000000-0000-4000-8000-000000000015": [
+                "d0000000-0000-4000-8000-000000000006"
+              ]
+            },
+            "counts": {
+              "same": 1,
+              "likely": 1,
+              "none": 1,
+              "separate": 0
+            }
+          }
+        },
+        "linked": {
+          "id": 174,
+          "name": "Priya Natarajan",
+          "company": "Glossier",
+          "notes": "v2test my private note",
+          "stage": "proposal",
+          "flair_os_id": "d0000000-0000-4000-8000-000000000003",
+          "flair_os_stage": "proposal-owed",
+          "flair_os_owner": "Tyler Rong",
+          "contact_email": "priya@glossier.com"
+        }
+      }
+    },
+    {
+      "name": "link: exactly one row for the deal, and it is Sam's lead",
+      "ok": true,
+      "detail": [
+        {
+          "id": 174
+        }
+      ]
+    },
+    {
+      "name": "link: attachment and the deal's task follow the lead",
+      "ok": true,
+      "detail": {
+        "attachNow": {
+          "lead_id": 174
+        },
+        "todo3": {
+          "lead_id": 174
+        }
+      }
+    },
+    {
+      "name": "link: decision is logged",
+      "ok": true,
+      "detail": {
+        "action": "link",
+        "flair_os_id": "d0000000-0000-4000-8000-000000000003",
+        "local_id": 174
+      }
+    },
+    {
+      "name": "link: the next pull does not recreate the deal and keeps the private note",
+      "ok": true,
+      "detail": {
+        "seen": 14,
+        "created": 0,
+        "updated": 0,
+        "unchanged": 14,
+        "missing": 0,
+        "unknown_stage": 0
+      }
+    },
+    {
+      "name": "link: a linked lead cannot be linked again (409)",
+      "ok": true,
+      "detail": 409
+    },
+    {
+      "name": "keep separate: decision stored and counted",
+      "ok": true,
+      "detail": {
+        "sep": 200,
+        "cSep": {
+          "id": 176,
+          "name": "Nobody",
+          "company": "Acme Rockets",
+          "contact_name": null,
+          "contact_email": null,
+          "stage": "new",
+          "updated_at": 1794794629501,
+          "decision": "separate",
+          "verdict": "none",
+          "reason": "Not in FLAIR OS",
+          "match": null
+        },
+        "counts": {
+          "same": 1,
+          "likely": 1,
+          "none": 0,
+          "separate": 1
+        }
+      }
+    },
+    {
+      "name": "keep separate: undo clears the decision",
+      "ok": true,
+      "detail": {
+        "id": 176,
+        "name": "Nobody",
+        "company": "Acme Rockets",
+        "contact_name": null,
+        "contact_email": null,
+        "stage": "new",
+        "updated_at": 1794794629501,
+        "decision": null,
+        "verdict": "none",
+        "reason": "Not in FLAIR OS",
+        "match": null
+      }
+    },
+    {
+      "name": "lane leads stay ordinary Command Center leads (editable)",
+      "ok": true,
+      "detail": 200
+    },
+    {
+      "name": "nothing deleted by linking: the three other lane leads still exist",
+      "ok": true,
+      "detail": 3
+    },
+    {
       "name": "pause flag persists",
       "ok": true,
       "detail": {
         "pull_paused": true,
         "push_paused": true,
-        "last_run_at": 1794790530757,
-        "last_ok_at": 1794790530925,
+        "last_run_at": 1794794629542,
+        "last_ok_at": 1794794629748,
         "last_error": null,
         "last_summary": {
           "ok": true,
           "trigger": "manual",
           "dry_run": false,
-          "started_at": 1794790530757,
-          "finished_at": 1794790530925,
-          "duration_ms": 168,
-          "calls": 4,
+          "started_at": 1794794629542,
+          "finished_at": 1794794629748,
+          "duration_ms": 206,
+          "calls": 5,
           "deals": {
-            "seen": 13,
+            "seen": 14,
             "created": 0,
             "updated": 0,
-            "unchanged": 13,
-            "missing": 0,
-            "unknown_stage": 0
-          },
-          "tasks": {
-            "seen": 10,
-            "created": 0,
-            "updated": 1,
-            "unchanged": 9
-          },
-          "clients": {
-            "seen": 4,
-            "created": 0,
-            "updated": 0,
-            "unchanged": 4
-          },
-          "activities": {
-            "fetched": 0,
-            "deals_checked": 0
-          },
-          "stages": [
-            "engaged",
-            "proposal-owed",
-            "proposal",
-            "contract",
-            "invoice",
-            "signed",
-            "campaign",
-            "accounting",
-            "closed",
-            "lost",
-            "outreach",
-            "ambassador-sourcing",
-            "paused"
-          ],
-          "unknown_stages": [],
-          "warnings": [],
-          "error": null
-        },
-        "known_stages": [
-          "engaged",
-          "proposal-owed",
-          "proposal",
-          "contract",
-          "invoice",
-          "signed",
-          "campaign",
-          "accounting",
-          "closed",
-          "lost",
-          "outreach",
-          "ambassador-sourcing",
-          "paused"
-        ]
-      }
-    },
-    {
-      "name": "manual dry run still allowed while paused",
-      "ok": true,
-      "detail": null
-    },
-    {
-      "name": "resume clears the flag",
-      "ok": true,
-      "detail": {
-        "pull_paused": false,
-        "push_paused": true,
-        "last_run_at": 1794790531040,
-        "last_ok_at": 1794790531195,
-        "last_error": null,
-        "last_summary": {
-          "ok": true,
-          "trigger": "manual",
-          "dry_run": true,
-          "started_at": 1794790531040,
-          "finished_at": 1794790531195,
-          "duration_ms": 155,
-          "calls": 4,
-          "deals": {
-            "seen": 13,
-            "created": 0,
-            "updated": 0,
-            "unchanged": 13,
+            "unchanged": 14,
             "missing": 0,
             "unknown_stage": 0
           },
@@ -765,7 +1248,133 @@
           "outreach",
           "ambassador-sourcing",
           "paused"
-        ]
+        ],
+        "counts": {
+          "total": 14,
+          "byStage": {
+            "Proposal Sent": 3,
+            "Outreach": 3,
+            "Proposal Owed": 1,
+            "Ambassador Sourcing": 1,
+            "Contract": 1,
+            "Invoice": 1,
+            "Active": 1,
+            "Closed": 1,
+            "Paused": 1,
+            "Engaged": 1
+          },
+          "byStatus": {
+            "active": 12,
+            "won": 2
+          },
+          "openPipelineValue": 0,
+          "bookedPipelineValue": 0,
+          "fetched_at": 1794794629696
+        }
+      }
+    },
+    {
+      "name": "manual pull still allowed while paused",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "resume clears the flag",
+      "ok": true,
+      "detail": {
+        "pull_paused": false,
+        "push_paused": true,
+        "last_run_at": 1794794629846,
+        "last_ok_at": 1794794630047,
+        "last_error": null,
+        "last_summary": {
+          "ok": true,
+          "trigger": "manual",
+          "dry_run": false,
+          "started_at": 1794794629846,
+          "finished_at": 1794794630047,
+          "duration_ms": 201,
+          "calls": 5,
+          "deals": {
+            "seen": 14,
+            "created": 0,
+            "updated": 0,
+            "unchanged": 14,
+            "missing": 0,
+            "unknown_stage": 0
+          },
+          "tasks": {
+            "seen": 10,
+            "created": 0,
+            "updated": 0,
+            "unchanged": 10
+          },
+          "clients": {
+            "seen": 4,
+            "created": 0,
+            "updated": 0,
+            "unchanged": 4
+          },
+          "activities": {
+            "fetched": 0,
+            "deals_checked": 0
+          },
+          "stages": [
+            "engaged",
+            "proposal-owed",
+            "proposal",
+            "contract",
+            "invoice",
+            "signed",
+            "campaign",
+            "accounting",
+            "closed",
+            "lost",
+            "outreach",
+            "ambassador-sourcing",
+            "paused"
+          ],
+          "unknown_stages": [],
+          "warnings": [],
+          "error": null
+        },
+        "known_stages": [
+          "engaged",
+          "proposal-owed",
+          "proposal",
+          "contract",
+          "invoice",
+          "signed",
+          "campaign",
+          "accounting",
+          "closed",
+          "lost",
+          "outreach",
+          "ambassador-sourcing",
+          "paused"
+        ],
+        "counts": {
+          "total": 14,
+          "byStage": {
+            "Proposal Sent": 3,
+            "Outreach": 3,
+            "Proposal Owed": 1,
+            "Ambassador Sourcing": 1,
+            "Contract": 1,
+            "Invoice": 1,
+            "Active": 1,
+            "Closed": 1,
+            "Paused": 1,
+            "Engaged": 1
+          },
+          "byStatus": {
+            "active": 12,
+            "won": 2
+          },
+          "openPipelineValue": 0,
+          "bookedPipelineValue": 0,
+          "fetched_at": 1794794629996
+        }
       }
     },
     {
@@ -777,9 +1386,10 @@
           "search_pipeline",
           "get_pipeline_deal",
           "list_pipeline_tasks",
+          "get_pipeline_counts",
           "list_clients"
         ],
-        "total": 63
+        "total": 78
       }
     },
     {
@@ -790,6 +1400,7 @@
         "search_pipeline",
         "get_pipeline_deal",
         "list_pipeline_tasks",
+        "get_pipeline_counts",
         "list_clients"
       ]
     },
@@ -817,6 +1428,7 @@
         "search_pipeline",
         "get_pipeline_deal",
         "list_pipeline_tasks",
+        "get_pipeline_counts",
         "list_clients"
       ]
     },
@@ -829,12 +1441,20 @@
       }
     },
     {
-      "name": "share token can read status but not sync or change settings",
+      "name": "share token can read status but not sync, change settings, or decide links",
       "ok": true,
       "detail": {
         "status": 200,
         "sync": 401,
-        "settings": 401
+        "settings": 401,
+        "link": 401
+      }
+    },
+    {
+      "name": "share status carries stage metadata and the reconciliation lane",
+      "ok": true,
+      "detail": {
+        "stages": 13
       }
     },
     {

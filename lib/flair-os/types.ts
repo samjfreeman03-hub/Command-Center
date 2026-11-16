@@ -6,7 +6,7 @@
  * record without an id rather than guessing.
  */
 
-export type FlairOsStage = { slug: string; name: string; order: number; isWon: boolean | null; isLost: boolean | null; isLifecycle: boolean | null };
+export type FlairOsStage = { slug: string; name: string; color: string | null; order: number; isWon: boolean | null; isLost: boolean | null; isLifecycle: boolean | null };
 
 export type FlairOsDeal = {
   id: string;
@@ -121,7 +121,7 @@ function flag(v: unknown): boolean | null {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function normalizeStage(raw: unknown, index: number): FlairOsStage | null {
-  if (typeof raw === "string") return { slug: raw, name: raw, order: index, isWon: null, isLost: null, isLifecycle: null };
+  if (typeof raw === "string") return { slug: raw, name: raw, color: null, order: index, isWon: null, isLost: null, isLifecycle: null };
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Raw;
   const slug = str(pick(r, ["slug", "key", "value", "id"]));
@@ -129,6 +129,7 @@ export function normalizeStage(raw: unknown, index: number): FlairOsStage | null
   return {
     slug,
     name: str(pick(r, ["label", "name", "title"])) ?? slug,
+    color: str(pick(r, ["color", "colour"])),
     order: Number(pick(r, ["sortOrder", "sort_order", "order", "position"]) ?? index),
     isWon: flag(pick(r, ["isWon", "is_won"])),
     isLost: flag(pick(r, ["isLost", "is_lost"])),

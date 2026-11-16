@@ -80,6 +80,8 @@ function resetMirror() {
       DELETE FROM brand_contacts WHERE flair_os_client_id IS NOT NULL;
       DELETE FROM flair_os_sync_log;
       DELETE FROM flair_os_conflicts;
+      DELETE FROM flair_os_links;
+      DELETE FROM leads WHERE business_id = 'flair' AND flair_os_id IS NULL AND notes LIKE 'v2test%';
       UPDATE flair_os_sync_state SET pull_paused = 0, last_run_at = NULL, last_ok_at = NULL, last_error = NULL, last_summary = NULL;`);
   } finally { d.close(); }
 }
@@ -96,14 +98,17 @@ const DEAL = {
   chipotle: "d0000000-0000-4000-8000-000000000012",
   fenty: "d0000000-0000-4000-8000-000000000013",
   redbull: "d0000000-0000-4000-8000-000000000014",
+  liquid1: "d0000000-0000-4000-8000-000000000006",
+  liquid2: "d0000000-0000-4000-8000-000000000015",
 };
+const TASK3 = "a0000000-0000-4000-8000-000000000003";
 const TASK1 = "a0000000-0000-4000-8000-000000000001";
 const TASK4 = "a0000000-0000-4000-8000-000000000004";
 
 async function main() {
   // 0. Static allowlist scan: no denied or write tool name under lib/flair-os except the documented list in allowlist.ts.
   const files = fs.readdirSync(path.join(ROOT, "lib", "flair-os")).map((f) => path.join(ROOT, "lib", "flair-os", f));
-  files.push(path.join(ROOT, "components", "flair-os-panel.tsx"));
+  files.push(path.join(ROOT, "components", "flair-os-panel.tsx"), path.join(ROOT, "components", "flair-os-board.tsx"));
   const offenders = [];
   for (const f of files) {
     const src = fs.readFileSync(f, "utf8");
@@ -114,7 +119,7 @@ async function main() {
 
   // 1. Servers up, login.
   const ping = await fetch(MOCK + "/__test/state").then((r) => r.json()).catch(() => null);
-  check("mock server reachable with test hooks", !!ping && ping.deals === 14, ping);
+  check("mock server reachable with test hooks", !!ping && ping.deals === 15, ping);
   const login = await fetch(CC + "/api/auth", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ password: PASSWORD }) });
   const setCookie = login.headers.get("set-cookie") || "";
   cookie = setCookie.split(";")[0];
@@ -131,19 +136,19 @@ async function main() {
   // 3. Dry run writes nothing.
   const before = one("SELECT COUNT(*) AS n FROM leads WHERE flair_os_id IS NOT NULL").n;
   const dry = await cc("/api/flair-os/sync", { method: "POST", body: { dryRun: true } });
-  check("dry run reports 14 deals to create", dry.status === 200 && dry.json?.ok && dry.json.dry_run && dry.json.deals.seen === 14 && dry.json.deals.created === 14, dry.json?.deals);
+  check("dry run reports 15 deals to create", dry.status === 200 && dry.json?.ok && dry.json.dry_run && dry.json.deals.seen === 15 && dry.json.deals.created === 15, dry.json?.deals);
   const afterDry = one("SELECT COUNT(*) AS n FROM leads WHERE flair_os_id IS NOT NULL").n;
   check("dry run wrote no leads", afterDry === before, { before, afterDry });
-  const dryLog = all("SELECT result FROM flair_os_sync_log WHERE record_kind = 'deal' ORDER BY id DESC LIMIT 14");
-  check("dry run entries are marked dry_run in the log", dryLog.length === 14 && dryLog.every((r) => r.result === "dry_run"), dryLog.slice(0, 3));
+  const dryLog = all("SELECT result FROM flair_os_sync_log WHERE record_kind = 'deal' ORDER BY id DESC LIMIT 15");
+  check("dry run entries are marked dry_run in the log", dryLog.length === 15 && dryLog.every((r) => r.result === "dry_run"), dryLog.slice(0, 3));
 
   // 4. Real pull.
   const pull = await cc("/api/flair-os/sync", { method: "POST", body: {} });
-  check("first pull creates 14 deals, 10 tasks, 4 clients", pull.status === 200 && pull.json?.ok && pull.json.deals.created === 14 && pull.json.tasks.created === 10 && pull.json.clients.created === 4, pull.json && { deals: pull.json.deals, tasks: pull.json.tasks, clients: pull.json.clients, error: pull.json.error });
+  check("first pull creates 15 deals, 10 tasks, 4 clients", pull.status === 200 && pull.json?.ok && pull.json.deals.created === 15 && pull.json.tasks.created === 10 && pull.json.clients.created === 4, pull.json && { deals: pull.json.deals, tasks: pull.json.tasks, clients: pull.json.clients, error: pull.json.error });
   check("first pull stays inside the polling budget (under 30 calls)", pull.json?.calls > 0 && pull.json.calls < 30, pull.json?.calls);
   check("first pull raised no cap warnings", Array.isArray(pull.json?.warnings) && pull.json.warnings.length === 0, pull.json?.warnings);
   const leads = all("SELECT id, name, company, stage, flair_os_id, flair_os_stage, flair_os_sales_status, flair_os_owner, value_cents, contact_email, business_id FROM leads WHERE flair_os_id IS NOT NULL");
-  check("14 mirrored leads, all under the flair business", leads.length === 14 && leads.every((l) => l.business_id === "flair"), leads.length);
+  check("15 mirrored leads, all under the flair business", leads.length === 15 && leads.every((l) => l.business_id === "flair"), leads.length);
   const by = Object.fromEntries(leads.map((l) => [l.flair_os_id, l]));
   check("stage map: engaged rolls up to qualified (CBS)", by[DEAL.cbs]?.stage === "qualified" && by[DEAL.cbs]?.flair_os_stage === "engaged", by[DEAL.cbs]);
   check("stage map: outreach with no activity rolls up to new (Forever 21)", by[DEAL.forever21]?.stage === "new", by[DEAL.forever21]);
@@ -170,7 +175,7 @@ async function main() {
 
   // 5. Idempotent second pull.
   const again = await cc("/api/flair-os/sync", { method: "POST", body: {} });
-  check("second pull changes nothing", again.json?.ok && again.json.deals.created === 0 && again.json.deals.updated === 0 && again.json.deals.unchanged === 14 && again.json.tasks.updated === 0 && again.json.clients.updated === 0, again.json && { deals: again.json.deals, tasks: again.json.tasks });
+  check("second pull changes nothing", again.json?.ok && again.json.deals.created === 0 && again.json.deals.updated === 0 && again.json.deals.unchanged === 15 && again.json.tasks.updated === 0 && again.json.clients.updated === 0, again.json && { deals: again.json.deals, tasks: again.json.tasks });
 
   // 6. A change in FLAIR OS arrives with a field-level log entry.
   await mock("/__test/mutate", { dealId: DEAL.cbs, patch: { stage: "proposal", deal_value: 90000, waiting_on: "Proposal owed by Friday" } });
@@ -194,7 +199,7 @@ async function main() {
   const bumble = one("SELECT id, flair_os_missing_at FROM leads WHERE flair_os_id = ?", DEAL.bumble);
   check("removed deal is kept and flagged missing", fourth.json?.deals.missing === 1 && !!bumble && !!bumble.flair_os_missing_at, { summary: fourth.json?.deals, bumble });
   status = await cc("/api/flair-os/status");
-  check("drift report shows 1 missing", status.json?.drift?.leads_missing === 1 && status.json.drift.leads_mirrored === 14, status.json?.drift);
+  check("drift report shows 1 missing", status.json?.drift?.leads_missing === 1 && status.json.drift.leads_mirrored === 15, status.json?.drift);
 
   // 8. Task completion in FLAIR OS mirrors.
   await mock("/__test/mutate-task", { taskId: TASK1, patch: { status: "done", completed_at: new Date().toISOString() } });
@@ -217,12 +222,77 @@ async function main() {
   const localDel = await cc(`/api/leads/${local.json?.id}`, { method: "DELETE" });
   check("a local (non-mirrored) FLAIR lead is still editable and deletable", local.status === 200 && localPatch.status === 200 && localDel.status === 200, { local: local.status, patch: localPatch.status, del: localDel.status });
 
+
+  // 15. v2 board data: FLAIR OS stage metadata, FLAIR OS counts, and the card fields.
+  status = await cc("/api/flair-os/status");
+  const stageMeta = status.json?.stages ?? [];
+  const metaBySlug = Object.fromEntries(stageMeta.map((m) => [m.slug, m]));
+  check("stage metadata: 13 FLAIR OS stages stored with label, color and order", stageMeta.length === 13 && metaBySlug.engaged?.label === "Engaged" && metaBySlug.engaged?.color === "#667085" && metaBySlug.engaged?.sort_order === 0 && metaBySlug.proposal?.label === "Proposal Sent", stageMeta.slice(0, 3));
+  check("stage metadata: won, lost and non-lifecycle flags survive", metaBySlug.signed?.is_won === true && metaBySlug.lost?.is_lost === true && metaBySlug.paused?.is_lifecycle === false && metaBySlug.outreach?.is_lifecycle === true, { signed: metaBySlug.signed, lost: metaBySlug.lost, paused: metaBySlug.paused });
+  const counts = status.json?.state?.counts;
+  check("FLAIR OS counts stored for the board header", !!counts && typeof counts.fetched_at === "number" && counts.byStatus && typeof counts.byStatus.active === "number" && counts.total === 14, counts);
+  const cbsV2 = one("SELECT flair_os_opportunity, flair_os_last_contacted_at FROM leads WHERE flair_os_id = ?", DEAL.cbs);
+  const redbullV2 = one("SELECT flair_os_opportunity, flair_os_last_contacted_at FROM leads WHERE flair_os_id = ?", DEAL.redbull);
+  check("card fields: opportunity name and last contacted mirrored", cbsV2?.flair_os_opportunity === "FLAIR x CBS - Undercover Boss revival" && !!cbsV2?.flair_os_last_contacted_at && redbullV2?.flair_os_opportunity === null && !!redbullV2?.flair_os_last_contacted_at, { cbsV2, redbullV2 });
+  const dup = status.json?.reconciliation?.duplicates ?? {};
+  check("duplicate marker: both Liquid Death deals point at each other", dup[DEAL.liquid1]?.[0] === DEAL.liquid2 && dup[DEAL.liquid2]?.[0] === DEAL.liquid1 && Object.keys(dup).length === 2, dup);
+
+  // 16. Reconciliation lane: Command Center-only FLAIR leads get a verdict against FLAIR OS.
+  const mk = async (body) => (await cc("/api/leads", { method: "POST", body: { business_id: "flair", ...body } })).json;
+  const leadA = await mk({ name: "Priya Natarajan", company: "Glossier Inc.", contact_email: "PRIYA@glossier.com", notes: "v2test my private note", stage: "contacted" });
+  const leadB = await mk({ name: "Someone Else", company: "The Celsius", notes: "v2test" });
+  const leadC = await mk({ name: "Nobody", company: "Acme Rockets", notes: "v2test" });
+  const leadD = await mk({ name: "Dana Kim", company: "forever 21", notes: "v2test" });
+  const attach = await cc(`/api/leads/${leadA.id}/attachments`, { method: "POST", body: { type: "link", url: "https://example.com/deck", label: "Deck" } });
+  check("setup: four Command Center-only FLAIR leads and one attachment created", leadA?.id && leadB?.id && leadC?.id && leadD?.id && attach.status === 200, { a: leadA?.id, attach: attach.status });
+  status = await cc("/api/flair-os/status");
+  const items = Object.fromEntries((status.json?.reconciliation?.items ?? []).map((i) => [i.id, i]));
+  check("lane: email match is 'same' (Glossier)", items[leadA.id]?.verdict === "same" && items[leadA.id]?.match?.flair_os_id === DEAL.glossier, items[leadA.id]);
+  check("lane: same company, different contact is 'likely' (Celsius)", items[leadB.id]?.verdict === "likely" && items[leadB.id]?.match?.flair_os_id === DEAL.celsius, items[leadB.id]);
+  check("lane: no match is 'none' (Acme Rockets)", items[leadC.id]?.verdict === "none" && items[leadC.id]?.match === null, items[leadC.id]);
+  check("lane: normalized company plus contact name is 'same' (Forever 21)", items[leadD.id]?.verdict === "same" && items[leadD.id]?.match?.flair_os_id === DEAL.forever21, items[leadD.id]);
+  const rc = status.json?.reconciliation?.counts;
+  check("lane counts: 2 same, 1 likely, 1 none, 0 separate", rc?.same === 2 && rc?.likely === 1 && rc?.none === 1 && rc?.separate === 0, rc);
+
+  // 17. Link: Sam's lead takes over the deal; nothing of his is lost and the shell row is folded in.
+  const shellBefore = one("SELECT id FROM leads WHERE flair_os_id = ?", DEAL.glossier);
+  const link = await cc("/api/flair-os/reconcile", { method: "POST", body: { action: "link", leadId: leadA.id, dealId: DEAL.glossier } });
+  const linked = one("SELECT id, name, company, notes, stage, flair_os_id, flair_os_stage, flair_os_owner, contact_email FROM leads WHERE id = ?", leadA.id);
+  const glossierRows = all("SELECT id FROM leads WHERE flair_os_id = ?", DEAL.glossier);
+  const attachNow = one("SELECT lead_id FROM lead_attachments WHERE url = 'https://example.com/deck'");
+  const todo3 = one("SELECT lead_id FROM todos WHERE flair_os_id = ?", TASK3);
+  check("link: lead keeps its id and private note, takes the FLAIR OS fields", link.status === 200 && link.json?.folded === shellBefore?.id && linked?.flair_os_id === DEAL.glossier && linked?.notes === "v2test my private note" && linked?.flair_os_stage === "proposal-owed" && linked?.stage === "proposal" && linked?.company === "Glossier" && linked?.contact_email === "priya@glossier.com", { link: link.json, linked });
+  check("link: exactly one row for the deal, and it is Sam's lead", glossierRows.length === 1 && glossierRows[0].id === leadA.id, glossierRows);
+  check("link: attachment and the deal's task follow the lead", attachNow?.lead_id === leadA.id && todo3?.lead_id === leadA.id, { attachNow, todo3 });
+  const linkLog = one("SELECT action, flair_os_id, local_id FROM flair_os_sync_log WHERE record_kind = 'link' ORDER BY id DESC LIMIT 1");
+  check("link: decision is logged", linkLog?.action === "link" && linkLog?.flair_os_id === DEAL.glossier && linkLog?.local_id === leadA.id, linkLog);
+  const afterLink = await cc("/api/flair-os/sync", { method: "POST", body: {} });
+  const linkedAfterPull = one("SELECT notes, flair_os_id FROM leads WHERE id = ?", leadA.id);
+  check("link: the next pull does not recreate the deal and keeps the private note", afterLink.json?.ok && afterLink.json.deals.created === 0 && linkedAfterPull?.notes === "v2test my private note" && linkedAfterPull?.flair_os_id === DEAL.glossier && all("SELECT id FROM leads WHERE flair_os_id = ?", DEAL.glossier).length === 1, afterLink.json?.deals);
+  const linkTwice = await cc("/api/flair-os/reconcile", { method: "POST", body: { action: "link", leadId: leadA.id, dealId: DEAL.celsius } });
+  check("link: a linked lead cannot be linked again (409)", linkTwice.status === 409, linkTwice.status);
+
+  // 18. Keep separate and undo.
+  const sep = await cc("/api/flair-os/reconcile", { method: "POST", body: { action: "separate", leadId: leadC.id } });
+  status = await cc("/api/flair-os/status");
+  const cSep = (status.json?.reconciliation?.items ?? []).find((i) => i.id === leadC.id);
+  check("keep separate: decision stored and counted", sep.status === 200 && cSep?.decision === "separate" && status.json?.reconciliation?.counts?.separate === 1, { sep: sep.status, cSep, counts: status.json?.reconciliation?.counts });
+  const reset = await cc("/api/flair-os/reconcile", { method: "POST", body: { action: "reset", leadId: leadC.id } });
+  status = await cc("/api/flair-os/status");
+  const cReset = (status.json?.reconciliation?.items ?? []).find((i) => i.id === leadC.id);
+  check("keep separate: undo clears the decision", reset.status === 200 && cReset?.decision === null && cReset?.verdict === "none", cReset);
+  const lanePatch = await cc(`/api/leads/${leadB.id}`, { method: "PATCH", body: { stage: "qualified" } });
+  check("lane leads stay ordinary Command Center leads (editable)", lanePatch.status === 200, lanePatch.status);
+  const localCount = one("SELECT COUNT(*) AS n FROM leads WHERE business_id = 'flair' AND flair_os_id IS NULL AND notes LIKE 'v2test%'").n;
+  check("nothing deleted by linking: the three other lane leads still exist", localCount === 3, localCount);
+  for (const l of [leadB, leadC, leadD]) await cc(`/api/leads/${l.id}`, { method: "DELETE" });
+
   // 10. Pause blocks scheduled pulls, manual still works, resume.
   const pause = await cc("/api/flair-os/settings", { method: "PATCH", body: { pull_paused: true } });
   status = await cc("/api/flair-os/status");
   check("pause flag persists", pause.status === 200 && status.json?.state?.pull_paused === true, status.json?.state);
-  const manualWhilePaused = await cc("/api/flair-os/sync", { method: "POST", body: { dryRun: true } });
-  check("manual dry run still allowed while paused", manualWhilePaused.status === 200 && manualWhilePaused.json?.ok, manualWhilePaused.json?.error);
+  const manualWhilePaused = await cc("/api/flair-os/sync", { method: "POST", body: {} });
+  check("manual pull still allowed while paused", manualWhilePaused.status === 200 && manualWhilePaused.json?.ok, manualWhilePaused.json?.error);
   await cc("/api/flair-os/settings", { method: "PATCH", body: { pull_paused: false } });
   status = await cc("/api/flair-os/status");
   check("resume clears the flag", status.json?.state?.pull_paused === false, status.json?.state);
@@ -250,7 +320,9 @@ async function main() {
     const shareStatus = await cc("/api/flair-os/status", { headers: { "x-share-token": tokenRow.token }, noCookie: true });
     const shareSync = await cc("/api/flair-os/sync", { method: "POST", body: {}, headers: { "x-share-token": tokenRow.token }, noCookie: true });
     const shareSettings = await cc("/api/flair-os/settings", { method: "PATCH", body: { pull_paused: true }, headers: { "x-share-token": tokenRow.token }, noCookie: true });
-    check("share token can read status but not sync or change settings", shareStatus.status === 200 && shareStatus.json?.canSync === false && shareSync.status === 401 && shareSettings.status === 401, { status: shareStatus.status, sync: shareSync.status, settings: shareSettings.status });
+    const shareLink = await cc("/api/flair-os/reconcile", { method: "POST", body: { action: "separate", leadId: 1 }, headers: { "x-share-token": tokenRow.token }, noCookie: true });
+    check("share token can read status but not sync, change settings, or decide links", shareStatus.status === 200 && shareStatus.json?.canSync === false && shareSync.status === 401 && shareSettings.status === 401 && shareLink.status === 401, { status: shareStatus.status, sync: shareSync.status, settings: shareSettings.status, link: shareLink.status });
+    check("share status carries stage metadata and the reconciliation lane", Array.isArray(shareStatus.json?.stages) && shareStatus.json.stages.length === 13 && Array.isArray(shareStatus.json?.reconciliation?.items), { stages: shareStatus.json?.stages?.length });
   } else {
     check("share token can read status but not sync or change settings", false, "no share token row");
   }

@@ -1,6 +1,6 @@
 import { flairOsClientFromEnv, FlairOsError } from "./client";
 import { flairOsDryRunDefault } from "./config";
-import { flairOsStore, type CycleSummary } from "./store";
+import { flairOsStore, type CycleSummary, type PipelineCounts } from "./store";
 import { rollupStage, type StageFlags } from "./stage-map";
 import { arrayFrom, mergeDeal, normalizeActivity, normalizeClient, normalizeDeal, normalizeStage, normalizeTask, type FlairOsDeal, type FlairOsStage } from "./types";
 
@@ -91,7 +91,11 @@ export async function runMirrorCycle(opts: { trigger: "manual" | "schedule" | "t
     const stagesRaw = await client.call<unknown>("list_pipeline_stages");
     const stages = arrayFrom(stagesRaw, ["stages"]).map(normalizeStage).filter((s): s is FlairOsStage => !!s);
     summary.stages = stages.map((s) => s.slug);
-    if (summary.stages.length) flairOsStore.patchSyncState({ known_stages: summary.stages });
+    if (summary.stages.length) {
+      flairOsStore.patchSyncState({ known_stages: summary.stages });
+      // Labels, colors and order drive the FLAIR OS board layout.
+      flairOsStore.upsertStages(stages, { dryRun });
+    }
     const flagsBySlug = new Map<string, StageFlags>(stages.map((s) => [s.slug.toLowerCase(), { isWon: s.isWon, isLost: s.isLost, isLifecycle: s.isLifecycle }]));
 
     // 2. Deals. One list call; if it hits the cap, fan out per stage.
@@ -211,7 +215,31 @@ export async function runMirrorCycle(opts: { trigger: "manual" | "schedule" | "t
       }
     }
 
-    // 6. Clients
+    // 6. FLAIR OS's own numbers for the board header (deals by status, open
+    //    and booked value). Kept as given; a failure here is a warning only.
+    try {
+      const countsRaw = (await client.call<unknown>("get_pipeline_counts")) as Record<string, unknown> | null;
+      if (countsRaw && typeof countsRaw === "object") {
+        const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : v != null && Number.isFinite(Number(v)) ? Number(v) : null);
+        const rec = (v: unknown): Record<string, number> => {
+          if (!v || typeof v !== "object") return {};
+          return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, n]) => [k, num(n) ?? 0]));
+        };
+        const counts: PipelineCounts = {
+          total: num(countsRaw.total),
+          byStage: rec(countsRaw.byStage ?? countsRaw.by_stage),
+          byStatus: rec(countsRaw.byStatus ?? countsRaw.by_status),
+          openPipelineValue: num(countsRaw.openPipelineValue ?? countsRaw.open_pipeline_value),
+          bookedPipelineValue: num(countsRaw.bookedPipelineValue ?? countsRaw.booked_pipeline_value),
+          fetched_at: Date.now(),
+        };
+        if (!dryRun) flairOsStore.patchSyncState({ counts });
+      }
+    } catch (e) {
+      summary.warnings.push(`get_pipeline_counts failed: ${(e as Error).message}`);
+    }
+
+    // 7. Clients
     const clientsRaw = await client.call<unknown>("list_clients", { limit: CLIENT_CAP });
     const clients = arrayFrom(clientsRaw, ["clients"]).map(normalizeClient).filter((c): c is NonNullable<typeof c> => !!c);
     if (clients.length >= CLIENT_CAP) summary.warnings.push(`list_clients returned ${CLIENT_CAP} clients (its cap)`);

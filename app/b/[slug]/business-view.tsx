@@ -1,5 +1,6 @@
 "use client";
 
+import type { FlairOsStageMeta } from "@/components/pipeline-panel";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Business } from "@/lib/businesses";
@@ -24,6 +25,7 @@ export function BusinessView({
   leadCategories,
   leadCategoriesEnabled,
   flairOsEnabled = false,
+  flairOsStages = [],
   initialHidden,
   today,
 }: {
@@ -38,6 +40,7 @@ export function BusinessView({
   leadCategoriesEnabled: boolean;
   /** FLAIR OS mirror is configured for this business (server flag). */
   flairOsEnabled?: boolean;
+  flairOsStages?: FlairOsStageMeta[];
   initialHidden: boolean;
   today: string;
 }) {
@@ -165,7 +168,7 @@ export function BusinessView({
       autoNew={autoNew}
       leadCategories={leadCategories}
       leadCategoriesEnabled={leadCategoriesEnabled}
-      flairOs={flairOsEnabled ? { enabled: true, canSync: true } : undefined}
+      flairOs={flairOsEnabled ? { enabled: true, canSync: true, stages: flairOsStages } : undefined}
       tagline={taglineNode}
       actions={actions}
       banner={banner}

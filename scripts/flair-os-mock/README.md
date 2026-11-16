@@ -9,3 +9,5 @@ A stand-in for Tyler's FLAIR OS MCP endpoint so the Command Center mirror can be
 Run order and the full switch-over notes: `docs/integrations/FLAIR_OS_MIRROR_BUILD.md`.
 
 The field names here are a best guess shaped from Tyler's description. When a real response is available, adjust the seed to match it and rerun the test.
+
+Seed note (v2): deal 15 is a second "Liquid Death" under another contact, so the board's duplicate marker and the lane's matcher have a real case. The test creates its own Command Center-only leads (notes starting `v2test`) and removes them.
