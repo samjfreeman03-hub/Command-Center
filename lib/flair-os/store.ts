@@ -1,8 +1,9 @@
 import { rawDb } from "@/lib/db";
 import type { Lead } from "@/lib/types";
 import { FLAIR_OS_BUSINESS_ID } from "./config";
-import type { FlairOsActivity, FlairOsClientRecord, FlairOsDeal, FlairOsTask } from "./types";
+import type { FlairOsActivity, FlairOsClientRecord, FlairOsDeal, FlairOsStage, FlairOsTask } from "./types";
 import type { Rollup } from "./stage-map";
+import { duplicateGroups, matchLead, type MatchCandidate, type MatchResult } from "./match";
 
 /**
  * SQL for the FLAIR OS mirror. Field contract sections 3 and 7. Every write
@@ -18,6 +19,53 @@ export type SyncState = {
   last_error: string | null;
   last_summary: CycleSummary | null;
   known_stages: string[];
+  /** Last `get_pipeline_counts` result, for the board header. */
+  counts: PipelineCounts | null;
+};
+
+/** What FLAIR OS reports in `get_pipeline_counts` (kept as given). */
+export type PipelineCounts = {
+  total: number | null;
+  byStage: Record<string, number>;
+  byStatus: Record<string, number>;
+  openPipelineValue: number | null;
+  bookedPipelineValue: number | null;
+  fetched_at: number;
+};
+
+/** One FLAIR OS stage as stored for the board layout. */
+export type StageMeta = {
+  slug: string;
+  label: string;
+  color: string | null;
+  sort_order: number;
+  is_won: boolean;
+  is_lost: boolean;
+  is_lifecycle: boolean;
+};
+
+export type LinkDecision = "linked" | "separate";
+
+/** A FLAIR lead that exists only in the Command Center, with its match verdict. */
+export type ReconciliationItem = {
+  id: number;
+  name: string;
+  company: string | null;
+  contact_name: string | null;
+  contact_email: string | null;
+  stage: Lead["stage"];
+  updated_at: number;
+  decision: LinkDecision | null;
+  verdict: MatchResult["verdict"];
+  reason: string;
+  match: { flair_os_id: string; lead_id: number; company: string | null; contact_name: string | null; stage: string | null } | null;
+};
+
+export type Reconciliation = {
+  items: ReconciliationItem[];
+  /** Mirrored deals that share a company name: deal id to its twins' deal ids. */
+  duplicates: Record<string, string[]>;
+  counts: { same: number; likely: number; none: number; separate: number };
 };
 
 export type FieldChange = { field: string; from: unknown; to: unknown };
@@ -93,10 +141,11 @@ export const flairOsStore = {
       last_error: (row.last_error as string | null) ?? null,
       last_summary: parseJson<CycleSummary | null>(row.last_summary, null),
       known_stages: parseJson<string[]>(row.known_stages, []),
+      counts: parseJson<PipelineCounts | null>(row.counts, null),
     };
   },
 
-  patchSyncState(patch: Partial<{ pull_paused: boolean; push_paused: boolean; last_run_at: number | null; last_ok_at: number | null; last_error: string | null; last_summary: CycleSummary | null; known_stages: string[] }>) {
+  patchSyncState(patch: Partial<{ pull_paused: boolean; push_paused: boolean; last_run_at: number | null; last_ok_at: number | null; last_error: string | null; last_summary: CycleSummary | null; known_stages: string[]; counts: PipelineCounts | null }>) {
     const sets: string[] = [];
     const args: unknown[] = [];
     if (patch.pull_paused !== undefined) { sets.push("pull_paused = ?"); args.push(patch.pull_paused ? 1 : 0); }
@@ -106,10 +155,41 @@ export const flairOsStore = {
     if ("last_error" in patch) { sets.push("last_error = ?"); args.push(patch.last_error ?? null); }
     if ("last_summary" in patch) { sets.push("last_summary = ?"); args.push(patch.last_summary ? JSON.stringify(patch.last_summary) : null); }
     if (patch.known_stages) { sets.push("known_stages = ?"); args.push(JSON.stringify(patch.known_stages)); }
+    if ("counts" in patch) { sets.push("counts = ?"); args.push(patch.counts ? JSON.stringify(patch.counts) : null); }
     if (!sets.length) return;
     sets.push("updated_at = ?");
     args.push(Date.now());
     rawDb().prepare(`UPDATE flair_os_sync_state SET ${sets.join(", ")} WHERE id = 1`).run(...args);
+  },
+
+  /** Store the stage list FLAIR OS publishes (label, color, order, flags). Dry run skips the write. */
+  upsertStages(stages: FlairOsStage[], opts: { dryRun: boolean }) {
+    if (opts.dryRun || !stages.length) return;
+    const db = rawDb();
+    const stmt = db.prepare(`INSERT INTO flair_os_stages (slug, label, color, sort_order, is_won, is_lost, is_lifecycle, seen_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(slug) DO UPDATE SET label = excluded.label, color = excluded.color, sort_order = excluded.sort_order,
+        is_won = excluded.is_won, is_lost = excluded.is_lost, is_lifecycle = excluded.is_lifecycle, seen_at = excluded.seen_at`);
+    const now = Date.now();
+    const flag = (v: boolean | null) => (v === null ? null : v ? 1 : 0);
+    db.transaction(() => {
+      for (const s of stages) stmt.run(s.slug, s.name, s.color, s.order, flag(s.isWon), flag(s.isLost), flag(s.isLifecycle), now);
+    })();
+  },
+
+  /** Stages in FLAIR OS order. Empty until the first real pull. */
+  listStages(): StageMeta[] {
+    const rows = rawDb().prepare("SELECT slug, label, color, sort_order, is_won, is_lost, is_lifecycle FROM flair_os_stages ORDER BY sort_order, slug").all() as Record<string, unknown>[];
+    return rows.map((r) => ({
+      slug: r.slug as string,
+      label: r.label as string,
+      color: (r.color as string | null) ?? null,
+      sort_order: Number(r.sort_order ?? 0),
+      is_won: r.is_won === 1,
+      is_lost: r.is_lost === 1,
+      // Unknown means lifecycle; only an explicit 0 parks the stage.
+      is_lifecycle: r.is_lifecycle !== 0,
+    }));
   },
 
   appendLog(entry: { direction: "pull" | "push"; trigger: string; record_kind: string; flair_os_id?: string | null; local_id?: number | null; action: string; changes?: FieldChange[] | null; result: string; message?: string | null }) {
@@ -147,6 +227,8 @@ export const flairOsStore = {
       next_action_date: deal.nextActionDate,
       value_cents: deal.valueCents,
       flair_os_notes: deal.notes,
+      flair_os_opportunity: opportunity,
+      flair_os_last_contacted_at: deal.lastContactedMs,
       flair_os_missing_at: null,
     };
     // The list call omits these; only overwrite them when the record has them,
@@ -295,6 +377,106 @@ export const flairOsStore = {
     rawDb()
       .prepare("INSERT INTO flair_os_profile_map (profile_id, display_name, updated_at) VALUES (?, ?, ?) ON CONFLICT(profile_id) DO UPDATE SET display_name = excluded.display_name, updated_at = excluded.updated_at")
       .run(profileId, displayName, Date.now());
+  },
+
+  /** Decisions Sam made in the reconciliation lane. */
+  linkDecisions(): Map<number, { decision: LinkDecision; flair_os_id: string | null }> {
+    const rows = rawDb().prepare("SELECT lead_id, decision, flair_os_id FROM flair_os_links").all() as { lead_id: number; decision: LinkDecision; flair_os_id: string | null }[];
+    return new Map(rows.map((r) => [r.lead_id, { decision: r.decision, flair_os_id: r.flair_os_id }]));
+  },
+
+  mirroredCandidates(): (MatchCandidate & { leadId: number; stage: string | null })[] {
+    const rows = rawDb()
+      .prepare("SELECT id, flair_os_id, company, contact_name, contact_email, flair_os_stage FROM leads WHERE business_id = ? AND flair_os_id IS NOT NULL AND flair_os_missing_at IS NULL")
+      .all(FLAIR_OS_BUSINESS_ID) as { id: number; flair_os_id: string; company: string | null; contact_name: string | null; contact_email: string | null; flair_os_stage: string | null }[];
+    return rows.map((r) => ({ id: r.flair_os_id, leadId: r.id, company: r.company, contactName: r.contact_name, email: r.contact_email, stage: r.flair_os_stage }));
+  },
+
+  /**
+   * The "In Command Center only" lane: every FLAIR lead without a FLAIR OS id,
+   * matched against the mirrored deals, plus duplicate groups inside FLAIR OS.
+   * Computed on read (a few dozen rows), so it is always current.
+   */
+  reconciliation(): Reconciliation {
+    const candidates = this.mirroredCandidates();
+    const byDealId = new Map(candidates.map((c) => [c.id, c]));
+    const decisions = this.linkDecisions();
+    const locals = rawDb()
+      .prepare("SELECT id, name, company, contact_name, contact_email, stage, updated_at FROM leads WHERE business_id = ? AND flair_os_id IS NULL ORDER BY updated_at DESC")
+      .all(FLAIR_OS_BUSINESS_ID) as { id: number; name: string; company: string | null; contact_name: string | null; contact_email: string | null; stage: Lead["stage"]; updated_at: number }[];
+    const counts = { same: 0, likely: 0, none: 0, separate: 0 };
+    const items: ReconciliationItem[] = locals.map((l) => {
+      const decision = decisions.get(l.id)?.decision ?? null;
+      const m = matchLead({ company: l.company, contactName: l.contact_name ?? l.name, email: l.contact_email }, candidates);
+      if (decision === "separate") counts.separate += 1;
+      else counts[m.verdict] += 1;
+      const c = m.candidate ? byDealId.get(m.candidate.id) : null;
+      return {
+        ...l,
+        decision,
+        verdict: m.verdict,
+        reason: m.reason,
+        match: c ? { flair_os_id: c.id, lead_id: c.leadId, company: c.company, contact_name: c.contactName, stage: c.stage } : null,
+      };
+    });
+    return { items, duplicates: duplicateGroups(candidates), counts };
+  },
+
+  /**
+   * Link a Command Center lead to a FLAIR OS deal. The lead keeps its id,
+   * notes, categories and attachments and takes over the deal's mirror fields;
+   * the shell row the sync created for that deal (which holds nothing of Sam's
+   * once its attachments, tasks and timeline are moved) is folded into it.
+   * Returns the field changes for the log.
+   */
+  linkLead(leadId: number, dealId: string): { ok: true; folded: number | null; changes: FieldChange[] } | { ok: false; error: string } {
+    const db = rawDb();
+    const lead = db.prepare("SELECT * FROM leads WHERE id = ? AND business_id = ?").get(leadId, FLAIR_OS_BUSINESS_ID) as Record<string, unknown> | undefined;
+    if (!lead) return { ok: false, error: "Lead not found" };
+    if (lead.flair_os_id) return { ok: false, error: "That lead is already linked to FLAIR OS" };
+    const shell = db.prepare("SELECT * FROM leads WHERE flair_os_id = ?").get(dealId) as Record<string, unknown> | undefined;
+    if (!shell) return { ok: false, error: "That FLAIR OS deal is not mirrored here yet" };
+    const mirrorFields = [
+      "company", "contact_name", "contact_email", "contact_phone", "stage", "value_cents", "next_action", "next_action_date",
+      "flair_os_id", "flair_os_stage", "flair_os_sales_status", "flair_os_owner", "flair_os_updated_at", "flair_os_notes",
+      "flair_os_client_id", "flair_os_missing_at", "flair_os_opportunity", "flair_os_last_contacted_at",
+    ];
+    const next: Record<string, unknown> = {};
+    for (const f of mirrorFields) next[f] = shell[f] ?? null;
+    // Sam's own values win where FLAIR OS has none.
+    for (const f of ["company", "contact_name", "contact_email", "contact_phone", "value_cents", "next_action", "next_action_date"]) {
+      if (next[f] === null && lead[f] != null) next[f] = lead[f];
+    }
+    next.name = shell.name ?? lead.name;
+    const changes = diff(lead, next);
+    const shellId = shell.id as number;
+    db.transaction(() => {
+      db.prepare("UPDATE lead_attachments SET lead_id = ? WHERE lead_id = ?").run(leadId, shellId);
+      db.prepare("UPDATE todos SET lead_id = ? WHERE lead_id = ?").run(leadId, shellId);
+      db.prepare("UPDATE flair_os_activities SET lead_id = ? WHERE lead_id = ?").run(leadId, shellId);
+      db.prepare("DELETE FROM leads WHERE id = ?").run(shellId);
+      const sets = Object.keys(next).map((k) => `${k} = ?`).join(", ");
+      db.prepare(`UPDATE leads SET ${sets}, updated_at = ? WHERE id = ?`).run(...Object.values(next), Date.now(), leadId);
+      db.prepare("INSERT INTO flair_os_links (lead_id, decision, flair_os_id, decided_at) VALUES (?, 'linked', ?, ?) ON CONFLICT(lead_id) DO UPDATE SET decision = 'linked', flair_os_id = excluded.flair_os_id, decided_at = excluded.decided_at")
+        .run(leadId, dealId, Date.now());
+    })();
+    return { ok: true, folded: shellId, changes };
+  },
+
+  /** Remember that a Command Center-only lead is deliberately not a FLAIR OS deal. */
+  keepSeparate(leadId: number): boolean {
+    const db = rawDb();
+    const lead = db.prepare("SELECT id, flair_os_id FROM leads WHERE id = ? AND business_id = ?").get(leadId, FLAIR_OS_BUSINESS_ID) as { id: number; flair_os_id: string | null } | undefined;
+    if (!lead || lead.flair_os_id) return false;
+    db.prepare("INSERT INTO flair_os_links (lead_id, decision, flair_os_id, decided_at) VALUES (?, 'separate', NULL, ?) ON CONFLICT(lead_id) DO UPDATE SET decision = 'separate', flair_os_id = NULL, decided_at = excluded.decided_at")
+      .run(leadId, Date.now());
+    return true;
+  },
+
+  /** Forget a keep-separate decision so the suggestion shows again. */
+  resetDecision(leadId: number): boolean {
+    const res = rawDb().prepare("DELETE FROM flair_os_links WHERE lead_id = ? AND decision = 'separate'").run(leadId);
+    return res.changes > 0;
   },
 
   driftReport(): DriftReport {

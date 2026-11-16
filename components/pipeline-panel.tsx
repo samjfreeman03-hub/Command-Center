@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import type { Lead, LeadAttachment, LeadCategory } from "@/lib/types";
 import { LEAD_STAGES, MIRROR_ONLY_STAGES, isActiveStage } from "@/lib/types";
-import { FlairOsStrip, MirroredLeadModal, FlairOsBadge } from "@/components/flair-os-panel";
+import { FlairOsStrip, MirroredLeadModal, FlairOsBadge, useFlairOsStatus } from "@/components/flair-os-panel";
+import { FlairOsBoard } from "@/components/flair-os-board";
 import {
   Plus,
   Trash2,
@@ -80,11 +81,23 @@ function shortDate(ymd: string) {
 
 type Editor = { mode: "new" } | { mode: "edit"; id: number } | null;
 
+export type FlairOsStageMeta = {
+  slug: string;
+  label: string;
+  color: string | null;
+  sort_order: number;
+  is_won: boolean;
+  is_lost: boolean;
+  is_lifecycle: boolean;
+};
+
 export type FlairOsPanelProps = {
   /** The FLAIR page mirrors FLAIR OS (server flag, FLAIR only). */
   enabled: boolean;
-  /** Owner view: may run a pull and pause it. Share views only read. */
+  /** Owner view: may run a pull, pause it, and decide links. Share views only read. */
   canSync: boolean;
+  /** FLAIR OS stages as of the last pull (server-rendered so the board lays out without a flash). */
+  stages: FlairOsStageMeta[];
 };
 
 export function PipelinePanel({
@@ -106,8 +119,10 @@ export function PipelinePanel({
 }) {
   const [leads, setLeads] = usePanelState("leads", initial);
   const mirrorOn = !!flairOs?.enabled;
-  // Parked and nurture columns exist only where FLAIR OS puts deals in them.
-  const stages: Stage[] = mirrorOn || leads.some((l) => MIRROR_ONLY_STAGES.includes(l.stage))
+  const flairOsStatus = useFlairOsStatus(mirrorOn);
+  // Parked and nurture columns exist only where FLAIR OS puts deals in them
+  // (generic board only; the FLAIR OS board lays out by FLAIR OS stage).
+  const stages: Stage[] = leads.some((l) => MIRROR_ONLY_STAGES.includes(l.stage))
     ? [...LEAD_STAGES, ...MIRROR_ONLY_STAGES]
     : LEAD_STAGES;
   const [editor, setEditor] = useState<Editor>(autoNew ? { mode: "new" } : null);
@@ -288,6 +303,29 @@ export function PipelinePanel({
   const editingLead = editor?.mode === "edit" ? leads.find((l) => l.id === editor.id) ?? null : null;
   const filtered = q !== "" || (categoriesEnabled && categoryFilter !== "all");
 
+  /** After a lane Link: the Command Center lead takes the deal's mirror fields and the deal's shell row goes. */
+  function foldLinkedLead(leadId: number, dealId: string) {
+    setLeads((prev) => {
+      const shell = prev.find((l) => l.flair_os_id === dealId);
+      return prev
+        .filter((l) => l.id !== shell?.id)
+        .map((l) => {
+          if (l.id !== leadId) return l;
+          if (!shell) return { ...l, flair_os_id: dealId };
+          const { id: _id, notes: _n, categories: _c, created_at: _ca, attachment_count: _ac, ...mirror } = shell; // eslint-disable-line @typescript-eslint/no-unused-vars
+          return {
+            ...l,
+            ...mirror,
+            company: shell.company ?? l.company,
+            contact_email: shell.contact_email ?? l.contact_email,
+            value_cents: shell.value_cents ?? l.value_cents,
+            next_action: shell.next_action ?? l.next_action,
+            next_action_date: shell.next_action_date ?? l.next_action_date,
+          };
+        });
+    });
+  }
+
   function renderCard(l: Lead) {
     return (
       <LeadCard
@@ -309,8 +347,22 @@ export function PipelinePanel({
 
   return (
     <div>
-      {mirrorOn && flairOs && <FlairOsStrip canSync={flairOs.canSync} />}
+      {mirrorOn && flairOs && <FlairOsStrip canSync={flairOs.canSync} status={flairOsStatus.status} reload={flairOsStatus.reload} />}
 
+      {mirrorOn && flairOs ? (
+        <FlairOsBoard
+          leads={leads}
+          stages={flairOs.stages}
+          canManage={flairOs.canSync}
+          status={flairOsStatus.status}
+          onReload={flairOsStatus.reload}
+          onOpen={(id) => setEditor({ mode: "edit", id })}
+          onNew={() => setEditor({ mode: "new" })}
+          onLinked={foldLinkedLead}
+          attachmentCounts={attachmentCounts}
+        />
+      ) : (
+      <>
       {/* Toolbar */}
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-3">
@@ -493,12 +545,14 @@ export function PipelinePanel({
           </div>
         </>
       )}
+      </>
+      )}
 
       {editor && editor.mode === "edit" && editingLead?.flair_os_id ? (
         <MirroredLeadModal
           key={`mirror-${editingLead.id}`}
           lead={editingLead}
-          stageLabel={STAGE_LABELS[editingLead.stage]}
+          stageLabel={mirrorOn ? flairOs?.stages.find((s) => s.slug.toLowerCase() === editingLead.flair_os_stage?.toLowerCase())?.label : STAGE_LABELS[editingLead.stage]}
           onClose={() => setEditor(null)}
           attachments={<Attachments leadId={editingLead.id} onCount={(n) => setAttachmentCounts((prev) => ({ ...prev, [editingLead.id]: n }))} />}
         />
