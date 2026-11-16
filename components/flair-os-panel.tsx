@@ -12,12 +12,15 @@ import { toast } from "@/components/ui/host";
 import { Badge, Card } from "@/components/ui/display";
 import { FormattedText } from "@/components/formatted-text";
 
+import type { Reconciliation, PipelineCounts, StageMeta } from "@/lib/flair-os/store";
+
 /**
- * FLAIR OS mirror UI for the FLAIR pipeline tab (phase 1, read-only):
- * the status strip, the card badge, and the read-only lead detail.
+ * FLAIR OS mirror UI for the FLAIR pipeline tab (read-only toward FLAIR OS):
+ * the status hook and strip, the card badge, and the read-only deal detail.
+ * The board itself is `components/flair-os-board.tsx`.
  */
 
-type Status = {
+export type FlairOsStatus = {
   enabled: boolean;
   canSync?: boolean;
   dryRunDefault?: boolean;
@@ -37,8 +40,12 @@ type Status = {
       tasks: { seen: number; created: number; updated: number; unchanged: number };
       clients: { seen: number; created: number; updated: number; unchanged: number };
       unknown_stages: string[];
+      warnings?: string[];
     } | null;
+    counts?: PipelineCounts | null;
   };
+  stages?: StageMeta[];
+  reconciliation?: Reconciliation;
   drift?: {
     leads_mirrored: number;
     leads_missing: number;
@@ -52,7 +59,7 @@ type Status = {
   log?: { id: number; at: number; record_kind: string; action: string; result: string; message: string | null; changes: { field: string; from: unknown; to: unknown }[] | null }[];
 };
 
-function ago(ms: number | null | undefined): string {
+export function ago(ms: number | null | undefined): string {
   if (!ms) return "never";
   const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
   if (s < 60) return "just now";
@@ -68,45 +75,59 @@ function when(ms: number | null | undefined): string {
   return new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-export function FlairOsStrip({ canSync }: { canSync: boolean }) {
-  const shareHeaders = useShareHeaders();
-  const [status, setStatus] = useState<Status | null>(null);
-  const [busy, setBusy] = useState<"sync" | "dry" | "pause" | null>(null);
-  const [open, setOpen] = useState(false);
+function dateOnly(ymd: string | null | undefined): string | null {
+  if (!ymd) return null;
+  const [y, m, d] = ymd.split("-").map(Number);
+  if (!y || !m || !d) return ymd;
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: "short", day: "numeric", year: y !== new Date().getFullYear() ? "numeric" : undefined });
+}
 
-  const load = useCallback(async () => {
+/** Polls `/api/flair-os/status` once a minute; shared by the strip and the board. */
+export function useFlairOsStatus(enabled: boolean): { status: FlairOsStatus | null; reload: () => void } {
+  const shareHeaders = useShareHeaders();
+  const [status, setStatus] = useState<FlairOsStatus | null>(null);
+
+  const reload = useCallback(async () => {
+    if (!enabled) return;
     try {
       const res = await fetch("/api/flair-os/status", { headers: shareHeaders, cache: "no-store" });
       if (res.ok) setStatus(await res.json());
     } catch {
       /* keep the last status */
     }
-  }, [shareHeaders]);
+  }, [shareHeaders, enabled]);
 
   useEffect(() => {
-    load();
-    const t = setInterval(load, 60_000);
+    reload();
+    const t = setInterval(reload, 60_000);
     return () => clearInterval(t);
-  }, [load]);
+  }, [reload]);
 
-  async function pull(dryRun: boolean) {
-    setBusy(dryRun ? "dry" : "sync");
+  return { status, reload };
+}
+
+export function FlairOsStrip({ canSync, status, reload: load }: { canSync: boolean; status: FlairOsStatus | null; reload: () => void }) {
+  const shareHeaders = useShareHeaders();
+  const [busy, setBusy] = useState<"sync" | "pause" | null>(null);
+  const [open, setOpen] = useState(false);
+
+  async function pull() {
+    setBusy("sync");
     try {
       const res = await fetch("/api/flair-os/sync", {
         method: "POST",
         headers: { "content-type": "application/json", ...shareHeaders },
-        body: JSON.stringify({ dryRun }),
       });
       const summary = await res.json().catch(() => null);
       if (res.ok && summary?.ok) {
         const d = summary.deals;
         toast(
-          dryRun
-            ? `Dry run: ${d.created} new, ${d.updated} changed, ${d.missing} missing of ${d.seen} deals. Nothing written.`
+          summary.dry_run
+            ? `Dry run: ${d.created} new, ${d.updated} changed of ${d.seen} deals. Nothing saved while FLAIR_OS_SYNC_DRY_RUN=1.`
             : `Synced ${d.seen} deals: ${d.created} new, ${d.updated} changed`,
           { tone: "success" }
         );
-        if (!dryRun && (d.created > 0 || d.updated > 0 || summary.tasks.created > 0 || summary.tasks.updated > 0)) {
+        if (!summary.dry_run && (d.created > 0 || d.updated > 0 || summary.tasks.created > 0 || summary.tasks.updated > 0)) {
           // Mirrored rows changed on the server; a reload is the honest refresh.
           window.location.reload();
           return;
@@ -151,19 +172,27 @@ export function FlairOsStrip({ canSync }: { canSync: boolean }) {
   const drift = status.drift;
   const summary = st?.last_summary ?? null;
   const healthy = !!st?.last_ok_at && !st.last_error;
+  const dryRun = !!status.dryRunDefault;
   const problems = (drift?.leads_missing ?? 0) + (drift?.leads_unknown_stage ?? 0);
 
   return (
     <div className="mb-5">
       <Card>
+        {dryRun && (
+          <div className="border-b border-line bg-amber-500/10 px-4 py-2 text-[13px] text-amber-800 dark:text-amber-200">
+            <span className="font-medium">Dry run is on.</span> FLAIR OS is read and nothing is saved, so the board below shows only what was mirrored before.
+            {summary?.dry_run ? ` The last read saw ${summary.deals.seen} deals, ${summary.tasks.seen} tasks and ${summary.clients.seen} clients (${summary.deals.created} would be new).` : ""}{" "}
+            Set <code className="rounded bg-sunken px-1 py-0.5 text-xs">FLAIR_OS_SYNC_DRY_RUN=0</code> on Railway to mirror.
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px]">
-            <span className="inline-flex items-center gap-1.5 font-medium text-ink">
+          <div className="flex min-w-[240px] flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px]">
+            <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-medium text-ink">
               <span className={cn("h-2 w-2 rounded-full", st?.pull_paused ? "bg-amber-500" : healthy ? "bg-emerald-500" : "bg-red-500")} />
               FLAIR OS mirror
             </span>
-            <Badge tone={st?.pull_paused ? "amber" : healthy ? "green" : "red"}>
-              {st?.pull_paused ? "Paused" : healthy ? "Read-only" : st?.last_error ? "Error" : "Not synced yet"}
+            <Badge tone={st?.pull_paused ? "amber" : dryRun ? "amber" : healthy ? "green" : "red"}>
+              {st?.pull_paused ? "Paused" : dryRun ? "Dry run" : healthy ? "Read-only" : st?.last_error ? "Error" : "Not synced yet"}
             </Badge>
             <span className="text-ink-3">
               Synced <span className="tabular-nums text-ink-2">{ago(st?.last_ok_at)}</span>
@@ -179,14 +208,11 @@ export function FlairOsStrip({ canSync }: { canSync: boolean }) {
             {problems > 0 && <Badge tone="amber">{problems} to review</Badge>}
             {st?.last_error && <span className="truncate text-red-600 dark:text-red-400">{st.last_error}</span>}
           </div>
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div className="ml-auto flex shrink-0 flex-wrap items-center gap-1.5">
             {canSync && (
               <>
-                <Button size="sm" onClick={() => pull(false)} loading={busy === "sync"} disabled={busy !== null || status.inFlight}>
-                  <RefreshCw size={13} /> Sync now
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => pull(true)} loading={busy === "dry"} disabled={busy !== null || status.inFlight}>
-                  Dry run
+                <Button size="sm" onClick={pull} loading={busy === "sync"} disabled={busy !== null || status.inFlight}>
+                  <RefreshCw size={13} /> {dryRun ? "Read now" : "Sync now"}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={togglePause} loading={busy === "pause"} disabled={busy !== null}>
                   {st?.pull_paused ? <Play size={13} /> : <Pause size={13} />}
@@ -219,6 +245,9 @@ export function FlairOsStrip({ canSync }: { canSync: boolean }) {
                     {summary.unknown_stages.length > 0 && (
                       <li className="text-amber-700 dark:text-amber-300">Unknown FLAIR OS stages: {summary.unknown_stages.join(", ")}</li>
                     )}
+                    {(summary.warnings ?? []).map((w) => (
+                      <li key={w} className="text-amber-700 dark:text-amber-300">{w}</li>
+                    ))}
                   </ul>
                 ) : (
                   <p className="mt-1 text-ink-3">No pull yet.</p>
@@ -229,7 +258,10 @@ export function FlairOsStrip({ canSync }: { canSync: boolean }) {
                 {drift && (
                   <ul className="mt-1 space-y-0.5 text-ink-2">
                     <li>{drift.leads_missing} mirrored deals no longer in FLAIR OS</li>
-                    <li>{drift.leads_local_only} FLAIR leads only in the Command Center</li>
+                    <li>
+                      {drift.leads_local_only} FLAIR leads only in the Command Center
+                      {status.reconciliation ? ` (${status.reconciliation.counts.same} already in FLAIR OS, ${status.reconciliation.counts.likely} probably, ${status.reconciliation.counts.separate} kept separate)` : ""}
+                    </li>
                     <li>{drift.leads_unknown_stage} deals with a stage the map does not know</li>
                   </ul>
                 )}
@@ -296,7 +328,8 @@ export function MirroredLeadModal({
   attachments,
 }: {
   lead: Lead;
-  stageLabel: string;
+  /** Server label for the FLAIR OS stage, when the board knows it. */
+  stageLabel?: string;
   onClose: () => void;
   attachments: React.ReactNode;
 }) {
@@ -316,17 +349,17 @@ export function MirroredLeadModal({
 
   const rows: [string, React.ReactNode][] = [
     ["Company", lead.company],
-    ["Contact", lead.contact_name ?? lead.name],
+    ["Opportunity", lead.flair_os_opportunity],
+    ["Contact", lead.contact_name ?? (lead.name !== lead.company ? lead.name : null)],
     ["Email", lead.contact_email],
     ["Phone", lead.contact_phone],
-    [
-      "FLAIR OS stage",
-      `${flairOsStageLabel(lead.flair_os_stage ?? null) || lead.flair_os_stage || ""}${lead.flair_os_sales_status ? ` (${lead.flair_os_sales_status})` : ""}`,
-    ],
-    ["Shown here as", stageLabel],
-    ["Owner", lead.flair_os_owner],
-    ["Value", lead.value_cents ? `$${(lead.value_cents / 100).toLocaleString()}` : null],
-    ["Next action", lead.next_action ? `${lead.next_action}${lead.next_action_date ? `, ${lead.next_action_date}` : ""}` : lead.next_action_date],
+    ["Stage", flairOsStageLabel(lead.flair_os_stage ?? null, stageLabel) || lead.flair_os_stage || ""],
+    ["Sales status", lead.flair_os_sales_status],
+    ["Owner", lead.flair_os_owner ?? "Unassigned"],
+    ["Deal value", lead.value_cents ? `$${(lead.value_cents / 100).toLocaleString()}` : null],
+    ["Last contacted", lead.flair_os_last_contacted_at ? when(lead.flair_os_last_contacted_at) : null],
+    ["Next check-in", dateOnly(lead.next_action_date)],
+    ["Waiting on", lead.next_action],
     ["Last change in FLAIR OS", lead.flair_os_updated_at ? when(lead.flair_os_updated_at) : null],
   ];
 
@@ -335,7 +368,7 @@ export function MirroredLeadModal({
       open
       onClose={onClose}
       title={lead.company || lead.name}
-      description="Managed in FLAIR OS. This is a read-only mirror; edits arrive with write-back in phase 2."
+      description="Managed in FLAIR OS. Read-only here; edits arrive with write-back in phase 2."
       size="lg"
       footer={
         <>
@@ -362,6 +395,15 @@ export function MirroredLeadModal({
               </div>
             ))}
         </dl>
+
+        {lead.notes && (
+          <div>
+            <div className="text-xs font-medium text-ink-3">Your note (kept here, not in FLAIR OS)</div>
+            <div className="mt-1 text-[13px] text-ink-2">
+              <FormattedText text={lead.notes} />
+            </div>
+          </div>
+        )}
 
         {lead.flair_os_notes && (
           <div>

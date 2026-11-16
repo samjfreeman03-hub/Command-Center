@@ -6,6 +6,7 @@ import { eventsEnabled } from "@/lib/events-config";
 import { SharedView } from "./shared-view";
 import { todayLA } from "@/lib/dates";
 import { flairOsEnabled } from "@/lib/flair-os/config";
+import { flairOsStore } from "@/lib/flair-os/store";
 import { SharePasswordGate } from "./share-password-gate";
 
 export const dynamic = "force-dynamic";
@@ -69,6 +70,7 @@ export default async function SharePage({
       data={data}
       today={todayLA()}
       flairOsEnabled={flairOsEnabled(businessId)}
+      flairOsStages={flairOsEnabled(businessId) ? flairOsStore.listStages() : []}
     />
   );
 }

@@ -130,6 +130,8 @@ function seed() {
     D(12, "Chipotle", "Ravi Menon", "ravi.menon@chipotle.com", "paused", { touched: 15, notes: "Parked until Q1 budget" }),
     D(13, "Fenty Beauty", "Nia Carter", "nia@fentybeauty.com", "engaged", { sales_status: "nurture", touched: 11 }),
     D(14, "Red Bull", "Max Keller", "max.keller@redbull.com", "outreach", { owner: null, touched: 13, last_contacted_at: iso(9) }),
+    // Same company as deal 6 under a second contact: the board marks both as a possible duplicate.
+    D(15, "Liquid Death", "Mara Osei", "mara.osei@liquiddeath.com", "outreach", { owner: null, touched: 9, last_contacted_at: iso(6) }),
   ];
   const T = (n, dealIdx, title, due, extra = {}) => ({
     id: `a0000000-0000-4000-8000-${String(n).padStart(12, "0")}`,

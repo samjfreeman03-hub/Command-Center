@@ -57,6 +57,10 @@ export type Lead = {
   flair_os_missing_at?: number | null;
   contact_name?: string | null;
   contact_phone?: string | null;
+  /** FLAIR OS opportunity name when it differs from the company. */
+  flair_os_opportunity?: string | null;
+  /** FLAIR OS last_contacted as epoch ms. */
+  flair_os_last_contacted_at?: number | null;
 };
 
 export type LeadCategory = {

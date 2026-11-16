@@ -69,6 +69,9 @@ function migrateFlairOs(db: Database.Database) {
     "ALTER TABLE leads ADD COLUMN flair_os_missing_at INTEGER",
     "ALTER TABLE leads ADD COLUMN contact_name TEXT",
     "ALTER TABLE leads ADD COLUMN contact_phone TEXT",
+    "ALTER TABLE leads ADD COLUMN flair_os_opportunity TEXT",
+    "ALTER TABLE leads ADD COLUMN flair_os_last_contacted_at INTEGER",
+    "ALTER TABLE flair_os_sync_state ADD COLUMN counts TEXT",
     "ALTER TABLE todos ADD COLUMN flair_os_id TEXT",
     "ALTER TABLE todos ADD COLUMN flair_os_deal_id TEXT",
     "ALTER TABLE todos ADD COLUMN lead_id INTEGER",
@@ -93,6 +96,7 @@ function migrateFlairOs(db: Database.Database) {
       last_error TEXT,
       last_summary TEXT,
       known_stages TEXT NOT NULL DEFAULT '[]',
+      counts TEXT,
       updated_at INTEGER NOT NULL
     );
     INSERT OR IGNORE INTO flair_os_sync_state (id, updated_at) VALUES (1, ${Date.now()});
@@ -141,6 +145,24 @@ function migrateFlairOs(db: Database.Database) {
       display_name TEXT NOT NULL,
       member_id INTEGER,
       updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS flair_os_stages (
+      slug TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      color TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_won INTEGER,
+      is_lost INTEGER,
+      is_lifecycle INTEGER,
+      seen_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS flair_os_links (
+      lead_id INTEGER PRIMARY KEY,
+      decision TEXT NOT NULL,
+      flair_os_id TEXT,
+      decided_at INTEGER NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS flair_os_meetings (

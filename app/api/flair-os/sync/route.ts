@@ -5,7 +5,11 @@ import { runMirrorCycle } from "@/lib/flair-os/sync";
 
 export const dynamic = "force-dynamic";
 
-/** Owner only: run one pull now. `{ dryRun: true }` reports without writing. */
+/**
+ * Owner only: run one pull now. Dry run is the FLAIR_OS_SYNC_DRY_RUN env
+ * switch, not a request option (v2: the board explains the state instead).
+ * A request body `{ dryRun: true }` is still honored for scripts.
+ */
 export async function POST(req: Request) {
   if (!(await isAdmin())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

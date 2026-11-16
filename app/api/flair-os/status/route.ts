@@ -7,7 +7,10 @@ import { mirrorInFlight } from "@/lib/flair-os/sync";
 
 export const dynamic = "force-dynamic";
 
-/** Mirror status for the FLAIR page: state, drift, recent log. Team share links may read it. */
+/**
+ * Mirror status for the FLAIR page: state, FLAIR OS stage metadata, the
+ * reconciliation lane, drift and the recent log. Team share links may read it.
+ */
 export async function GET() {
   if (!(await canAccessBusiness(FLAIR_OS_BUSINESS_ID))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -23,6 +26,8 @@ export async function GET() {
     inFlight: mirrorInFlight(),
     scheduler: schedulerInfo(),
     state,
+    stages: flairOsStore.listStages(),
+    reconciliation: flairOsStore.reconciliation(),
     drift: flairOsStore.driftReport(),
     log: flairOsStore.listLog(25),
   });

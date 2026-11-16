@@ -1,5 +1,6 @@
 "use client";
 
+import type { FlairOsStageMeta } from "@/components/pipeline-panel";
 import type { Business } from "@/lib/businesses";
 import { ShareTokenContext } from "@/lib/share-context";
 import { BusinessWorkspace, type WorkspaceData } from "@/components/business-workspace";
@@ -12,6 +13,7 @@ export function SharedView({
   data,
   today,
   flairOsEnabled = false,
+  flairOsStages = [],
 }: {
   business: Business;
   shareToken: string;
@@ -20,6 +22,7 @@ export function SharedView({
   today: string;
   /** FLAIR OS mirror is configured (server flag); share views only read it. */
   flairOsEnabled?: boolean;
+  flairOsStages?: FlairOsStageMeta[];
 }) {
   return (
     <ShareTokenContext.Provider value={shareToken}>
@@ -31,7 +34,7 @@ export function SharedView({
           stickyClass="tabs-sticky-top"
           share
           today={today}
-          flairOs={flairOsEnabled ? { enabled: true, canSync: false } : undefined}
+          flairOs={flairOsEnabled ? { enabled: true, canSync: false, stages: flairOsStages } : undefined}
         />
       </div>
     </ShareTokenContext.Provider>

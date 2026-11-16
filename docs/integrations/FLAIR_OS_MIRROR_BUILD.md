@@ -131,3 +131,26 @@ Running the live-bound server locally (the preview launcher cannot read the env 
 ```
 cd "<worktree>" && set -a && . ./.env.flair-os.local && set +a && RAILWAY_VOLUME_MOUNT_PATH="$PWD/data/live" ADMIN_PASSWORD=<local password> PORT=3007 npm run dev
 ```
+
+## 8. v2: the FLAIR page becomes the FLAIR OS board, 2026-11-15 (night)
+
+Why: after the production switch-on Sam saw the strip but no pipeline (dry run was on, so nothing was saved), and the board that would have appeared was still the Command Center's generic six columns. His words: the format stayed the same instead of mirroring FLAIR OS, and there was no way to check for duplicates. Design: `FLAIR_OS_V2_DESIGN.md`. Built the same night.
+
+What changed:
+
+- **Board** (`components/flair-os-board.tsx`, new). When the mirror is on, the FLAIR Pipeline tab lays out by FLAIR OS stage: columns come from `list_pipeline_stages` (slug, label, color, order, won/lost/lifecycle flags, stored in `flair_os_stages` on every pull and server-rendered so there is no flash), in FLAIR OS order, with Lost and the non-lifecycle Paused after a divider. Cards show FLAIR OS fields only: company, opportunity name, contact, owner, sales status when not active, waiting on, last contacted, next check-in, deal value, plus Sam's attachment count. Outreach is condensed when it holds nine or more deals (count, owner split, five most recently contacted, Show all). The header shows FLAIR OS's own numbers from `get_pipeline_counts` (active, won, lost, open and booked value when non-zero) and the Command Center-only count. The Command Center stage name no longer appears anywhere on the FLAIR board. Other businesses' pipelines are untouched.
+- **Reconciliation lane** "In Command Center only" at the left: every FLAIR lead without a `flair_os_id`, with a verdict from `lib/flair-os/match.ts` against the mirrored deals. Same record: contact email equal, or normalized company and contact name equal. Likely: same company with no contact to compare or a different contact, or same work email domain with a similar company. Otherwise Not in FLAIR OS. **Link** makes Sam's lead the mirror row for that deal (it keeps its id, notes, categories and attachments; the shell row the sync created is folded into it, with its attachments, tasks and timeline re-pointed; FLAIR OS is not touched). **Keep separate** remembers the decision (`flair_os_links`), **Undo** forgets it. Decisions are logged in `flair_os_sync_log` as `record_kind = link`. Verdicts are computed on read, not stored, so they are always current. The same matcher marks "Possible duplicate in FLAIR OS" on mirrored deals that share a normalized company name (the live data has one such pair today).
+- **Dry run** is no longer a button. `FLAIR_OS_SYNC_DRY_RUN=1` stays as the env switch, and while it is on the strip says so in plain words with the counts the last read saw and the exact variable to change. Sync now reads "Read now" in that state.
+- **Deal dialog** shows fields in FLAIR OS order (company, opportunity, contact, email, phone, stage, sales status, owner, deal value, last contacted, next check-in, waiting on, last change), Sam's private note, FLAIR OS notes, the timeline (still empty until Tyler exposes an activity read), and attachments.
+- **Schema** (additive, `migrateFlairOs`): `leads.flair_os_opportunity`, `leads.flair_os_last_contacted_at`, `flair_os_sync_state.counts`, tables `flair_os_stages` and `flair_os_links`.
+- **Sync cycle**: stores stage metadata, calls `get_pipeline_counts` once per cycle (25 calls per cycle now instead of 24), fills the two new lead columns.
+- **API**: `/api/flair-os/status` now also returns `stages` and `reconciliation`; new `POST /api/flair-os/reconcile` (admin only) with `{ action: "link" | "separate" | "reset", leadId, dealId? }`. Share links read the lane but cannot decide.
+
+Verification:
+
+- `scripts/flair-os-mock/test-mirror.mjs`: 68 of 68 (the mock seed gained a second Liquid Death deal as the duplicate case; the test creates four Command Center-only leads, checks each verdict, links one with an attachment and a private note, pulls again, keeps one separate and undoes it, and checks that nothing of Sam's is deleted and that a share token cannot link). Results in `docs/integrations/results/mirror-test-results.json`.
+- `npx tsc --noEmit` and the production build: clean.
+- Browser, mock-bound (port 3006): board, lane with all three verdicts, Link flow end to end (lead left the lane, header count dropped, toast), deal dialog, Lost and Paused after the divider, phone layout with the stage picker including the lane.
+- Browser, live-bound (port 3007, local database only, dry run off locally): one real read-only pull, 71 deals, 25 calls in 31 s, 13 stages with Tyler's real colors (engaged #D9730D, proposal #337EA9, lost #C14C8A, and so on), counts total 73 (67 active, 4 won, 2 lost), one duplicate pair marked. Nothing on Railway changed.
+
+What Sam will see on cc.samfreeman.org after this deploys: with `FLAIR_OS_SYNC_DRY_RUN=1` still set, the strip explains the dry run and the board shows only the lane (his pre-mirror FLAIR leads, each with a verdict). Setting it to 0 fills the board on the next pull.
