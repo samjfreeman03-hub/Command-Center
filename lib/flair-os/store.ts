@@ -84,6 +84,18 @@ export type LogEntry = {
   message: string | null;
 };
 
+/** The numbers on the FLAIR page's "Your side" row. All from the mirror, nothing is fetched. */
+export type YourSide = {
+  self_name: string;
+  deals_owned: number;
+  active_deals: number;
+  tasks_open: number;
+  tasks_overdue: number;
+  checkins_overdue: number;
+  stage_moves_week: number;
+  contacted_week: number;
+};
+
 export type DriftReport = {
   leads_mirrored: number;
   leads_missing: number;
@@ -477,6 +489,29 @@ export const flairOsStore = {
   resetDecision(leadId: number): boolean {
     const res = rawDb().prepare("DELETE FROM flair_os_links WHERE lead_id = ? AND decision = 'separate'").run(leadId);
     return res.changes > 0;
+  },
+
+  /**
+   * "Your side": what in the mirror is Sam's or needs eyes. Owner and assignee
+   * are display names in FLAIR OS, so the match is a case-insensitive contains
+   * on the configured self name. Stage moves come from the field log.
+   */
+  yourSide(selfName: string, todayYmd: string): YourSide {
+    const db = rawDb();
+    const one = (sql: string, ...args: unknown[]) => (db.prepare(sql).get(...args) as { n: number }).n;
+    const like = `%${selfName.toLowerCase()}%`;
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const active = "flair_os_id IS NOT NULL AND flair_os_missing_at IS NULL AND lower(coalesce(flair_os_sales_status, 'active')) NOT IN ('won', 'lost') AND stage NOT IN ('won', 'lost')";
+    return {
+      self_name: selfName,
+      deals_owned: one(`SELECT COUNT(*) AS n FROM leads WHERE ${active} AND lower(coalesce(flair_os_owner, '')) LIKE ?`, like),
+      active_deals: one(`SELECT COUNT(*) AS n FROM leads WHERE ${active}`),
+      tasks_open: one("SELECT COUNT(*) AS n FROM todos WHERE flair_os_id IS NOT NULL AND status = 'open' AND lower(coalesce(flair_os_assignee, '')) LIKE ?", like),
+      tasks_overdue: one("SELECT COUNT(*) AS n FROM todos WHERE flair_os_id IS NOT NULL AND status = 'open' AND lower(coalesce(flair_os_assignee, '')) LIKE ? AND due_date IS NOT NULL AND due_date < ?", like, todayYmd),
+      checkins_overdue: one(`SELECT COUNT(*) AS n FROM leads WHERE ${active} AND next_action_date IS NOT NULL AND next_action_date < ?`, todayYmd),
+      stage_moves_week: one("SELECT COUNT(*) AS n FROM flair_os_sync_log WHERE at >= ? AND record_kind = 'deal' AND action = 'updated' AND result = 'ok' AND changes LIKE '%\"field\":\"flair_os_stage\"%'", weekAgo),
+      contacted_week: one(`SELECT COUNT(*) AS n FROM leads WHERE ${active} AND flair_os_last_contacted_at >= ?`, weekAgo),
+    };
   },
 
   driftReport(): DriftReport {

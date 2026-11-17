@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { canAccessBusiness, isAdmin } from "@/lib/server-auth";
-import { FLAIR_OS_BUSINESS_ID, flairOsEnabled, flairOsDryRunDefault } from "@/lib/flair-os/config";
+import { FLAIR_OS_BUSINESS_ID, flairOsEnabled, flairOsDryRunDefault, flairOsSelfName } from "@/lib/flair-os/config";
+import { todayLA } from "@/lib/dates";
 import { flairOsStore } from "@/lib/flair-os/store";
 import { schedulerInfo } from "@/lib/flair-os/scheduler";
 import { mirrorInFlight } from "@/lib/flair-os/sync";
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Mirror status for the FLAIR page: state, FLAIR OS stage metadata, the
- * reconciliation lane, drift and the recent log. Team share links may read it.
+ * reconciliation list, the "Your side" numbers, drift and the recent log. Team share links may read it.
  */
 export async function GET() {
   if (!(await canAccessBusiness(FLAIR_OS_BUSINESS_ID))) {
@@ -28,6 +29,7 @@ export async function GET() {
     state,
     stages: flairOsStore.listStages(),
     reconciliation: flairOsStore.reconciliation(),
+    your_side: flairOsStore.yourSide(flairOsSelfName(), todayLA()),
     drift: flairOsStore.driftReport(),
     log: flairOsStore.listLog(25),
   });

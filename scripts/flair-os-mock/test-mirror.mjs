@@ -287,6 +287,20 @@ async function main() {
   check("nothing deleted by linking: the three other lane leads still exist", localCount === 3, localCount);
   for (const l of [leadB, leadC, leadD]) await cc(`/api/leads/${l.id}`, { method: "DELETE" });
 
+  // 19. Phase A page: the "Your side" numbers come from the mirror and agree with the database.
+  status = await cc("/api/flair-os/status");
+  const ys = status.json?.your_side;
+  const numeric = ["deals_owned", "active_deals", "tasks_open", "tasks_overdue", "checkins_overdue", "stage_moves_week", "contacted_week"];
+  check("your side: status carries the block with every number", !!ys && ys.self_name === "Sam" && numeric.every((k) => typeof ys[k] === "number"), ys);
+  const activeSql = "flair_os_id IS NOT NULL AND flair_os_missing_at IS NULL AND lower(coalesce(flair_os_sales_status, 'active')) NOT IN ('won', 'lost') AND stage NOT IN ('won', 'lost')";
+  const dbOwned = one(`SELECT COUNT(*) AS n FROM leads WHERE ${activeSql} AND lower(coalesce(flair_os_owner, '')) LIKE '%sam%'`).n;
+  const dbActive = one(`SELECT COUNT(*) AS n FROM leads WHERE ${activeSql}`).n;
+  const dbTasks = one("SELECT COUNT(*) AS n FROM todos WHERE flair_os_id IS NOT NULL AND status = 'open' AND lower(coalesce(flair_os_assignee, '')) LIKE '%sam%'").n;
+  const dbMoves = one(`SELECT COUNT(*) AS n FROM flair_os_sync_log WHERE at >= ? AND record_kind = 'deal' AND action = 'updated' AND result = 'ok' AND changes LIKE '%"field":"flair_os_stage"%'`, Date.now() - 7 * 86400000).n;
+  check("your side: deals you own and active deals match the mirror", ys?.deals_owned === dbOwned && ys?.active_deals === dbActive && dbOwned >= 1 && dbActive > dbOwned, { ys, dbOwned, dbActive });
+  check("your side: tasks assigned to Sam match the mirror", ys?.tasks_open === dbTasks && dbTasks >= 1, { tasks: ys?.tasks_open, dbTasks });
+  check("your side: stage moves this week come from the field log", ys?.stage_moves_week === dbMoves && dbMoves >= 1, { moves: ys?.stage_moves_week, dbMoves });
+
   // 10. Pause blocks scheduled pulls, manual still works, resume.
   const pause = await cc("/api/flair-os/settings", { method: "PATCH", body: { pull_paused: true } });
   status = await cc("/api/flair-os/status");

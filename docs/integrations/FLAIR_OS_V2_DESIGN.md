@@ -1,6 +1,6 @@
 # FLAIR OS mirror v2: make the FLAIR page a view of FLAIR OS
 
-Written 2026-11-15 after the first production switch-on. Status: **built the same night** (see `FLAIR_OS_MIRROR_BUILD.md` section 8). Deviations from this text: verdicts are computed on read rather than stored per pull; stage metadata and the lane ride on `GET /api/flair-os/status` and the server-rendered page props instead of separate GET routes; the lane decisions are one `POST /api/flair-os/reconcile` route; Link folds the deal's auto-created mirror row into Sam's lead (nothing of Sam's is deleted, and the deal reappears from FLAIR OS on every pull); Keep separate has an Undo.
+Written 2026-11-15 after the first production switch-on. Status: **built the same night, then superseded on 2026-11-17 by phase A of `FLAIR_OS_ALIGNMENT_PLAN.md`** (the column board became a stage-grouped list with a Your side row and a Needs a decision table; see `FLAIR_OS_MIRROR_BUILD.md` section 9). Original status (see `FLAIR_OS_MIRROR_BUILD.md` section 8). Deviations from this text: verdicts are computed on read rather than stored per pull; stage metadata and the lane ride on `GET /api/flair-os/status` and the server-rendered page props instead of separate GET routes; the lane decisions are one `POST /api/flair-os/reconcile` route; Link folds the deal's auto-created mirror row into Sam's lead (nothing of Sam's is deleted, and the deal reappears from FLAIR OS on every pull); Keep separate has an Undo.
 
 ## 1. What went wrong with v1 as a product
 

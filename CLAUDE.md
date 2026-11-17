@@ -1473,7 +1473,7 @@ DESIGN.md wins. Highlights:
   All six call sites now use `<FieldGroup>`; the editor warns in dev if it
   ever finds a `<label>` ancestor again.
 
-## 16. FLAIR OS Mirror (phase 1 built 2026-11-15, v2 board the same night)
+## 16. FLAIR OS Mirror (phase 1 built 2026-11-15, v2 board the same night, phase A page 2026-11-17)
 
 FLAIR OS is Tyler Rong's FLAIR sales system (Vercel + Supabase, HTTP MCP at
 `/api/mcp`). It is the **system of record** for FLAIR deals, deal tasks, and
@@ -1483,28 +1483,38 @@ contract: `docs/integrations/FLAIR_OS_FIELD_CONTRACT.md` (main checkout).
 
 - **Everything lives under `lib/flair-os/`** (config, allowlist, MCP client,
   normalizers, stage map, matcher, store, sync cycle, scheduler) plus
-  `components/flair-os-board.tsx` (the board), `components/flair-os-panel.tsx`
-  (status hook, strip, deal dialog) and `app/api/flair-os/*`. The scheduler is
+  `components/flair-os-board.tsx` (the page body), `components/flair-os-panel.tsx`
+  (status hook, connection line, deal dialog) and `app/api/flair-os/*`. The scheduler is
   started from `instrumentation.ts`.
-- **The FLAIR Pipeline tab IS the FLAIR OS board when the mirror is on** (v2,
-  `docs/integrations/FLAIR_OS_V2_DESIGN.md`): columns are FLAIR OS stages from
-  `flair_os_stages` (label, color, order, flags; refreshed every pull and
-  passed from the server page as `flairOs.stages`), Lost and Paused after a
-  divider, Outreach condensed at nine or more, cards and the dialog show FLAIR
-  OS fields only, header numbers come from `get_pipeline_counts`
-  (`flair_os_sync_state.counts`). The generic six-column board is untouched for
+- **The FLAIR Pipeline tab is a plain page over FLAIR OS when the mirror is on**
+  (phase A of `docs/integrations/FLAIR_OS_ALIGNMENT_PLAN.md`, built 2026-11-17,
+  notes in `FLAIR_OS_MIRROR_BUILD.md` section 9): a one-line connection status
+  (`FlairOsConnection`, owner-only Refresh and Details dialog), a "Your side"
+  row (deals Sam owns, his open tasks, check-ins overdue, stage moves this
+  week; `flairOsStore.yourSide()`, Sam matched by `FLAIR_OS_SELF_NAME`,
+  default "Sam"), the pipeline as a list grouped by FLAIR OS stage (metadata
+  from `flair_os_stages`, Outreach collapsed at nine or more, Lost and Paused
+  under a disclosure, header numbers from `get_pipeline_counts`), and a
+  "Needs a decision" table for Sam's own FLAIR leads. Cards and the dialog
+  show FLAIR OS fields only. The generic six-column board is untouched for
   every other business. `leads.stage` on mirrored rows is still the rollup
-  (Today counts, search); the FLAIR board does not use it for layout.
-- **Reconciliation lane** "In Command Center only": FLAIR leads without a
-  `flair_os_id`, matched by `lib/flair-os/match.ts` (same / likely / none,
-  computed on read). Link = `flairOsStore.linkLead` (Sam's row becomes the
-  mirror row; the sync's shell row is folded in with its attachments, tasks
-  and timeline; nothing of Sam's is deleted). Keep separate / Undo live in
-  `flair_os_links`. `POST /api/flair-os/reconcile` is admin only. The same
-  matcher marks possible duplicates inside FLAIR OS; the Command Center never
-  merges FLAIR OS records.
+  (Today counts, search); the FLAIR page does not use it for layout. When the
+  mirror is empty (dry run in production) the page says so in plain words and
+  lists Sam's leads without verdicts.
+- **Needs a decision** (was the v2 "reconciliation lane"): FLAIR leads without
+  a `flair_os_id`, matched by `lib/flair-os/match.ts` (same / likely / none,
+  computed on read). "Same deal, merge" = `flairOsStore.linkLead` (Sam's row
+  becomes the mirror row; the sync's shell row is folded in with its
+  attachments, tasks and timeline; nothing of Sam's is deleted). "Different
+  deal" and "Keep it here" store a separate decision in `flair_os_links`, with
+  Undo. `POST /api/flair-os/reconcile` is admin only. The same matcher marks
+  possible duplicates inside FLAIR OS; the Command Center never merges FLAIR
+  OS records.
 - **Dry run is an env switch, not a button.** With `FLAIR_OS_SYNC_DRY_RUN=1`
-  the strip explains that nothing is saved and names the variable.
+  the connection line explains that nothing is saved and names the variable.
+  Nothing in a request can turn dry run off (`POST /api/flair-os/sync` only
+  honors a body `dryRun: true`; a page Refresh used to override the switch,
+  fixed 2026-11-17).
 - **Switches are env only**: `FLAIR_OS_MCP_URL`, `FLAIR_OS_MCP_KEY`,
   `FLAIR_OS_SYNC_ENABLED`, `FLAIR_OS_SYNC_DRY_RUN`, `FLAIR_OS_SYNC_INTERVAL_MIN`
   (0 = manual only). Unset means the feature does not exist in the UI. The key
@@ -1542,4 +1552,4 @@ contract: `docs/integrations/FLAIR_OS_FIELD_CONTRACT.md` (main checkout).
 *End of CLAUDE.md.* Update whenever a major architectural change ships — same
 session as the change, not later. `git log --oneline` + commit bodies fill any
 gap between this doc and the code.
-Last updated: 2026-11-15 (PT, v2 FLAIR OS board).
+Last updated: 2026-11-17 (PT, FLAIR OS page phase A).

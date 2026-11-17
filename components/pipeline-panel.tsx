@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import type { Lead, LeadAttachment, LeadCategory } from "@/lib/types";
 import { LEAD_STAGES, MIRROR_ONLY_STAGES, isActiveStage } from "@/lib/types";
-import { FlairOsStrip, MirroredLeadModal, FlairOsBadge, useFlairOsStatus } from "@/components/flair-os-panel";
+import { FlairOsConnection, MirroredLeadModal, FlairOsBadge, useFlairOsStatus } from "@/components/flair-os-panel";
 import { FlairOsBoard } from "@/components/flair-os-board";
 import {
   Plus,
@@ -347,7 +347,7 @@ export function PipelinePanel({
 
   return (
     <div>
-      {mirrorOn && flairOs && <FlairOsStrip canSync={flairOs.canSync} status={flairOsStatus.status} reload={flairOsStatus.reload} />}
+      {mirrorOn && flairOs && <FlairOsConnection canSync={flairOs.canSync} status={flairOsStatus.status} reload={flairOsStatus.reload} />}
 
       {mirrorOn && flairOs ? (
         <FlairOsBoard

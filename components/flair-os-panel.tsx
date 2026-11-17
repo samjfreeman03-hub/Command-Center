@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, RefreshCw, Pause, Play, ChevronDown, ChevronUp, Link2 } from "lucide-react";
+import { Loader2, RefreshCw, Pause, Play, Link2, Info } from "lucide-react";
 import type { Lead } from "@/lib/types";
 import { useShareHeaders } from "@/lib/share-context";
 import { cn } from "@/lib/cn";
@@ -12,12 +12,13 @@ import { toast } from "@/components/ui/host";
 import { Badge, Card } from "@/components/ui/display";
 import { FormattedText } from "@/components/formatted-text";
 
-import type { Reconciliation, PipelineCounts, StageMeta } from "@/lib/flair-os/store";
+import type { Reconciliation, PipelineCounts, StageMeta, YourSide } from "@/lib/flair-os/store";
 
 /**
  * FLAIR OS mirror UI for the FLAIR pipeline tab (read-only toward FLAIR OS):
- * the status hook and strip, the card badge, and the read-only deal detail.
- * The board itself is `components/flair-os-board.tsx`.
+ * the status hook, the one-line connection status (with an owner-only Details
+ * dialog), the card badge, and the read-only deal dialog. The page body is
+ * `components/flair-os-board.tsx`.
  */
 
 export type FlairOsStatus = {
@@ -46,6 +47,7 @@ export type FlairOsStatus = {
   };
   stages?: StageMeta[];
   reconciliation?: Reconciliation;
+  your_side?: YourSide;
   drift?: {
     leads_mirrored: number;
     leads_missing: number;
@@ -106,10 +108,10 @@ export function useFlairOsStatus(enabled: boolean): { status: FlairOsStatus | nu
   return { status, reload };
 }
 
-export function FlairOsStrip({ canSync, status, reload: load }: { canSync: boolean; status: FlairOsStatus | null; reload: () => void }) {
+export function FlairOsConnection({ canSync, status, reload: load }: { canSync: boolean; status: FlairOsStatus | null; reload: () => void }) {
   const shareHeaders = useShareHeaders();
   const [busy, setBusy] = useState<"sync" | "pause" | null>(null);
-  const [open, setOpen] = useState(false);
+  const [details, setDetails] = useState(false);
 
   async function pull() {
     setBusy("sync");
@@ -123,8 +125,10 @@ export function FlairOsStrip({ canSync, status, reload: load }: { canSync: boole
         const d = summary.deals;
         toast(
           summary.dry_run
-            ? `Dry run: ${d.created} new, ${d.updated} changed of ${d.seen} deals. Nothing saved while FLAIR_OS_SYNC_DRY_RUN=1.`
-            : `Synced ${d.seen} deals: ${d.created} new, ${d.updated} changed`,
+            ? `Read ${d.seen} deals from FLAIR OS. Nothing saved while saving is off.`
+            : d.created + d.updated === 0
+              ? "Up to date with FLAIR OS"
+              : `Updated from FLAIR OS: ${d.created} new, ${d.updated} changed`,
           { tone: "success" }
         );
         if (!summary.dry_run && (d.created > 0 || d.updated > 0 || summary.tasks.created > 0 || summary.tasks.updated > 0)) {
@@ -133,10 +137,10 @@ export function FlairOsStrip({ canSync, status, reload: load }: { canSync: boole
           return;
         }
       } else {
-        toast(summary?.error ? `Could not sync: ${summary.error}` : "Could not sync with FLAIR OS", { tone: "error" });
+        toast(summary?.error ? `Could not reach FLAIR OS: ${summary.error}` : "Could not reach FLAIR OS", { tone: "error" });
       }
     } catch {
-      toast("Could not reach the sync route", { tone: "error" });
+      toast("Could not reach the server", { tone: "error" });
     } finally {
       setBusy(null);
       load();
@@ -152,7 +156,7 @@ export function FlairOsStrip({ canSync, status, reload: load }: { canSync: boole
         headers: { "content-type": "application/json", ...shareHeaders },
         body: JSON.stringify({ pull_paused: !status.state.pull_paused }),
       });
-      if (!res.ok) toast("Could not change the pull setting", { tone: "error" });
+      if (!res.ok) toast("Could not change the setting", { tone: "error" });
     } finally {
       setBusy(null);
       load();
@@ -161,143 +165,171 @@ export function FlairOsStrip({ canSync, status, reload: load }: { canSync: boole
 
   if (!status) {
     return (
-      <div className="mb-4 flex items-center gap-2 text-xs text-ink-3">
-        <Loader2 size={13} className="animate-spin" /> Checking FLAIR OS mirror
+      <div className="mb-5 flex items-center gap-2 text-[13px] text-ink-3">
+        <Loader2 size={13} className="animate-spin" /> Checking the FLAIR OS connection
       </div>
     );
   }
   if (!status.enabled) return null;
 
   const st = status.state;
-  const drift = status.drift;
   const summary = st?.last_summary ?? null;
-  const healthy = !!st?.last_ok_at && !st.last_error;
   const dryRun = !!status.dryRunDefault;
-  const problems = (drift?.leads_missing ?? 0) + (drift?.leads_unknown_stage ?? 0);
+  const paused = !!st?.pull_paused;
+  const failing = !!st?.last_error;
+  const never = !st?.last_ok_at;
+
+  let dot = "bg-emerald-500";
+  let line: React.ReactNode;
+  if (paused) {
+    dot = "bg-amber-500";
+    line = <>Updates from FLAIR OS are paused. Showing what was mirrored {ago(st?.last_ok_at)}.</>;
+  } else if (dryRun) {
+    dot = "bg-amber-500";
+    line = (
+      <>
+        Reading FLAIR OS but not saving yet, so the pipeline below may be empty.
+        {summary?.dry_run ? ` The last read saw ${summary.deals.seen} deals.` : ""}{" "}
+        {canSync ? (
+          <>
+            Saving is turned on in Railway with <code className="rounded bg-sunken px-1 py-0.5 text-xs">FLAIR_OS_SYNC_DRY_RUN=0</code>.
+          </>
+        ) : (
+          "Sam turns saving on."
+        )}
+      </>
+    );
+  } else if (failing) {
+    dot = "bg-red-500";
+    line = <>Could not reach FLAIR OS. Showing what was mirrored {ago(st?.last_ok_at)}.</>;
+  } else if (never) {
+    dot = "bg-ink-4";
+    line = <>Connected to FLAIR OS. Nothing read yet.</>;
+  } else {
+    line = (
+      <>
+        Connected to FLAIR OS. Updated <span className="tabular-nums">{ago(st?.last_ok_at)}</span>
+        {status.scheduler?.running ? "" : ", refreshed by hand"}.
+      </>
+    );
+  }
 
   return (
-    <div className="mb-5">
-      <Card>
-        {dryRun && (
-          <div className="border-b border-line bg-amber-500/10 px-4 py-2 text-[13px] text-amber-800 dark:text-amber-200">
-            <span className="font-medium">Dry run is on.</span> FLAIR OS is read and nothing is saved, so the board below shows only what was mirrored before.
-            {summary?.dry_run ? ` The last read saw ${summary.deals.seen} deals, ${summary.tasks.seen} tasks and ${summary.clients.seen} clients (${summary.deals.created} would be new).` : ""}{" "}
-            Set <code className="rounded bg-sunken px-1 py-0.5 text-xs">FLAIR_OS_SYNC_DRY_RUN=0</code> on Railway to mirror.
-          </div>
-        )}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-          <div className="flex min-w-[240px] flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px]">
-            <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-medium text-ink">
-              <span className={cn("h-2 w-2 rounded-full", st?.pull_paused ? "bg-amber-500" : healthy ? "bg-emerald-500" : "bg-red-500")} />
-              FLAIR OS mirror
-            </span>
-            <Badge tone={st?.pull_paused ? "amber" : dryRun ? "amber" : healthy ? "green" : "red"}>
-              {st?.pull_paused ? "Paused" : dryRun ? "Dry run" : healthy ? "Read-only" : st?.last_error ? "Error" : "Not synced yet"}
-            </Badge>
-            <span className="text-ink-3">
-              Synced <span className="tabular-nums text-ink-2">{ago(st?.last_ok_at)}</span>
-              {status.scheduler?.running ? `, every ${status.scheduler.intervalMinutes} min` : ", manual only"}
-            </span>
-            {drift && (
-              <span className="text-ink-3">
-                <span className="tabular-nums text-ink-2">{drift.leads_mirrored}</span> deals,{" "}
-                <span className="tabular-nums text-ink-2">{drift.todos_mirrored}</span> tasks,{" "}
-                <span className="tabular-nums text-ink-2">{drift.clients_mirrored}</span> clients
-              </span>
-            )}
-            {problems > 0 && <Badge tone="amber">{problems} to review</Badge>}
-            {st?.last_error && <span className="truncate text-red-600 dark:text-red-400">{st.last_error}</span>}
-          </div>
-          <div className="ml-auto flex shrink-0 flex-wrap items-center gap-1.5">
-            {canSync && (
-              <>
-                <Button size="sm" onClick={pull} loading={busy === "sync"} disabled={busy !== null || status.inFlight}>
-                  <RefreshCw size={13} /> {dryRun ? "Read now" : "Sync now"}
-                </Button>
-                <Button size="sm" variant="ghost" onClick={togglePause} loading={busy === "pause"} disabled={busy !== null}>
-                  {st?.pull_paused ? <Play size={13} /> : <Pause size={13} />}
-                  {st?.pull_paused ? "Resume" : "Pause"}
-                </Button>
-              </>
-            )}
-            <Button size="sm" variant="ghost" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-              {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />} Details
-            </Button>
-          </div>
+    <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-2 text-[13px]">
+      <span className={cn("h-2 w-2 shrink-0 rounded-full", dot)} aria-hidden />
+      <span className={cn("min-w-0 flex-1 basis-60", failing || dryRun || paused ? "text-ink-2" : "text-ink-3")}>{line}</span>
+      {canSync && (
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <Button size="sm" variant="ghost" onClick={pull} loading={busy === "sync"} disabled={busy !== null || status.inFlight}>
+            <RefreshCw size={13} /> Refresh
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setDetails(true)} aria-haspopup="dialog">
+            <Info size={13} /> Details
+          </Button>
         </div>
+      )}
+      {details && (
+        <Modal
+          open
+          onClose={() => setDetails(false)}
+          title="FLAIR OS connection"
+          description="What the last read did and anything that needs a look."
+          footer={
+            <>
+              {canSync ? (
+                <Button variant="ghost" onClick={togglePause} loading={busy === "pause"} disabled={busy !== null}>
+                  {paused ? <Play size={13} /> : <Pause size={13} />}
+                  {paused ? "Resume updates" : "Pause updates"}
+                </Button>
+              ) : (
+                <span />
+              )}
+              <Button variant="primary" onClick={() => setDetails(false)}>
+                Close
+              </Button>
+            </>
+          }
+        >
+          <ConnectionDetails status={status} />
+        </Modal>
+      )}
+    </div>
+  );
+}
 
-        {open && (
-          <div className="border-t border-line px-4 py-3 text-[13px]">
-            <div className="grid gap-4 md:grid-cols-3">
-              <div>
-                <div className="text-xs font-medium text-ink-3">Last pull</div>
-                {summary ? (
-                  <ul className="mt-1 space-y-0.5 text-ink-2">
-                    <li>
-                      {summary.dry_run ? "Dry run" : "Pull"} at {when(st?.last_run_at)}, {summary.calls} calls, {summary.duration_ms} ms
-                    </li>
-                    <li>
-                      Deals: {summary.deals.created} new, {summary.deals.updated} changed, {summary.deals.unchanged} unchanged, {summary.deals.missing} missing
-                    </li>
-                    <li>
-                      Tasks: {summary.tasks.created} new, {summary.tasks.updated} changed. Clients: {summary.clients.created} new, {summary.clients.updated} changed
-                    </li>
-                    {summary.unknown_stages.length > 0 && (
-                      <li className="text-amber-700 dark:text-amber-300">Unknown FLAIR OS stages: {summary.unknown_stages.join(", ")}</li>
-                    )}
-                    {(summary.warnings ?? []).map((w) => (
-                      <li key={w} className="text-amber-700 dark:text-amber-300">{w}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-1 text-ink-3">No pull yet.</p>
-                )}
-              </div>
-              <div>
-                <div className="text-xs font-medium text-ink-3">Drift</div>
-                {drift && (
-                  <ul className="mt-1 space-y-0.5 text-ink-2">
-                    <li>{drift.leads_missing} mirrored deals no longer in FLAIR OS</li>
-                    <li>
-                      {drift.leads_local_only} FLAIR leads only in the Command Center
-                      {status.reconciliation ? ` (${status.reconciliation.counts.same} already in FLAIR OS, ${status.reconciliation.counts.likely} probably, ${status.reconciliation.counts.separate} kept separate)` : ""}
-                    </li>
-                    <li>{drift.leads_unknown_stage} deals with a stage the map does not know</li>
-                  </ul>
-                )}
-                {drift && drift.missing.length > 0 && (
-                  <ul className="mt-2 space-y-0.5 text-xs text-ink-3">
-                    {drift.missing.slice(0, 5).map((m) => (
-                      <li key={m.id}>
-                        {m.company || m.name}, missing since {when(m.missing_at)}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <div>
-                <div className="text-xs font-medium text-ink-3">Recent changes</div>
-                {status.log && status.log.filter((l) => l.record_kind !== "cycle").length > 0 ? (
-                  <ul className="mt-1 space-y-0.5 text-xs text-ink-2">
-                    {status.log
-                      .filter((l) => l.record_kind !== "cycle")
-                      .slice(0, 8)
-                      .map((l) => (
-                        <li key={l.id} className="truncate">
-                          <span className="text-ink-3">{when(l.at)}</span> {l.record_kind} {l.action}
-                          {l.message ? `: ${l.message}` : ""}
-                          {l.result === "dry_run" ? " (dry run)" : ""}
-                        </li>
-                      ))}
-                  </ul>
-                ) : (
-                  <p className="mt-1 text-ink-3">Nothing changed yet.</p>
-                )}
-              </div>
-            </div>
-          </div>
+function ConnectionDetails({ status }: { status: FlairOsStatus }) {
+  const st = status.state;
+  const summary = st?.last_summary ?? null;
+  const drift = status.drift;
+  const rec = status.reconciliation;
+  const log = (status.log ?? []).filter((l) => l.record_kind !== "cycle").slice(0, 8);
+  return (
+    <div className="space-y-5 text-[13px]">
+      <div>
+        <div className="text-xs font-medium text-ink-3">Last read</div>
+        {summary ? (
+          <ul className="mt-1 space-y-0.5 text-ink-2">
+            <li>
+              {when(st?.last_run_at)}, {summary.calls} requests, {summary.dry_run ? "nothing saved (saving is off)" : "saved"}
+            </li>
+            <li>
+              Deals: {summary.deals.seen} seen, {summary.deals.created} new, {summary.deals.updated} changed, {summary.deals.missing} no longer in FLAIR OS
+            </li>
+            <li>
+              Tasks: {summary.tasks.seen} seen, {summary.tasks.created} new, {summary.tasks.updated} changed. Clients: {summary.clients.seen} seen
+            </li>
+            {summary.unknown_stages.length > 0 && <li className="text-amber-700 dark:text-amber-300">Stages this page does not know yet: {summary.unknown_stages.join(", ")}</li>}
+            {(summary.warnings ?? []).map((w) => (
+              <li key={w} className="text-amber-700 dark:text-amber-300">{w}</li>
+            ))}
+            {st?.last_error && <li className="text-red-600 dark:text-red-400">{st.last_error}</li>}
+          </ul>
+        ) : (
+          <p className="mt-1 text-ink-3">Nothing read yet.</p>
         )}
-      </Card>
+        <p className="mt-1 text-xs text-ink-4">{status.scheduler?.running ? `Reads every ${status.scheduler.intervalMinutes} minutes.` : "Reads only when refreshed by hand."}</p>
+      </div>
+      {drift && (
+        <div>
+          <div className="text-xs font-medium text-ink-3">In the mirror</div>
+          <ul className="mt-1 space-y-0.5 text-ink-2">
+            <li>
+              {drift.leads_mirrored} deals, {drift.todos_mirrored} tasks, {drift.clients_mirrored} clients from FLAIR OS
+            </li>
+            <li>
+              {drift.leads_local_only} leads only here
+              {rec ? ` (${rec.counts.same} match a deal, ${rec.counts.likely} probably do, ${rec.counts.separate} kept here on purpose)` : ""}
+            </li>
+            {drift.leads_missing > 0 && <li>{drift.leads_missing} mirrored deals have disappeared from FLAIR OS and are kept here</li>}
+            {drift.leads_unknown_stage > 0 && <li>{drift.leads_unknown_stage} deals sit in a stage this page does not know</li>}
+          </ul>
+          {drift.missing.length > 0 && (
+            <ul className="mt-2 space-y-0.5 text-xs text-ink-3">
+              {drift.missing.slice(0, 5).map((m) => (
+                <li key={m.id}>
+                  {m.company || m.name}, gone since {when(m.missing_at)}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+      <div>
+        <div className="text-xs font-medium text-ink-3">Recent changes</div>
+        {log.length ? (
+          <ul className="mt-1 space-y-0.5 text-xs text-ink-2">
+            {log.map((l) => (
+              <li key={l.id} className="truncate">
+                <span className="text-ink-3">{when(l.at)}</span> {l.record_kind} {l.action.replace(/_/g, " ")}
+                {l.message ? `: ${l.message}` : ""}
+                {l.result === "dry_run" ? " (not saved)" : ""}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-1 text-ink-3">Nothing changed yet.</p>
+        )}
+      </div>
     </div>
   );
 }
@@ -368,7 +400,7 @@ export function MirroredLeadModal({
       open
       onClose={onClose}
       title={lead.company || lead.name}
-      description="Managed in FLAIR OS. Read-only here; edits arrive with write-back in phase 2."
+      description="This deal lives in FLAIR OS. Changes are made there for now."
       size="lg"
       footer={
         <>
@@ -382,7 +414,7 @@ export function MirroredLeadModal({
       <div className="space-y-5">
         {lead.flair_os_missing_at && (
           <div className="rounded-lg bg-sunken px-3 py-2 text-[13px] text-amber-700 dark:text-amber-300">
-            This deal stopped appearing in FLAIR OS on {when(lead.flair_os_missing_at)}. It is kept here until you decide what to do with it.
+            This deal disappeared from FLAIR OS on {when(lead.flair_os_missing_at)}. It is kept here until you decide what to do with it.
           </div>
         )}
         <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-[13px] sm:grid-cols-2">
@@ -421,7 +453,7 @@ export function MirroredLeadModal({
               <Loader2 size={13} className="animate-spin" /> Loading
             </div>
           ) : activities.length === 0 ? (
-            <p className="mt-1 text-[13px] text-ink-3">No activity mirrored yet.</p>
+            <p className="mt-1 text-[13px] text-ink-3">FLAIR OS does not share deal timelines yet.</p>
           ) : (
             <Card className="mt-2">
               <ul className="divide-y divide-line">
