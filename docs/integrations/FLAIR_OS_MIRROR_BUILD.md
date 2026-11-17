@@ -204,3 +204,14 @@ way.
   phone width, and the dry-run empty state (user-level launch config
   `command-center-flairos-dry`).
 
+- **Follow-up fix, same day (stale list)**: in production the page showed
+  "Connected, updated just now" and the FLAIR OS counts while the pipeline
+  below stayed on "Nothing from FLAIR OS yet". Cause: the status polls once a
+  minute, but the deals list is page state seeded from server props and
+  nothing asked for fresh props after the scheduled pull filled the mirror.
+  A Refresh that found nothing new said "Up to date" and left the stale list
+  in place. `PipelinePanel` now compares `drift.leads_mirrored` from the
+  status with the mirrored rows on the page and calls `router.refresh()`
+  once per new count, so the list catches up within a poll in both
+  directions. Verified on the mock: rows deleted behind the page emptied the
+  list within 70 s; a sync fired outside the page filled it within 65 s.

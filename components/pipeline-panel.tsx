@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import type { Lead, LeadAttachment, LeadCategory } from "@/lib/types";
 import { LEAD_STAGES, MIRROR_ONLY_STAGES, isActiveStage } from "@/lib/types";
 import { FlairOsConnection, MirroredLeadModal, FlairOsBadge, useFlairOsStatus } from "@/components/flair-os-panel";
@@ -120,6 +121,25 @@ export function PipelinePanel({
   const [leads, setLeads] = usePanelState("leads", initial);
   const mirrorOn = !!flairOs?.enabled;
   const flairOsStatus = useFlairOsStatus(mirrorOn);
+  // The status line polls once a minute, but `leads` only changes when the
+  // server sends fresh props. When FLAIR OS saves deals here (the scheduled
+  // pull, or a Refresh that had nothing new to report), the mirror count in
+  // the status and the mirrored rows on the page drift apart. Refresh the
+  // server props once per new count so the list catches up without a reload.
+  const router = useRouter();
+  const serverMirrored = flairOsStatus.status?.drift?.leads_mirrored;
+  const pageMirrored = useMemo(() => leads.filter((l) => !!l.flair_os_id).length, [leads]);
+  const refreshedFor = useRef<number | null>(null);
+  useEffect(() => {
+    if (!mirrorOn || typeof serverMirrored !== "number") return;
+    if (serverMirrored === pageMirrored) {
+      refreshedFor.current = null;
+      return;
+    }
+    if (refreshedFor.current === serverMirrored) return;
+    refreshedFor.current = serverMirrored;
+    router.refresh();
+  }, [mirrorOn, serverMirrored, pageMirrored, router]);
   // Parked and nurture columns exist only where FLAIR OS puts deals in them
   // (generic board only; the FLAIR OS board lays out by FLAIR OS stage).
   const stages: Stage[] = leads.some((l) => MIRROR_ONLY_STAGES.includes(l.stage))
