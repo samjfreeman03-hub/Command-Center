@@ -154,3 +154,53 @@ Verification:
 - Browser, live-bound (port 3007, local database only, dry run off locally): one real read-only pull, 71 deals, 25 calls in 31 s, 13 stages with Tyler's real colors (engaged #D9730D, proposal #337EA9, lost #C14C8A, and so on), counts total 73 (67 active, 4 won, 2 lost), one duplicate pair marked. Nothing on Railway changed.
 
 What Sam will see on cc.samfreeman.org after this deploys: with `FLAIR_OS_SYNC_DRY_RUN=1` still set, the strip explains the dry run and the board shows only the lane (his pre-mirror FLAIR leads, each with a verdict). Setting it to 0 fills the board on the next pull.
+
+## 9. Phase A of the alignment plan: the FLAIR page becomes readable, 2026-11-17
+
+Context: `FLAIR_OS_ALIGNMENT_PLAN.md`. Sam saw the v2 board in production with
+dry run on (13 columns, an empty board, his 41 leads in one "Not in FLAIR OS"
+column) and said it was not a good way to show the information. Phase A
+replaces the board with four plain blocks and fixes one real bug found on the
+way.
+
+- **Connection line** (`FlairOsConnection` in `components/flair-os-panel.tsx`,
+  replaces `FlairOsStrip`): one sentence ("Connected to FLAIR OS. Updated 2 min
+  ago."), amber when paused or when dry run is on ("Reading FLAIR OS but not
+  saving yet, so the pipeline below may be empty. Saving is turned on in
+  Railway with FLAIR_OS_SYNC_DRY_RUN=0."), red when the last read failed.
+  Owner only: Refresh and a Details dialog (last read, what is in the mirror,
+  recent changes, Pause or Resume updates). Share views see the line alone.
+- **Your side** (new `flairOsStore.yourSide()`, served as `your_side` on
+  `GET /api/flair-os/status`): deals Sam owns (of N active), his open tasks
+  (past due in red), check-ins overdue across the pipeline, stage moves this
+  week from the field log (plus deals contacted this week). Sam is matched by
+  display name, `FLAIR_OS_SELF_NAME` (default "Sam"), case-insensitive contains
+  on `flair_os_owner` and `todos.flair_os_assignee`.
+- **Pipeline as a list** (`components/flair-os-board.tsx`, rewritten):
+  groups in FLAIR OS stage order, each a `Card` of rows (company, opportunity,
+  contact, waiting on, value, owner, last contacted, next check-in in red when
+  past, attachments). Outreach collapses to one summary row at nine or more
+  deals ("56 brands in cold outreach. Tyler 36, Unassigned 20. Last contact 2
+  d ago. Show all"). Empty stages are one muted line. Lost and Paused sit
+  under a closed "Lost and paused" disclosure. Search filters rows. No
+  horizontal board and no stage picker on phones: the list stacks.
+- **Needs a decision** (the former lane): rows sorted matches first, with the
+  verdict badge, a plain reason line ("Matches Glossier in FLAIR OS, Proposal
+  owed. Same contact email.") and buttons "Same deal, merge" / "Different
+  deal" for matches, "Keep it here" for the rest; kept rows fold under "Kept
+  here on purpose" with Undo. Same `POST /api/flair-os/reconcile` as v2.
+- **Empty mirror** (production today): the pipeline shows one empty state that
+  says why, the cards read 0 with "once FLAIR OS is saved here", and Sam's
+  leads list under "Your leads" with no verdicts or buttons, since every
+  verdict would be "none" by construction.
+- **Bug fixed**: `POST /api/flair-os/sync` passed `dryRun: false` when the
+  body had no flag, so a Refresh from the page saved everything even with
+  `FLAIR_OS_SYNC_DRY_RUN=1`. The route now passes `undefined` unless the body
+  forces a dry run, so the env switch wins. Verified: with dry run on, a
+  Refresh reads 22 mock deals and the mirror stays at 0.
+- **Tests**: `scripts/flair-os-mock/test-mirror.mjs` section 19 checks the
+  Your side numbers against the database (72 checks). Browser walk-through on
+  the mock: list, collapsed outreach, merge, keep here, undo, Details dialog,
+  phone width, and the dry-run empty state (user-level launch config
+  `command-center-flairos-dry`).
+

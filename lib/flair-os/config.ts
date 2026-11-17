@@ -12,6 +12,7 @@
  *   FLAIR_OS_SYNC_DRY_RUN     "1" logs what would change and writes nothing
  *   FLAIR_OS_SYNC_INTERVAL_MIN  minutes between scheduled pulls (default 5, 0 = manual only)
  *   FLAIR_OS_MIN_GAP_MS       minimum gap between MCP calls (default 1000)
+ *   FLAIR_OS_SELF_NAME        how Sam appears as a deal owner or task assignee in FLAIR OS (default "Sam")
  */
 export const FLAIR_OS_BUSINESS_ID = "flair";
 
@@ -36,4 +37,9 @@ export function flairOsIntervalMinutes(): number {
   if (raw === undefined || raw === "") return 5;
   const n = Number(raw);
   return Number.isFinite(n) && n >= 0 ? n : 5;
+}
+
+/** Sam's display name in FLAIR OS, used for the "Your side" numbers (owner and assignee match is case-insensitive). */
+export function flairOsSelfName(): string {
+  return (process.env.FLAIR_OS_SELF_NAME || "Sam").trim();
 }
