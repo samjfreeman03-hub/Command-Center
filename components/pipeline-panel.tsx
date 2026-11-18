@@ -6,6 +6,8 @@ import type { Lead, LeadAttachment, LeadCategory } from "@/lib/types";
 import { LEAD_STAGES, MIRROR_ONLY_STAGES, isActiveStage } from "@/lib/types";
 import { FlairOsConnection, MirroredLeadModal, FlairOsBadge, useFlairOsStatus } from "@/components/flair-os-panel";
 import { FlairOsBoard } from "@/components/flair-os-board";
+import { CC_TO_FLAIR_OS_STAGE } from "@/lib/flair-os/stage-map";
+import { stripMarkup } from "@/lib/markup";
 import {
   Plus,
   Trash2,
@@ -224,6 +226,41 @@ export function PipelinePanel({
   }
 
   async function add(form: NewLeadForm): Promise<boolean> {
+    if (mirrorOn && flairOsStatus.status?.writeEnabled && flairOs?.canSync) {
+      // Two-way mode: the deal is born in FLAIR OS and mirrored back, never only here.
+      const company = (form.company || form.name).trim();
+      const res = await fetch("/api/flair-os/deals", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...shareHeaders },
+        body: JSON.stringify({
+          company,
+          contactName: form.company && form.name.trim() !== company ? form.name.trim() : null,
+          email: form.contact_email || null,
+          stageSlug: CC_TO_FLAIR_OS_STAGE[form.stage] ?? "outreach",
+          dealValue: form.value_cents ? form.value_cents / 100 : null,
+          nextCheckInAt: form.next_action_date || null,
+          notes: form.notes ? stripMarkup(form.notes) : null,
+        }),
+      }).catch(() => null);
+      const json = res ? await res.json().catch(() => null) : null;
+      if (res?.ok && json?.lead) {
+        const created: Lead = json.lead;
+        setLeads((prev) => [created, ...prev.filter((l) => l.id !== created.id)]);
+        if (form.next_action) {
+          // FLAIR OS has no "waiting on" on create; set it right after.
+          await fetch(`/api/flair-os/deals/${created.flair_os_id}`, { method: "PATCH", headers: { "content-type": "application/json", ...shareHeaders }, body: JSON.stringify({ patch: { waitingOn: form.next_action } }) })
+            .then(async (r) => (r.ok ? (await r.json())?.lead : null))
+            .then((lead: Lead | null) => lead && setLeads((prev) => prev.map((l) => (l.id === lead.id ? lead : l))))
+            .catch(() => null);
+        }
+        toast(json.deduped ? `FLAIR OS already had ${company}; showing that deal.` : "Created in FLAIR OS", { tone: "success" });
+        setEditor(null);
+        flairOsStatus.reload();
+        return true;
+      }
+      toast(json?.error ? `FLAIR OS did not create it: ${json.error}` : "Could not create the deal in FLAIR OS", { tone: "error" });
+      return false;
+    }
     const res = await fetch("/api/leads", {
       method: "POST",
       headers: { "content-type": "application/json", ...shareHeaders },
@@ -573,6 +610,12 @@ export function PipelinePanel({
           key={`mirror-${editingLead.id}`}
           lead={editingLead}
           stageLabel={mirrorOn ? flairOs?.stages.find((s) => s.slug.toLowerCase() === editingLead.flair_os_stage?.toLowerCase())?.label : STAGE_LABELS[editingLead.stage]}
+          stages={flairOs?.stages ?? []}
+          canWrite={mirrorOn && !!flairOs?.canSync && !!flairOsStatus.status?.writeEnabled}
+          onChanged={(lead) => {
+            setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, ...lead } : l)));
+            flairOsStatus.reload();
+          }}
           onClose={() => setEditor(null)}
           attachments={<Attachments leadId={editingLead.id} onCount={(n) => setAttachmentCounts((prev) => ({ ...prev, [editingLead.id]: n }))} />}
         />

@@ -1473,7 +1473,7 @@ DESIGN.md wins. Highlights:
   All six call sites now use `<FieldGroup>`; the editor warns in dev if it
   ever finds a `<label>` ancestor again.
 
-## 16. FLAIR OS Mirror (phase 1 built 2026-11-15, v2 board the same night, phase A page 2026-11-17)
+## 16. FLAIR OS Mirror (phase 1 built 2026-11-15, v2 board the same night, phase A page and two-way 2026-11-17)
 
 FLAIR OS is Tyler Rong's FLAIR sales system (Vercel + Supabase, HTTP MCP at
 `/api/mcp`). It is the **system of record** for FLAIR deals, deal tasks, and
@@ -1517,17 +1517,57 @@ contract: `docs/integrations/FLAIR_OS_FIELD_CONTRACT.md` (main checkout).
   fixed 2026-11-17).
 - **Switches are env only**: `FLAIR_OS_MCP_URL`, `FLAIR_OS_MCP_KEY`,
   `FLAIR_OS_SYNC_ENABLED`, `FLAIR_OS_SYNC_DRY_RUN`, `FLAIR_OS_SYNC_INTERVAL_MIN`
-  (0 = manual only). Unset means the feature does not exist in the UI. The key
-  is Railway env only, never in the repo.
-- **Allowlist is law.** Only the nine read tools in `lib/flair-os/allowlist.ts`
-  may be called. Never add a write or outreach tool there without the phase 2
-  plan; `scripts/flair-os-mock/test-mirror.mjs` fails if a denied or write tool
-  name shows up anywhere else under `lib/flair-os/` or in the two components.
-- **Mirrored rows are locked.** `leads`/`todos` with `flair_os_id` answer 409
-  `flair_os_managed` on PATCH/DELETE; the UI shows a toast or the read-only
-  `MirroredLeadModal` instead. Missing deals are flagged
-  (`flair_os_missing_at`), never deleted. Field-level history is in
-  `flair_os_sync_log`.
+  (0 = manual only), `FLAIR_OS_WRITE_ENABLED` ("1" = two-way; dry run wins).
+  Unset means the feature does not exist in the UI. The key is Railway env
+  only, never in the repo.
+- **Allowlist is law.** `lib/flair-os/allowlist.ts` has two lists: the nine
+  read tools (Tyler's current key) and the eight write tools of the two-way
+  plan. `FlairOsClient.call` refuses any name outside both, and refuses every
+  write unless the client was built with `allowWrites`, which only
+  `FLAIR_OS_WRITE_ENABLED=1` (and dry run off) sets. Write tool names may
+  appear only in `allowlist.ts`, `write.ts` and `merge.ts`;
+  `scripts/flair-os-mock/test-mirror.mjs` fails otherwise, and also fails if
+  a denied or outreach tool name shows up anywhere under `lib/flair-os/` or in
+  the FLAIR components.
+- **Two-way (built 2026-11-17, docs/integrations/FLAIR_OS_TWO_WAY_PLAN.md).**
+  FLAIR OS is the single source of truth; the Command Center writes THROUGH
+  it, never beside it. `lib/flair-os/write.ts` (updateDeal, addDealNote,
+  addDealTask, completeDealTask, createDeal, refreshDeal) calls the FLAIR OS
+  write tool first with `agent: "CommandCenter"`, re-reads the deal with
+  `get_pipeline_deal`, mirrors that, and logs direction `push` in
+  `flair_os_sync_log`. A failed write changes nothing locally.
+  `lib/flair-os/merge.ts` is the merge: `compareLeadWithDeal` (side by side,
+  states same/gap/conflict/os_only), `mergeLeadIntoDeal` (gaps and chosen
+  conflicts written, notes posted as a timeline note headed "From Command
+  Center (Sam), date", next action created as a task, stage move only when
+  ticked, then `linkLead`), `addLeadToFlairOs` (`create_pipeline_deal`, dedupe
+  by email or company unless forceCreate, then link). Routes:
+  `POST /api/flair-os/reconcile` actions compare/merge/add/link/separate/reset;
+  `POST /api/flair-os/deals` (new deal, what "New deal" on the FLAIR page
+  does), `PATCH`/`POST /api/flair-os/deals/[dealId]` (edit; note, task,
+  refresh); `PATCH /api/flair-os/tasks/[taskId]`; `PATCH /api/todos/[id]`
+  with status done on a mirrored todo completes the FLAIR OS task. All admin
+  only; all answer 409 `writes_off` while the switch is off. Status carries
+  `writeEnabled`. In production the switch is OFF and Tyler's key is read
+  only, so every write route is inert until both change; the test suite
+  `scripts/flair-os-mock/test-writes.mjs` (53 checks) runs against the mock's
+  `cc-write-key` on port 3007 (`command-center-flairos-write` launch config).
+  Meeting handoff (`upsert_meeting_note`) is allowlisted but not built.
+- **The FLAIR page v4** (`components/flair-os-board.tsx`, 2026-11-17): one
+  "Your side" sentence, views Needs my decision / Open deals / Outreach / Won /
+  Lost and paused (default: decisions while any wait, else Open deals), a
+  36px table grouped by FLAIR OS stage (Company, Contact, owner initials, Last
+  contact colored past 30 and 60 days outside Outreach, Next, Notes), Outreach
+  as one summary row under Open deals. Decision rows: "Merge into FLAIR OS"
+  (opens `MergeSheet` in `components/flair-os-merge.tsx`), "Add to FLAIR OS"
+  (`AddSheet`), "Not a FLAIR deal". With writes off the sheets still compare
+  and offer "Link only". `MirroredLeadModal` is editable when `canWrite`
+  (Edit, Add note, Add next step), read only otherwise.
+- **Mirrored rows are locked to direct edits.** `leads`/`todos` with
+  `flair_os_id` answer 409 `flair_os_managed` on the generic PATCH/DELETE;
+  changes go through the FLAIR OS routes above (or, with writes off, in FLAIR
+  OS itself). Missing deals are flagged (`flair_os_missing_at`), never
+  deleted. Field-level history is in `flair_os_sync_log`.
 - **Stages `parked` and `nurture`** exist only for mirrored leads (from FLAIR OS
   `sales_status`). `isActiveStage()` in `lib/types.ts` excludes them along with
   won/lost; use it for any "active pipeline" count.
@@ -1552,4 +1592,4 @@ contract: `docs/integrations/FLAIR_OS_FIELD_CONTRACT.md` (main checkout).
 *End of CLAUDE.md.* Update whenever a major architectural change ships — same
 session as the change, not later. `git log --oneline` + commit bodies fill any
 gap between this doc and the code.
-Last updated: 2026-11-17 (PT, FLAIR OS page phase A).
+Last updated: 2026-11-17 (PT, FLAIR OS two-way + page v4).

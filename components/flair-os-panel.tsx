@@ -1,15 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, RefreshCw, Pause, Play, Link2, Info } from "lucide-react";
+import { Loader2, RefreshCw, Pause, Play, Link2, Info, Pencil, MessageSquarePlus, CalendarPlus } from "lucide-react";
 import type { Lead } from "@/lib/types";
 import { useShareHeaders } from "@/lib/share-context";
 import { cn } from "@/lib/cn";
-import { flairOsStageLabel } from "@/lib/flair-os/stage-map";
+import { flairOsStageLabel, FLAIR_OS_WRITABLE_STAGES } from "@/lib/flair-os/stage-map";
+import type { FlairOsStageMeta } from "@/components/pipeline-panel";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { toast } from "@/components/ui/host";
 import { Badge, Card } from "@/components/ui/display";
+import { Input, Select, Textarea, Field } from "@/components/ui/input";
 import { FormattedText } from "@/components/formatted-text";
 
 import type { Reconciliation, PipelineCounts, StageMeta, YourSide } from "@/lib/flair-os/store";
@@ -25,6 +27,8 @@ export type FlairOsStatus = {
   enabled: boolean;
   canSync?: boolean;
   dryRunDefault?: boolean;
+  /** Two-way mode: FLAIR_OS_WRITE_ENABLED is on and dry run is off. */
+  writeEnabled?: boolean;
   inFlight?: boolean;
   scheduler?: { running: boolean; intervalMinutes: number };
   state?: {
@@ -353,31 +357,178 @@ export function FlairOsBadge({ lead }: { lead: Lead }) {
 
 type Activity = { id: string; kind: string; body: string | null; actor: string | null; occurred_at: number | null };
 
+type EditForm = {
+  contactName: string;
+  email: string;
+  phone: string;
+  stageSlug: string;
+  salesStatus: string;
+  nextCheckInAt: string;
+  waitingOn: string;
+  dealValue: string;
+  opportunityName: string;
+};
+
+function formFrom(lead: Lead): EditForm {
+  return {
+    contactName: lead.contact_name ?? (lead.name !== lead.company ? lead.name : ""),
+    email: lead.contact_email ?? "",
+    phone: lead.contact_phone ?? "",
+    stageSlug: lead.flair_os_stage?.toLowerCase() ?? "",
+    salesStatus: lead.flair_os_sales_status?.toLowerCase() ?? "active",
+    nextCheckInAt: lead.next_action_date ?? "",
+    waitingOn: lead.next_action ?? "",
+    dealValue: lead.value_cents ? String(lead.value_cents / 100) : "",
+    opportunityName: lead.flair_os_opportunity ?? "",
+  };
+}
+
+/**
+ * The deal dialog. Read-only when writes are off; in two-way mode every FLAIR
+ * OS field here is editable and saved to FLAIR OS first (PATCH
+ * /api/flair-os/deals/:dealId), with "Add note" and "Add next step" posting to
+ * the FLAIR OS timeline and tasks. The mirror row that comes back is what the
+ * page then shows.
+ */
 export function MirroredLeadModal({
   lead,
   stageLabel,
+  stages = [],
+  canWrite = false,
   onClose,
+  onChanged,
   attachments,
 }: {
   lead: Lead;
   /** Server label for the FLAIR OS stage, when the board knows it. */
   stageLabel?: string;
+  stages?: FlairOsStageMeta[];
+  /** Owner view with FLAIR_OS_WRITE_ENABLED on. */
+  canWrite?: boolean;
   onClose: () => void;
+  /** FLAIR OS accepted a change; this is the refreshed mirror row. */
+  onChanged?: (lead: Lead) => void;
   attachments: React.ReactNode;
 }) {
   const shareHeaders = useShareHeaders();
   const [activities, setActivities] = useState<Activity[] | null>(null);
+  const [mode, setMode] = useState<"view" | "edit" | "note" | "task">("view");
+  const [form, setForm] = useState<EditForm>(() => formFrom(lead));
+  const [note, setNote] = useState("");
+  const [noteKind, setNoteKind] = useState<"note" | "call" | "email">("note");
+  const [touch, setTouch] = useState(false);
+  const [task, setTask] = useState({ title: "", dueAt: "", notes: "" });
+  const [busy, setBusy] = useState(false);
+  const dealId = lead.flair_os_id as string;
 
-  useEffect(() => {
-    let alive = true;
+  const loadActivities = useCallback(() => {
     fetch(`/api/flair-os/leads/${lead.id}/activities`, { headers: shareHeaders, cache: "no-store" })
       .then((r) => (r.ok ? r.json() : { activities: [] }))
-      .then((j) => alive && setActivities(j.activities ?? []))
-      .catch(() => alive && setActivities([]));
-    return () => {
-      alive = false;
-    };
+      .then((j) => setActivities(j.activities ?? []))
+      .catch(() => setActivities([]));
   }, [lead.id, shareHeaders]);
+
+  useEffect(() => {
+    loadActivities();
+  }, [loadActivities]);
+
+  useEffect(() => {
+    if (mode === "view") setForm(formFrom(lead));
+  }, [lead, mode]);
+
+  const stageOptions = stages.filter((s) => (FLAIR_OS_WRITABLE_STAGES as readonly string[]).includes(s.slug.toLowerCase())).sort((a, b) => a.sort_order - b.sort_order);
+  const currentStageWritable = stageOptions.some((s) => s.slug.toLowerCase() === form.stageSlug);
+
+  async function saveEdit() {
+    const before = formFrom(lead);
+    const patch: Record<string, unknown> = {};
+    if (form.contactName !== before.contactName) patch.contactName = form.contactName || null;
+    if (form.email !== before.email) patch.email = form.email || null;
+    if (form.phone !== before.phone) patch.phone = form.phone || null;
+    if (form.stageSlug !== before.stageSlug && form.stageSlug) patch.stageSlug = form.stageSlug;
+    if (form.salesStatus !== before.salesStatus) patch.salesStatus = form.salesStatus;
+    if (form.nextCheckInAt !== before.nextCheckInAt) patch.nextCheckInAt = form.nextCheckInAt || null;
+    if (form.waitingOn !== before.waitingOn) patch.waitingOn = form.waitingOn || null;
+    if (form.opportunityName !== before.opportunityName) patch.opportunityName = form.opportunityName || null;
+    if (form.dealValue !== before.dealValue) {
+      const raw = form.dealValue.replace(/[$,\s]/g, "");
+      const n = parseFloat(raw);
+      if (raw === "") patch.dealValue = null;
+      else if (Number.isFinite(n)) patch.dealValue = n;
+      else {
+        toast("Deal value must be a number", { tone: "error" });
+        return;
+      }
+    }
+    if (!Object.keys(patch).length) {
+      setMode("view");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/flair-os/deals/${dealId}`, { method: "PATCH", headers: { "content-type": "application/json", ...shareHeaders }, body: JSON.stringify({ patch }) });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast(json?.error ? `FLAIR OS did not save it: ${json.error}` : "FLAIR OS did not save it", { tone: "error" });
+        return;
+      }
+      onChanged?.(json.lead as Lead);
+      toast("Saved in FLAIR OS", { tone: "success" });
+      setMode("view");
+    } catch {
+      toast("Could not reach the server", { tone: "error" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function postNote() {
+    if (!note.trim()) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/flair-os/deals/${dealId}`, { method: "POST", headers: { "content-type": "application/json", ...shareHeaders }, body: JSON.stringify({ kind: "note", body: note, noteKind, touchContact: touch }) });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast(json?.error ? `FLAIR OS did not take the note: ${json.error}` : "FLAIR OS did not take the note", { tone: "error" });
+        return;
+      }
+      if (Array.isArray(json.activities)) setActivities(json.activities);
+      else loadActivities();
+      if (touch) {
+        const r = await fetch(`/api/flair-os/deals/${dealId}`, { method: "POST", headers: { "content-type": "application/json", ...shareHeaders }, body: JSON.stringify({ kind: "refresh" }) }).catch(() => null);
+        const j = r?.ok ? await r.json().catch(() => null) : null;
+        if (j?.lead) onChanged?.(j.lead as Lead);
+      }
+      toast("Posted on the FLAIR OS timeline", { tone: "success" });
+      setNote("");
+      setTouch(false);
+      setMode("view");
+    } catch {
+      toast("Could not reach the server", { tone: "error" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function postTask() {
+    if (!task.title.trim() || !task.dueAt) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/flair-os/deals/${dealId}`, { method: "POST", headers: { "content-type": "application/json", ...shareHeaders }, body: JSON.stringify({ kind: "task", title: task.title, dueAt: task.dueAt, notes: task.notes || null }) });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast(json?.error ? `FLAIR OS did not create the task: ${json.error}` : "FLAIR OS did not create the task", { tone: "error" });
+        return;
+      }
+      toast("Task created in FLAIR OS. It shows under Todos too.", { tone: "success" });
+      setTask({ title: "", dueAt: "", notes: "" });
+      setMode("view");
+    } catch {
+      toast("Could not reach the server", { tone: "error" });
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const rows: [string, React.ReactNode][] = [
     ["Company", lead.company],
@@ -395,21 +546,67 @@ export function MirroredLeadModal({
     ["Last change in FLAIR OS", lead.flair_os_updated_at ? when(lead.flair_os_updated_at) : null],
   ];
 
+  const set = (k: keyof EditForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const footer =
+    mode === "edit" ? (
+      <>
+        <Button variant="ghost" onClick={() => setMode("view")} disabled={busy}>
+          Cancel
+        </Button>
+        <Button variant="primary" onClick={saveEdit} loading={busy} disabled={busy}>
+          Save to FLAIR OS
+        </Button>
+      </>
+    ) : mode === "note" ? (
+      <>
+        <Button variant="ghost" onClick={() => setMode("view")} disabled={busy}>
+          Cancel
+        </Button>
+        <Button variant="primary" onClick={postNote} loading={busy} disabled={busy || !note.trim()}>
+          Post to FLAIR OS
+        </Button>
+      </>
+    ) : mode === "task" ? (
+      <>
+        <Button variant="ghost" onClick={() => setMode("view")} disabled={busy}>
+          Cancel
+        </Button>
+        <Button variant="primary" onClick={postTask} loading={busy} disabled={busy || !task.title.trim() || !task.dueAt}>
+          Create in FLAIR OS
+        </Button>
+      </>
+    ) : (
+      <>
+        {canWrite ? (
+          <div className="flex flex-wrap gap-1.5">
+            <Button variant="secondary" size="sm" onClick={() => setMode("edit")}>
+              <Pencil size={13} /> Edit
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setMode("note")}>
+              <MessageSquarePlus size={13} /> Add note
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setMode("task")}>
+              <CalendarPlus size={13} /> Add next step
+            </Button>
+          </div>
+        ) : (
+          <span />
+        )}
+        <Button variant="primary" onClick={onClose}>
+          Close
+        </Button>
+      </>
+    );
+
   return (
     <Modal
       open
       onClose={onClose}
       title={lead.company || lead.name}
-      description="This deal lives in FLAIR OS. Changes are made there for now."
+      description={canWrite ? "This deal lives in FLAIR OS. Changes made here are saved there first." : "This deal lives in FLAIR OS. Changes are made there for now."}
       size="lg"
-      footer={
-        <>
-          <span />
-          <Button variant="primary" onClick={onClose}>
-            Close
-          </Button>
-        </>
-      }
+      footer={footer}
     >
       <div className="space-y-5">
         {lead.flair_os_missing_at && (
@@ -417,18 +614,95 @@ export function MirroredLeadModal({
             This deal disappeared from FLAIR OS on {when(lead.flair_os_missing_at)}. It is kept here until you decide what to do with it.
           </div>
         )}
-        <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-[13px] sm:grid-cols-2">
-          {rows
-            .filter(([, v]) => v)
-            .map(([k, v]) => (
-              <div key={k} className="flex flex-col">
-                <dt className="text-xs font-medium text-ink-3">{k}</dt>
-                <dd className="text-ink">{v}</dd>
-              </div>
-            ))}
-        </dl>
 
-        {lead.notes && (
+        {mode === "edit" ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label="Contact">
+              <Input value={form.contactName} onChange={set("contactName")} />
+            </Field>
+            <Field label="Email">
+              <Input type="email" value={form.email} onChange={set("email")} />
+            </Field>
+            <Field label="Phone">
+              <Input value={form.phone} onChange={set("phone")} />
+            </Field>
+            <Field label="Opportunity name" hint="When the deal is a specific campaign, not just the brand.">
+              <Input value={form.opportunityName} onChange={set("opportunityName")} />
+            </Field>
+            <Field label="Stage" hint={currentStageWritable || !form.stageSlug ? undefined : `FLAIR OS does not accept moves into ${lead.flair_os_stage} from here; it stays unless you pick another.`}>
+              <Select value={currentStageWritable ? form.stageSlug : ""} onChange={set("stageSlug")}>
+                {!currentStageWritable && <option value="">{flairOsStageLabel(lead.flair_os_stage ?? null, stageLabel) || "Current stage"}</option>}
+                {stageOptions.map((s) => (
+                  <option key={s.slug} value={s.slug.toLowerCase()}>
+                    {s.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Sales status">
+              <Select value={form.salesStatus} onChange={set("salesStatus")}>
+                <option value="active">active</option>
+                <option value="nurture">nurture</option>
+                <option value="won">won</option>
+                <option value="lost">lost</option>
+              </Select>
+            </Field>
+            <Field label="Next check-in">
+              <Input type="date" value={form.nextCheckInAt} onChange={set("nextCheckInAt")} />
+            </Field>
+            <Field label="Waiting on">
+              <Input value={form.waitingOn} onChange={set("waitingOn")} placeholder="Their legal review" />
+            </Field>
+            <Field label="Deal value" hint="Dollars">
+              <Input inputMode="decimal" value={form.dealValue} onChange={set("dealValue")} placeholder="25000" />
+            </Field>
+          </div>
+        ) : mode === "note" ? (
+          <div className="space-y-3">
+            <Field label="Note for the FLAIR OS timeline" hint="Everyone with FLAIR OS sees it. Your name and today's date go with it.">
+              <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={5} autoFocus />
+            </Field>
+            <div className="flex flex-wrap items-center gap-4 text-[13px]">
+              <Select value={noteKind} onChange={(e) => setNoteKind(e.target.value as "note" | "call" | "email")} className="w-32">
+                <option value="note">Note</option>
+                <option value="call">Call</option>
+                <option value="email">Email</option>
+              </Select>
+              <label className="flex cursor-pointer items-center gap-2 text-ink-2">
+                <input type="checkbox" checked={touch} onChange={(e) => setTouch(e.target.checked)} className="accent-[var(--brand)]" />
+                This was contact with them (updates last contacted)
+              </label>
+            </div>
+          </div>
+        ) : mode === "task" ? (
+          <div className="space-y-3">
+            <Field label="Next step" required>
+              <Input value={task.title} onChange={(e) => setTask((t) => ({ ...t, title: e.target.value }))} placeholder="Send the proposal" autoFocus />
+            </Field>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="Due" required>
+                <Input type="date" value={task.dueAt} onChange={(e) => setTask((t) => ({ ...t, dueAt: e.target.value }))} />
+              </Field>
+            </div>
+            <Field label="Details">
+              <Textarea value={task.notes} onChange={(e) => setTask((t) => ({ ...t, notes: e.target.value }))} rows={3} />
+            </Field>
+            <p className="text-xs text-ink-3">Created as a FLAIR OS task on this deal and mirrored under Todos here. Ticking it there completes it in FLAIR OS.</p>
+          </div>
+        ) : (
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-[13px] sm:grid-cols-2">
+            {rows
+              .filter(([, v]) => v)
+              .map(([k, v]) => (
+                <div key={k} className="flex flex-col">
+                  <dt className="text-xs font-medium text-ink-3">{k}</dt>
+                  <dd className="text-ink">{v}</dd>
+                </div>
+              ))}
+          </dl>
+        )}
+
+        {mode === "view" && lead.notes && (
           <div>
             <div className="text-xs font-medium text-ink-3">Your note (kept here, not in FLAIR OS)</div>
             <div className="mt-1 text-[13px] text-ink-2">
@@ -437,7 +711,7 @@ export function MirroredLeadModal({
           </div>
         )}
 
-        {lead.flair_os_notes && (
+        {mode === "view" && lead.flair_os_notes && (
           <div>
             <div className="text-xs font-medium text-ink-3">Notes in FLAIR OS</div>
             <div className="mt-1 text-[13px] text-ink-2">
@@ -446,40 +720,42 @@ export function MirroredLeadModal({
           </div>
         )}
 
-        <div>
-          <div className="text-xs font-medium text-ink-3">FLAIR OS timeline</div>
-          {activities === null ? (
-            <div className="mt-2 flex items-center gap-2 text-xs text-ink-3">
-              <Loader2 size={13} className="animate-spin" /> Loading
-            </div>
-          ) : activities.length === 0 ? (
-            <p className="mt-1 text-[13px] text-ink-3">FLAIR OS does not share deal timelines yet.</p>
-          ) : (
-            <Card className="mt-2">
-              <ul className="divide-y divide-line">
-                {activities.map((a) => (
-                  <li key={a.id} className="px-4 py-2.5">
-                    <div className="flex items-center gap-2 text-xs text-ink-3">
-                      <Badge tone={a.kind === "stage_change" ? "violet" : a.kind === "call" || a.kind === "email" ? "blue" : "neutral"}>
-                        {a.kind.replace("_", " ")}
-                      </Badge>
-                      {a.actor && <span>{a.actor}</span>}
-                      {a.occurred_at && <span className="tabular-nums">{when(a.occurred_at)}</span>}
-                    </div>
-                    {a.body && <div className="mt-1 whitespace-pre-wrap text-[13px] text-ink-2">{a.body}</div>}
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
-        </div>
-
-        <div>
-          <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-ink-3">
-            <Link2 size={13} /> Attachments (kept here, not in FLAIR OS)
+        {mode === "view" && (
+          <div>
+            <div className="text-xs font-medium text-ink-3">FLAIR OS timeline</div>
+            {activities === null ? (
+              <div className="mt-2 flex items-center gap-2 text-xs text-ink-3">
+                <Loader2 size={13} className="animate-spin" /> Loading
+              </div>
+            ) : activities.length === 0 ? (
+              <p className="mt-1 text-[13px] text-ink-3">{canWrite ? "Nothing posted from here yet. FLAIR OS does not share its own timeline." : "FLAIR OS does not share deal timelines yet."}</p>
+            ) : (
+              <Card className="mt-2">
+                <ul className="divide-y divide-line">
+                  {activities.map((a) => (
+                    <li key={a.id} className="px-4 py-2.5">
+                      <div className="flex items-center gap-2 text-xs text-ink-3">
+                        <Badge tone={a.kind === "stage_change" ? "violet" : a.kind === "call" || a.kind === "email" ? "blue" : "neutral"}>{a.kind.replace("_", " ")}</Badge>
+                        {a.actor && <span>{a.actor}</span>}
+                        {a.occurred_at && <span className="tabular-nums">{when(a.occurred_at)}</span>}
+                      </div>
+                      {a.body && <div className="mt-1 whitespace-pre-wrap text-[13px] text-ink-2">{a.body}</div>}
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            )}
           </div>
-          {attachments}
-        </div>
+        )}
+
+        {mode === "view" && (
+          <div>
+            <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-ink-3">
+              <Link2 size={13} /> Attachments (kept here, not in FLAIR OS)
+            </div>
+            {attachments}
+          </div>
+        )}
       </div>
     </Modal>
   );

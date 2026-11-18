@@ -29,6 +29,8 @@ const PORT = Number(process.env.PORT || 3777);
 const TEST_HOOKS = process.env.MOCK_TEST_HOOKS === "1";
 const KEYS = {
   [process.env.FLAIR_OS_MOCK_CC_KEY || "cc-mock-key"]: "command_center",
+  // The widened key the two-way plan asks Tyler for (TWO_WAY_PLAN.md section 4.1).
+  [process.env.FLAIR_OS_MOCK_WRITE_KEY || "cc-write-key"]: "command_center_write",
   [process.env.FLAIR_OS_MOCK_FULL_KEY || "full-mock-key"]: "*",
 };
 
@@ -46,6 +48,20 @@ const COMMAND_CENTER_SCOPE = [
   "get_admin_stats",
 ];
 const SCOPE_SET = new Set(COMMAND_CENTER_SCOPE);
+const COMMAND_CENTER_WRITE_SCOPE = [
+  ...COMMAND_CENTER_SCOPE,
+  "create_pipeline_deal",
+  "update_pipeline_deal",
+  "update_pipeline_deal_contact",
+  "add_pipeline_activity",
+  "create_pipeline_task",
+  "complete_pipeline_task",
+  "upsert_meeting_note",
+  "check_outreach_eligibility",
+];
+const WRITE_SCOPE_SET = new Set(COMMAND_CENTER_WRITE_SCOPE);
+// The stageSlug enum create/update_pipeline_deal publish (seen 2026-11-17).
+const WRITABLE_STAGE_SLUGS = ["outreach", "engaged", "first-call", "meeting", "proposal", "contract", "invoice", "campaign", "closed", "lost"];
 
 // Real stage list, in the real sort order, with the real flags.
 const STAGES = [
@@ -159,7 +175,7 @@ function seed() {
     T(9, 8, "Campaign kickoff call", "2026-11-22"),
     T(10, 11, "Check back on Q1 budget", "2027-01-15", { assignee: null }),
   ];
-  state = { clients, deals, tasks, activities: [], calls: [] };
+  state = { clients, deals, tasks, activities: [], meetings: [], calls: [] };
 }
 seed();
 
@@ -273,6 +289,8 @@ function limitOf(args, max) {
 const visibleDeals = () => state.deals.filter((d) => d.stage !== "lost");
 
 // ── tool implementations ─────────────────────────────────────────────────────
+const str = (v) => (v === undefined || v === null ? null : String(v).trim() === "" ? null : String(v).trim());
+const num = (v) => (v === undefined || v === null || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
 const tools = {
   list_pipeline_stages: () => ({ ok: true, stages: STAGES }),
   get_pipeline_summary: (args) => visibleDeals().slice(0, limitOf(args, 100)).map(toListDeal),
@@ -327,12 +345,99 @@ const tools = {
     return toClient(client);
   },
   get_admin_stats: () => ({ totalClients: state.clients.length, activeClients: state.clients.filter((c) => c.invite_status === "accepted").length, totalRevenue: 0, bookedPipelineValue: 0, openPipelineValue: 0, revenueNote: "mock", activeCampaigns: 0, pendingDeliverables: 0 }),
-  // Write and destructive tools exist (full scope only) so denial can be proven.
-  create_pipeline_deal: (args) => { const d = { id: randomUUID(), stage: "engaged", sales_status: "active", ...args, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }; state.deals.push(d); return { ok: true, deal: toDetailDeal(d) }; },
-  update_pipeline_deal: (args) => { const d = state.deals.find((x) => x.id === args.dealId); if (!d) throw rpcError(-32602, "No pipeline deal found"); Object.assign(d, args.patch ?? {}, { updated_at: new Date().toISOString() }); return { ok: true, deal: toDetailDeal(d) }; },
-  add_pipeline_activity: (args) => { const a = { id: randomUUID(), occurred_at: new Date().toISOString(), ...args }; state.activities.push(a); return { ok: true, activity: a }; },
-  create_pipeline_task: (args) => { const t = { id: randomUUID(), status: "open", ...args, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }; state.tasks.push(t); return { ok: true, task: t }; },
-  complete_pipeline_task: (args) => { const t = state.tasks.find((x) => x.id === args.taskId); if (!t) throw rpcError(-32602, "No task found"); t.status = "done"; t.completed_at = new Date().toISOString(); t.updated_at = t.completed_at; return { ok: true, task: toTask(t) }; },
+  // Write tools, shaped on the real input schemas (tools/list, 2026-11-17).
+  // Response shapes are a guess; the Command Center re-reads with get_pipeline_deal after every write.
+  create_pipeline_deal: (args) => {
+    const company = str(args.company);
+    if (!company) throw rpcError(-32602, "Input validation error: Invalid arguments: company: Required");
+    const stageSlug = args.stageSlug === undefined ? "outreach" : String(args.stageSlug);
+    if (!WRITABLE_STAGE_SLUGS.includes(stageSlug)) throw rpcError(-32602, `Input validation error: Invalid arguments: stageSlug: Invalid enum value`);
+    const email = str(args.email)?.toLowerCase() ?? null;
+    if (!args.forceCreate) {
+      const dupe = state.deals.find((d) => (email && d.email?.toLowerCase() === email) || d.company.toLowerCase() === company.toLowerCase());
+      if (dupe) return { ok: true, deduped: true, existing: true, deal: toDetailDeal(dupe), message: `Existing deal matched by ${email && dupe.email?.toLowerCase() === email ? "email" : "company"}; pass forceCreate to create anyway.` };
+    }
+    const now = new Date().toISOString();
+    const d = {
+      id: randomUUID(), company, opportunity_name: str(args.opportunityName), contact_name: str(args.contactName), email, phone: str(args.phone),
+      stage: stageSlug, sales_status: stageSlug === "lost" ? "lost" : stageBySlug(stageSlug)?.isWon ? "won" : "active",
+      assignee_id: str(args.assigneeId), waiting_on: null, next_check_in_at: str(args.nextCheckInAt), follow_up_date: null, expected_close_at: str(args.expectedCloseAt),
+      last_contacted_at: null, deal_value: num(args.dealValue), notes: str(args.notes), client_id: null, website: str(args.website),
+      source: args.source === undefined ? "mcp" : String(args.source), source_agent: args.agent === undefined ? "GrokBot" : String(args.agent), created_at: now, updated_at: now,
+    };
+    state.deals.push(d);
+    return { ok: true, deal: toDetailDeal(d) };
+  },
+  update_pipeline_deal: (args) => {
+    const d = state.deals.find((x) => x.id === args.dealId);
+    if (!d) throw rpcError(-32602, `No pipeline deal found with id ${args.dealId}`);
+    if (args.stageSlug !== undefined && !WRITABLE_STAGE_SLUGS.includes(String(args.stageSlug))) throw rpcError(-32602, "Input validation error: Invalid arguments: stageSlug: Invalid enum value");
+    if (args.salesStatus !== undefined && !["active", "nurture", "won", "lost"].includes(String(args.salesStatus))) throw rpcError(-32602, "Input validation error: Invalid arguments: salesStatus: Invalid enum value");
+    const map = { company: "company", contactName: "contact_name", email: "email", phone: "phone", website: "website", notes: "notes", dealValue: "deal_value", assigneeId: "assignee_id", opportunityName: "opportunity_name", salesStatus: "sales_status", nextCheckInAt: "next_check_in_at", waitingOn: "waiting_on" };
+    const changed = [];
+    for (const [arg, col] of Object.entries(map)) {
+      if (!(arg in args)) continue;
+      const v = arg === "dealValue" ? num(args[arg]) : arg === "email" ? (str(args[arg])?.toLowerCase() ?? null) : str(args[arg]);
+      if (d[col] !== v) { d[col] = v; changed.push(col); }
+    }
+    if (args.stageSlug !== undefined && d.stage !== args.stageSlug) { d.stage = String(args.stageSlug); changed.push("stage"); if (!("salesStatus" in args)) d.sales_status = d.stage === "lost" ? "lost" : stageBySlug(d.stage)?.isWon ? "won" : "active"; }
+    else if (args.stageId !== undefined) { const st = STAGES.find((x) => x.id === args.stageId); if (st && d.stage !== st.slug) { d.stage = st.slug; changed.push("stage"); } }
+    if (args.agent !== undefined) d.source_agent = String(args.agent);
+    d.updated_at = new Date().toISOString();
+    return { ok: true, updated: changed, deal: toDetailDeal(d) };
+  },
+  update_pipeline_deal_contact: (args) => {
+    const d = state.deals.find((x) => x.id === args.dealId);
+    if (!d) throw rpcError(-32602, `No pipeline deal found with id ${args.dealId}`);
+    for (const [arg, col] of Object.entries({ contactName: "contact_name", email: "email", phone: "phone", notes: "notes" })) if (arg in args) d[col] = str(args[arg]);
+    d.updated_at = new Date().toISOString();
+    return { ok: true, deal: toDetailDeal(d) };
+  },
+  add_pipeline_activity: (args) => {
+    const d = state.deals.find((x) => x.id === args.dealId);
+    if (!d) throw rpcError(-32602, `No pipeline deal found with id ${args.dealId}`);
+    const body = str(args.body);
+    if (!body) throw rpcError(-32602, "Input validation error: Invalid arguments: body: Required");
+    const kind = args.kind === undefined ? "note" : String(args.kind);
+    if (!["note", "email", "call", "system"].includes(kind)) throw rpcError(-32602, "Input validation error: Invalid arguments: kind: Invalid enum value");
+    const a = { id: randomUUID(), deal_id: d.id, kind, body, agent: args.agent === undefined ? "GrokBot" : String(args.agent), created_at: new Date().toISOString() };
+    state.activities.push(a);
+    if (args.touchContact) { d.last_contacted_at = a.created_at; d.updated_at = a.created_at; }
+    return { ok: true, activity: a };
+  },
+  create_pipeline_task: (args) => {
+    const d = state.deals.find((x) => x.id === args.dealId);
+    if (!d) throw rpcError(-32602, `No pipeline deal found with id ${args.dealId}`);
+    const title = str(args.title);
+    const due = str(args.dueAt);
+    if (!title || !due) throw rpcError(-32602, "Input validation error: Invalid arguments: title, dueAt: Required");
+    if (!/^\d{4}-\d{2}-\d{2}/.test(due)) throw rpcError(-32602, "Input validation error: Invalid arguments: dueAt: Invalid date");
+    const now = new Date().toISOString();
+    const t = { id: randomUUID(), deal_id: d.id, title, action_type: args.actionType === undefined ? "follow_up" : String(args.actionType), due_at: due.length === 10 ? `${due}T17:00:00.000Z` : due, status: "open", notes: str(args.notes), blocker: str(args.blocker), assignee_id: str(args.assigneeId), agent: args.agent === undefined ? "GrokBot" : String(args.agent), created_at: now, updated_at: now };
+    state.tasks.push(t);
+    return { ok: true, task: toTask(t) };
+  },
+  complete_pipeline_task: (args) => {
+    const t = state.tasks.find((x) => x.id === args.taskId);
+    if (!t) throw rpcError(-32602, `No task found with id ${args.taskId}`);
+    t.status = "done"; t.completed_at = new Date().toISOString(); t.updated_at = t.completed_at;
+    return { ok: true, task: toTask(t) };
+  },
+  upsert_meeting_note: (args) => {
+    if (!str(args.externalId) || !str(args.title)) throw rpcError(-32602, "Input validation error: Invalid arguments: externalId, title: Required");
+    const existing = state.meetings.find((m) => m.external_id === args.externalId);
+    const m = existing ?? { id: randomUUID(), external_id: String(args.externalId), created_at: new Date().toISOString() };
+    Object.assign(m, { title: String(args.title), summary: str(args.summary), short_summary: str(args.shortSummary), meeting_start_at: str(args.meetingStartAt), external_url: str(args.externalUrl), deal_id: str(args.dealId), recorded_by: args.recordedBy === undefined ? "Sam" : String(args.recordedBy), updated_at: new Date().toISOString() });
+    if (!existing) state.meetings.push(m);
+    return { ok: true, created: !existing, meeting: m };
+  },
+  check_outreach_eligibility: (args) => {
+    if (!str(args.company)) throw rpcError(-32602, "Input validation error: Invalid arguments: company: Required");
+    const email = str(args.email)?.toLowerCase();
+    const existing = state.deals.find((d) => (email && d.email?.toLowerCase() === email) || d.company.toLowerCase() === String(args.company).toLowerCase());
+    return existing ? { ok: true, eligible: false, reason: "existing_deal", dealId: existing.id } : { ok: true, eligible: true };
+  },
+  // Destructive and outreach tools exist (full scope only) so denial can be proven.
   cleanup_pipeline_junk: () => { const before = state.deals.length; state.deals = state.deals.filter((d) => d.company); return { ok: true, removed: before - state.deals.length }; },
   send_outreach_email: () => ({ ok: true, sent: true }),
   claim_outreach_lead: () => ({ ok: true, claimed: true }),
@@ -342,7 +447,7 @@ const tools = {
 const TOOL_META = Object.keys(tools).map((name) => ({ name, description: `mock ${name}`, inputSchema: { type: "object", properties: {}, additionalProperties: true } }));
 
 function rpcError(code, message) { const e = new Error(message); e.rpc = { code, message }; return e; }
-function inScope(scope, tool) { return scope === "*" || (scope === "command_center" && SCOPE_SET.has(tool)); }
+function inScope(scope, tool) { return scope === "*" || (scope === "command_center" && SCOPE_SET.has(tool)) || (scope === "command_center_write" && WRITE_SCOPE_SET.has(tool)); }
 
 // ── HTTP ─────────────────────────────────────────────────────────────────────
 function readBody(req) { return new Promise((res) => { let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => res(b)); }); }
@@ -375,7 +480,7 @@ const server = http.createServer(async (req, res) => {
     state.calls.push({ tool: name, scope, at: new Date().toISOString(), allowed: inScope(scope, name) });
     if (!tools[name]) return fail(-32601, `Unknown tool ${name}`);
     if (!inScope(scope, name)) {
-      return reply(asText({ ok: false, error: `Tool "${name}" is not allowed for the Command Center MCP key. Allowed: ${COMMAND_CENTER_SCOPE.join(", ")}.` }));
+      return reply(asText({ ok: false, error: `Tool "${name}" is not allowed for the Command Center MCP key. Allowed: ${(scope === "command_center_write" ? COMMAND_CENTER_WRITE_SCOPE : COMMAND_CENTER_SCOPE).join(", ")}.` }));
     }
     try {
       return reply(asText(tools[name](params.arguments ?? {})));
@@ -410,7 +515,11 @@ async function testHook(req, res, url) {
       const d = { id: randomUUID(), stage: "engaged", sales_status: "active", assignee_id: null, waiting_on: null, next_check_in_at: null, follow_up_date: null, expected_close_at: null, last_contacted_at: null, deal_value: null, notes: null, client_id: null, website: null, source: null, source_agent: null, opportunity_name: null, phone: null, email: null, contact_name: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...body };
       state.deals.push(d); return send(res, 200, { deal: d });
     }
-    case "/__test/state": return send(res, 200, { deals: state.deals.length, tasks: state.tasks.length, clients: state.clients.length });
+    case "/__test/state": return send(res, 200, { deals: state.deals.length, tasks: state.tasks.length, clients: state.clients.length, activities: state.activities.length, meetings: state.meetings.length });
+    case "/__test/deal": { const d = state.deals.find((x) => x.id === url.searchParams.get("id") || x.id === body.dealId); return d ? send(res, 200, { deal: d }) : send(res, 404, { error: "no deal" }); }
+    case "/__test/deals": return send(res, 200, { deals: state.deals.map((d) => ({ id: d.id, company: d.company, stage: d.stage, email: d.email, source: d.source, source_agent: d.source_agent })) });
+    case "/__test/activities": return send(res, 200, { activities: url.searchParams.get("dealId") ? state.activities.filter((a) => a.deal_id === url.searchParams.get("dealId")) : state.activities });
+    case "/__test/tasks": return send(res, 200, { tasks: url.searchParams.get("dealId") ? state.tasks.filter((t) => t.deal_id === url.searchParams.get("dealId")) : state.tasks });
     default: return send(res, 404, { error: "unknown hook" });
   }
 }

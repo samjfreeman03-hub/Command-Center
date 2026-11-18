@@ -50,6 +50,21 @@ export const FLAIR_OS_STAGE_LABELS: Record<string, string> = {
   paused: "Paused",
 };
 
+/** Command Center stage to the FLAIR OS slug the deal write tools accept (their enum, seen 2026-11-17). */
+export const CC_TO_FLAIR_OS_STAGE: Record<Lead["stage"], string> = {
+  new: "outreach",
+  contacted: "outreach",
+  qualified: "engaged",
+  proposal: "proposal",
+  won: "campaign",
+  lost: "lost",
+  parked: "outreach",
+  nurture: "outreach",
+};
+
+/** Slugs the deal create and update tools accept; proposal-owed, ambassador-sourcing and paused are not in their enum. */
+export const FLAIR_OS_WRITABLE_STAGES = ["outreach", "engaged", "first-call", "meeting", "proposal", "contract", "invoice", "campaign", "closed", "lost"] as const;
+
 export type StageFlags = { isWon?: boolean | null; isLost?: boolean | null; isLifecycle?: boolean | null };
 export type Rollup = { stage: Lead["stage"]; known: boolean };
 

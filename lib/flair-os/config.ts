@@ -13,8 +13,14 @@
  *   FLAIR_OS_SYNC_INTERVAL_MIN  minutes between scheduled pulls (default 5, 0 = manual only)
  *   FLAIR_OS_MIN_GAP_MS       minimum gap between MCP calls (default 1000)
  *   FLAIR_OS_SELF_NAME        how Sam appears as a deal owner or task assignee in FLAIR OS (default "Sam")
+ *   FLAIR_OS_WRITE_ENABLED    "1" lets the Command Center write to FLAIR OS (merge, edits, new deals,
+ *                             notes, tasks). Off by default; pointless until Tyler widens the key.
+ *                             Dry run always wins: with FLAIR_OS_SYNC_DRY_RUN=1 nothing is written.
  */
 export const FLAIR_OS_BUSINESS_ID = "flair";
+
+/** Sent as `agent` on every write so FLAIR OS shows where a change came from. */
+export const FLAIR_OS_AGENT = "CommandCenter";
 
 export function flairOsConfigured(): boolean {
   return !!process.env.FLAIR_OS_MCP_URL && !!process.env.FLAIR_OS_MCP_KEY;
@@ -30,6 +36,11 @@ export function flairOsEnabled(businessId: string): boolean {
 
 export function flairOsDryRunDefault(): boolean {
   return process.env.FLAIR_OS_SYNC_DRY_RUN === "1";
+}
+
+/** Two-way mode: writes to FLAIR OS are allowed from this process. */
+export function flairOsWriteEnabled(): boolean {
+  return process.env.FLAIR_OS_WRITE_ENABLED === "1" && !flairOsDryRunDefault();
 }
 
 export function flairOsIntervalMinutes(): number {

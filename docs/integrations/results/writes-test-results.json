@@ -1,0 +1,957 @@
+{
+  "ran_at": "2026-11-18T02:43:59.103Z",
+  "cc": "http://127.0.0.1:3007",
+  "mock": "http://127.0.0.1:3777",
+  "passed": 53,
+  "failed": 0,
+  "total": 53,
+  "results": [
+    {
+      "name": "mock reachable with test hooks",
+      "ok": true,
+      "detail": {
+        "deals": 15,
+        "tasks": 10,
+        "clients": 4,
+        "activities": 0,
+        "meetings": 0
+      }
+    },
+    {
+      "name": "admin login",
+      "ok": true,
+      "detail": 200
+    },
+    {
+      "name": "status reports writeEnabled true",
+      "ok": true,
+      "detail": {
+        "write": true,
+        "dry": false
+      }
+    },
+    {
+      "name": "pull mirrors 15 deals",
+      "ok": true,
+      "detail": {
+        "seen": 15,
+        "created": 15,
+        "updated": 0,
+        "unchanged": 0,
+        "missing": 0,
+        "unknown_stage": 0
+      }
+    },
+    {
+      "name": "pull made no write calls",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "edit: route returns the refreshed lead",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "lead": {
+          "id": 303,
+          "business_id": "flair",
+          "name": "Dana Kim-Park",
+          "company": "Forever 21",
+          "contact_email": "dana.kim@forever21.com",
+          "stage": "new",
+          "value_cents": 1250000,
+          "next_action": "Intro deck",
+          "next_action_date": "2026-12-01",
+          "notes": null,
+          "created_at": 1793034000000,
+          "updated_at": 1794969836626,
+          "category": null,
+          "categories": [],
+          "flair_os_id": "d0000000-0000-4000-8000-000000000002",
+          "flair_os_stage": "outreach",
+          "flair_os_sales_status": "active",
+          "flair_os_owner": null,
+          "flair_os_updated_at": 1794969836573,
+          "flair_os_notes": null,
+          "flair_os_client_id": null,
+          "flair_os_missing_at": null,
+          "contact_name": "Dana Kim-Park",
+          "contact_phone": null,
+          "flair_os_opportunity": null,
+          "flair_os_last_contacted_at": null
+        },
+        "changes": [
+          {
+            "field": "name",
+            "from": "Dana Kim",
+            "to": "Dana Kim-Park"
+          },
+          {
+            "field": "contact_name",
+            "from": "Dana Kim",
+            "to": "Dana Kim-Park"
+          },
+          {
+            "field": "next_action",
+            "from": null,
+            "to": "Intro deck"
+          },
+          {
+            "field": "next_action_date",
+            "from": null,
+            "to": "2026-12-01"
+          },
+          {
+            "field": "value_cents",
+            "from": null,
+            "to": 1250000
+          },
+          {
+            "field": "flair_os_updated_at",
+            "from": 1793725200000,
+            "to": 1794969836573
+          }
+        ]
+      }
+    },
+    {
+      "name": "edit: FLAIR OS holds the new values",
+      "ok": true,
+      "detail": {
+        "id": "d0000000-0000-4000-8000-000000000002",
+        "company": "Forever 21",
+        "opportunity_name": null,
+        "contact_name": "Dana Kim-Park",
+        "email": "dana.kim@forever21.com",
+        "phone": null,
+        "stage": "outreach",
+        "sales_status": "active",
+        "assignee_id": null,
+        "waiting_on": "Intro deck",
+        "next_check_in_at": "2026-12-01",
+        "follow_up_date": null,
+        "expected_close_at": null,
+        "last_contacted_at": null,
+        "deal_value": 12500,
+        "notes": null,
+        "client_id": null,
+        "website": null,
+        "source": null,
+        "source_agent": "CommandCenter",
+        "created_at": "2026-10-26T17:00:00.000Z",
+        "updated_at": "2026-11-18T02:43:56.573Z"
+      }
+    },
+    {
+      "name": "edit: mirror row matches FLAIR OS",
+      "ok": true,
+      "detail": {
+        "id": 303,
+        "business_id": "flair",
+        "name": "Dana Kim-Park",
+        "company": "Forever 21",
+        "contact_email": "dana.kim@forever21.com",
+        "stage": "new",
+        "value_cents": 1250000,
+        "next_action": "Intro deck",
+        "next_action_date": "2026-12-01",
+        "notes": null,
+        "created_at": 1793034000000,
+        "updated_at": 1794969836626,
+        "category": null,
+        "categories": "[]",
+        "flair_os_id": "d0000000-0000-4000-8000-000000000002",
+        "flair_os_stage": "outreach",
+        "flair_os_sales_status": "active",
+        "flair_os_owner": null,
+        "flair_os_updated_at": 1794969836573,
+        "flair_os_notes": null,
+        "flair_os_client_id": null,
+        "flair_os_missing_at": null,
+        "contact_name": "Dana Kim-Park",
+        "contact_phone": null,
+        "flair_os_opportunity": null,
+        "flair_os_last_contacted_at": null
+      }
+    },
+    {
+      "name": "edit: exactly one update_pipeline_deal call, agent CommandCenter",
+      "ok": true,
+      "detail": [
+        {
+          "tool": "update_pipeline_deal",
+          "scope": "command_center_write",
+          "at": "2026-11-18T02:43:56.573Z",
+          "allowed": true
+        }
+      ]
+    },
+    {
+      "name": "edit: FLAIR OS recorded the agent",
+      "ok": true,
+      "detail": "CommandCenter"
+    },
+    {
+      "name": "edit: push log entry with field changes",
+      "ok": true,
+      "detail": {
+        "id": 1504,
+        "at": 1794969836626,
+        "direction": "push",
+        "trigger": "edit",
+        "record_kind": "deal",
+        "flair_os_id": "d0000000-0000-4000-8000-000000000002",
+        "local_id": 303,
+        "action": "update",
+        "changes": "[{\"field\":\"name\",\"from\":\"Dana Kim\",\"to\":\"Dana Kim-Park\"},{\"field\":\"contact_name\",\"from\":\"Dana Kim\",\"to\":\"Dana Kim-Park\"},{\"field\":\"next_action\",\"from\":null,\"to\":\"Intro deck\"},{\"field\":\"next_action_date\",\"from\":null,\"to\":\"2026-12-01\"},{\"field\":\"value_cents\",\"from\":null,\"to\":1250000},{\"field\":\"flair_os_updated_at\",\"from\":1793725200000,\"to\":1794969836573}]",
+        "result": "ok",
+        "message": "contactName, dealValue, nextCheckInAt, waitingOn"
+      }
+    },
+    {
+      "name": "edit: stage move lands in FLAIR OS and the rollup follows",
+      "ok": true,
+      "detail": {
+        "status": 200,
+        "stage": "engaged",
+        "rollup": "qualified"
+      }
+    },
+    {
+      "name": "edit: a slug FLAIR OS rejects comes back as a FLAIR OS error, nothing changed locally",
+      "ok": true,
+      "detail": {
+        "error": "update_pipeline_deal: Input validation error: Invalid arguments: stageSlug: Invalid enum value",
+        "code": "flair_os"
+      }
+    },
+    {
+      "name": "edit: non-numeric deal value is a 400 before any call",
+      "ok": true,
+      "detail": 400
+    },
+    {
+      "name": "note: created in FLAIR OS with kind call and agent CommandCenter",
+      "ok": true,
+      "detail": [
+        {
+          "id": "e2fb441c-695a-4463-8bff-b369f756adc8",
+          "deal_id": "d0000000-0000-4000-8000-000000000003",
+          "kind": "call",
+          "body": "Spoke with Priya, wants Q1 timing",
+          "agent": "CommandCenter",
+          "created_at": "2026-11-18T02:43:56.832Z"
+        }
+      ]
+    },
+    {
+      "name": "note: route returns the local timeline including it",
+      "ok": true,
+      "detail": 1
+    },
+    {
+      "name": "note: kept locally with the FLAIR OS id",
+      "ok": true,
+      "detail": [
+        {
+          "id": "e2fb441c-695a-4463-8bff-b369f756adc8",
+          "flair_os_deal_id": "d0000000-0000-4000-8000-000000000003",
+          "lead_id": 296,
+          "kind": "call",
+          "body": "Spoke with Priya, wants Q1 timing",
+          "actor": "Sam (Command Center)",
+          "occurred_at": 1794969836833,
+          "fetched_at": 1794969836833
+        }
+      ]
+    },
+    {
+      "name": "note: touchContact refreshed last contacted",
+      "ok": true,
+      "detail": 1794969836832
+    },
+    {
+      "name": "note: empty body is a 400",
+      "ok": true,
+      "detail": 400
+    },
+    {
+      "name": "task: created in FLAIR OS on the deal",
+      "ok": true,
+      "detail": {
+        "status": 201,
+        "newTask": {
+          "id": "d67e2298-4433-47e6-9bcb-403119e2bde1",
+          "deal_id": "d0000000-0000-4000-8000-000000000004",
+          "title": "Send ambassador brief",
+          "action_type": "follow_up",
+          "due_at": "2026-11-25T17:00:00.000Z",
+          "status": "open",
+          "notes": "w2test",
+          "blocker": null,
+          "assignee_id": null,
+          "agent": "CommandCenter",
+          "created_at": "2026-11-18T02:43:56.939Z",
+          "updated_at": "2026-11-18T02:43:56.939Z"
+        }
+      }
+    },
+    {
+      "name": "task: mirrored as a todo with the FLAIR OS id and lead",
+      "ok": true,
+      "detail": {
+        "id": 171,
+        "business_id": "flair",
+        "title": "Send ambassador brief",
+        "notes": "w2test",
+        "status": "open",
+        "priority": "medium",
+        "due_date": "2026-11-25",
+        "created_at": 1794969836941,
+        "completed_at": null,
+        "assigned_to": null,
+        "flair_os_id": "d67e2298-4433-47e6-9bcb-403119e2bde1",
+        "flair_os_deal_id": "d0000000-0000-4000-8000-000000000004",
+        "lead_id": 295,
+        "flair_os_assignee": null,
+        "flair_os_updated_at": null
+      }
+    },
+    {
+      "name": "task: ticking the todo completes it in FLAIR OS first",
+      "ok": true,
+      "detail": {
+        "status": 200,
+        "mock": "done",
+        "todo": "done"
+      }
+    },
+    {
+      "name": "task: other edits to a mirrored todo still answer 409",
+      "ok": true,
+      "detail": 409
+    },
+    {
+      "name": "task: create_pipeline_task then complete_pipeline_task",
+      "ok": true,
+      "detail": [
+        "create_pipeline_task",
+        "complete_pipeline_task"
+      ]
+    },
+    {
+      "name": "merge: created a Command Center-only lead",
+      "ok": true,
+      "detail": 200
+    },
+    {
+      "name": "merge: compare shows company conflict, value gap, email same, stage ahead",
+      "ok": true,
+      "detail": {
+        "byKey": {
+          "company": "conflict",
+          "contact_name": "os_only",
+          "contact_email": "same",
+          "contact_phone": "empty",
+          "value_cents": "gap",
+          "next_action": "gap",
+          "next_action_date": "gap"
+        },
+        "stage": {
+          "ccStage": "proposal",
+          "ccAsSlug": "proposal",
+          "osSlug": "ambassador-sourcing",
+          "osLabel": "Ambassador Sourcing",
+          "ccAhead": true
+        }
+      }
+    },
+    {
+      "name": "merge: note preview has the markup stripped",
+      "ok": true,
+      "detail": "w2test Marco wants campus-first; budget confirmed"
+    },
+    {
+      "name": "merge: route ok, lead folded onto the deal",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "leadId": 308,
+        "dealId": "d0000000-0000-4000-8000-000000000004",
+        "lead": {
+          "id": 308,
+          "business_id": "flair",
+          "name": "Marco Alvarez",
+          "company": "CELSIUS Holdings",
+          "contact_email": "marco.alvarez@celsius.com",
+          "stage": "qualified",
+          "value_cents": 5500000,
+          "next_action": "Send proposal v2",
+          "next_action_date": "2026-11-28",
+          "notes": "w2test Marco wants campus-first; **budget** confirmed",
+          "created_at": 1794969837508,
+          "updated_at": 1794969837984,
+          "category": null,
+          "categories": [],
+          "flair_os_id": "d0000000-0000-4000-8000-000000000004",
+          "flair_os_stage": "ambassador-sourcing",
+          "flair_os_sales_status": "active",
+          "flair_os_owner": "Tyler Rong",
+          "flair_os_updated_at": 1794969837826,
+          "flair_os_notes": null,
+          "flair_os_client_id": null,
+          "flair_os_missing_at": null,
+          "contact_name": "Marco Alvarez",
+          "contact_phone": null,
+          "flair_os_opportunity": null,
+          "flair_os_last_contacted_at": null
+        },
+        "written": [
+          "Deal value",
+          "Waiting on",
+          "Next check-in"
+        ],
+        "notePosted": true,
+        "taskCreated": true,
+        "stageMoved": false,
+        "folded": 295,
+        "changes": [
+          {
+            "field": "company",
+            "from": "Celsius",
+            "to": "CELSIUS Holdings"
+          },
+          {
+            "field": "contact_name",
+            "from": null,
+            "to": "Marco Alvarez"
+          },
+          {
+            "field": "stage",
+            "from": "proposal",
+            "to": "qualified"
+          },
+          {
+            "field": "flair_os_id",
+            "from": null,
+            "to": "d0000000-0000-4000-8000-000000000004"
+          },
+          {
+            "field": "flair_os_stage",
+            "from": null,
+            "to": "ambassador-sourcing"
+          },
+          {
+            "field": "flair_os_sales_status",
+            "from": null,
+            "to": "active"
+          },
+          {
+            "field": "flair_os_owner",
+            "from": null,
+            "to": "Tyler Rong"
+          },
+          {
+            "field": "flair_os_updated_at",
+            "from": null,
+            "to": 1794969837826
+          }
+        ],
+        "reconciliation": {
+          "items": [],
+          "duplicates": {
+            "d0000000-0000-4000-8000-000000000006": [
+              "d0000000-0000-4000-8000-000000000015"
+            ],
+            "d0000000-0000-4000-8000-000000000015": [
+              "d0000000-0000-4000-8000-000000000006"
+            ]
+          },
+          "counts": {
+            "same": 0,
+            "likely": 0,
+            "none": 0,
+            "separate": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "merge: gap written (value, waiting on), conflict kept FLAIR OS's company",
+      "ok": true,
+      "detail": {
+        "id": "d0000000-0000-4000-8000-000000000004",
+        "company": "CELSIUS Holdings",
+        "opportunity_name": null,
+        "contact_name": "Marco Alvarez",
+        "email": "marco.alvarez@celsius.com",
+        "phone": null,
+        "stage": "ambassador-sourcing",
+        "sales_status": "active",
+        "assignee_id": "6f1d2c3e-0000-4000-8000-000000000001",
+        "waiting_on": "Send proposal v2",
+        "next_check_in_at": "2026-11-28",
+        "follow_up_date": null,
+        "expected_close_at": null,
+        "last_contacted_at": null,
+        "deal_value": 55000,
+        "notes": null,
+        "client_id": null,
+        "website": null,
+        "source": null,
+        "source_agent": "CommandCenter",
+        "created_at": "2026-10-26T17:00:00.000Z",
+        "updated_at": "2026-11-18T02:43:57.826Z"
+      }
+    },
+    {
+      "name": "merge: note posted on the FLAIR OS timeline with the Command Center header",
+      "ok": true,
+      "detail": [
+        "From Command Center (Sam), 2026-11-17:\nw2test Marco wants campus-first; budget confirmed"
+      ]
+    },
+    {
+      "name": "merge: next action became a FLAIR OS task",
+      "ok": true,
+      "detail": [
+        "Send recap deck",
+        "Send ambassador brief",
+        "Send proposal v2"
+      ]
+    },
+    {
+      "name": "merge: mirror row carries FLAIR OS's values and Sam's note stays",
+      "ok": true,
+      "detail": {
+        "id": 308,
+        "business_id": "flair",
+        "name": "Marco Alvarez",
+        "company": "CELSIUS Holdings",
+        "contact_email": "marco.alvarez@celsius.com",
+        "stage": "qualified",
+        "value_cents": 5500000,
+        "next_action": "Send proposal v2",
+        "next_action_date": "2026-11-28",
+        "notes": "w2test Marco wants campus-first; **budget** confirmed",
+        "created_at": 1794969837508,
+        "updated_at": 1794969837984,
+        "category": null,
+        "categories": "[]",
+        "flair_os_id": "d0000000-0000-4000-8000-000000000004",
+        "flair_os_stage": "ambassador-sourcing",
+        "flair_os_sales_status": "active",
+        "flair_os_owner": "Tyler Rong",
+        "flair_os_updated_at": 1794969837826,
+        "flair_os_notes": null,
+        "flair_os_client_id": null,
+        "flair_os_missing_at": null,
+        "contact_name": "Marco Alvarez",
+        "contact_phone": null,
+        "flair_os_opportunity": null,
+        "flair_os_last_contacted_at": null
+      }
+    },
+    {
+      "name": "merge: only one mirror row for the deal",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "merge: push log entry",
+      "ok": true,
+      "detail": "Wrote Deal value, Waiting on, Next check-in; note posted; task created; folded 295"
+    },
+    {
+      "name": "merge: update, activity, task in that order",
+      "ok": true,
+      "detail": [
+        "update_pipeline_deal",
+        "add_pipeline_activity",
+        "create_pipeline_task"
+      ]
+    },
+    {
+      "name": "merge: chosen conflict writes Sam's company and the stage moves to campaign",
+      "ok": true,
+      "detail": {
+        "mock": "Bumble Inc",
+        "stage": "campaign",
+        "local": "won"
+      }
+    },
+    {
+      "name": "merge: no note or task when unticked",
+      "ok": true,
+      "detail": [
+        "update_pipeline_deal"
+      ]
+    },
+    {
+      "name": "add: one new deal in FLAIR OS, source command_center, agent CommandCenter",
+      "ok": true,
+      "detail": {
+        "status": 200,
+        "before": 15,
+        "after": 16,
+        "olipop": {
+          "id": "46f2912a-cdd7-4e63-a612-8c9e2d8b4ef3",
+          "company": "Olipop",
+          "stage": "engaged",
+          "email": "taylor@olipop.example",
+          "source": "command_center",
+          "source_agent": "CommandCenter"
+        }
+      }
+    },
+    {
+      "name": "add: stage mapped qualified to engaged, lead linked to the new deal",
+      "ok": true,
+      "detail": {
+        "stage": "engaged",
+        "linked": true
+      }
+    },
+    {
+      "name": "add: long notes went to the timeline, waiting on and task set",
+      "ok": true,
+      "detail": {
+        "notes": null,
+        "acts": 1,
+        "waiting": "Book call",
+        "tasks": 1
+      }
+    },
+    {
+      "name": "add: contact email and name carried",
+      "ok": true,
+      "detail": {
+        "email": "taylor@olipop.example",
+        "contact": "Taylor Reed"
+      }
+    },
+    {
+      "name": "add: only one mirror row for the new deal",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "add: duplicate company is deduped by FLAIR OS and reported",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "leadId": 312,
+        "dealId": "46f2912a-cdd7-4e63-a612-8c9e2d8b4ef3",
+        "lead": {
+          "id": 312,
+          "business_id": "flair",
+          "name": "Taylor Reed",
+          "company": "Olipop",
+          "contact_email": "taylor@olipop.example",
+          "stage": "qualified",
+          "value_cents": null,
+          "next_action": "Book call",
+          "next_action_date": "2026-12-03",
+          "notes": "w2test dupe",
+          "created_at": 1794969838416,
+          "updated_at": 1794969838501,
+          "category": null,
+          "categories": [],
+          "flair_os_id": "46f2912a-cdd7-4e63-a612-8c9e2d8b4ef3",
+          "flair_os_stage": "engaged",
+          "flair_os_sales_status": "active",
+          "flair_os_owner": null,
+          "flair_os_updated_at": 1794969838292,
+          "flair_os_notes": null,
+          "flair_os_client_id": null,
+          "flair_os_missing_at": null,
+          "contact_name": "Taylor Reed",
+          "contact_phone": null,
+          "flair_os_opportunity": null,
+          "flair_os_last_contacted_at": null
+        },
+        "written": [
+          "Company",
+          "Notes"
+        ],
+        "notePosted": false,
+        "taskCreated": false,
+        "stageMoved": false,
+        "folded": 310,
+        "changes": [
+          {
+            "field": "company",
+            "from": null,
+            "to": "Olipop"
+          },
+          {
+            "field": "contact_name",
+            "from": null,
+            "to": "Taylor Reed"
+          },
+          {
+            "field": "contact_email",
+            "from": null,
+            "to": "taylor@olipop.example"
+          },
+          {
+            "field": "stage",
+            "from": "new",
+            "to": "qualified"
+          },
+          {
+            "field": "next_action",
+            "from": null,
+            "to": "Book call"
+          },
+          {
+            "field": "next_action_date",
+            "from": null,
+            "to": "2026-12-03"
+          },
+          {
+            "field": "flair_os_id",
+            "from": null,
+            "to": "46f2912a-cdd7-4e63-a612-8c9e2d8b4ef3"
+          },
+          {
+            "field": "flair_os_stage",
+            "from": null,
+            "to": "engaged"
+          },
+          {
+            "field": "flair_os_sales_status",
+            "from": null,
+            "to": "active"
+          },
+          {
+            "field": "flair_os_updated_at",
+            "from": null,
+            "to": 1794969838292
+          },
+          {
+            "field": "name",
+            "from": "Olipop",
+            "to": "Taylor Reed"
+          }
+        ],
+        "deduped": true,
+        "reconciliation": {
+          "items": [],
+          "duplicates": {
+            "d0000000-0000-4000-8000-000000000006": [
+              "d0000000-0000-4000-8000-000000000015"
+            ],
+            "d0000000-0000-4000-8000-000000000015": [
+              "d0000000-0000-4000-8000-000000000006"
+            ]
+          },
+          "counts": {
+            "same": 0,
+            "likely": 0,
+            "none": 0,
+            "separate": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "add: the deduped lead is linked, still one mirror row",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "add: forceCreate makes a second Olipop deal with the opportunity name",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "leadId": 313,
+        "dealId": "1abcf36d-8e36-4f4d-9b52-8742f94eafc2",
+        "lead": {
+          "id": 313,
+          "business_id": "flair",
+          "name": "Olipop spring sampling",
+          "company": "Olipop",
+          "contact_email": null,
+          "stage": "proposal",
+          "value_cents": null,
+          "next_action": null,
+          "next_action_date": null,
+          "notes": "w2test second deal",
+          "created_at": 1794969838512,
+          "updated_at": 1794969838606,
+          "category": null,
+          "categories": [],
+          "flair_os_id": "1abcf36d-8e36-4f4d-9b52-8742f94eafc2",
+          "flair_os_stage": "proposal",
+          "flair_os_sales_status": "active",
+          "flair_os_owner": null,
+          "flair_os_updated_at": 1794969838551,
+          "flair_os_notes": "w2test second deal",
+          "flair_os_client_id": null,
+          "flair_os_missing_at": null,
+          "contact_name": null,
+          "contact_phone": null,
+          "flair_os_opportunity": "Olipop spring sampling",
+          "flair_os_last_contacted_at": null
+        },
+        "written": [
+          "Company",
+          "Notes"
+        ],
+        "notePosted": false,
+        "taskCreated": false,
+        "stageMoved": false,
+        "folded": 314,
+        "changes": [
+          {
+            "field": "company",
+            "from": null,
+            "to": "Olipop"
+          },
+          {
+            "field": "flair_os_id",
+            "from": null,
+            "to": "1abcf36d-8e36-4f4d-9b52-8742f94eafc2"
+          },
+          {
+            "field": "flair_os_stage",
+            "from": null,
+            "to": "proposal"
+          },
+          {
+            "field": "flair_os_sales_status",
+            "from": null,
+            "to": "active"
+          },
+          {
+            "field": "flair_os_updated_at",
+            "from": null,
+            "to": 1794969838551
+          },
+          {
+            "field": "flair_os_notes",
+            "from": null,
+            "to": "w2test second deal"
+          },
+          {
+            "field": "flair_os_opportunity",
+            "from": null,
+            "to": "Olipop spring sampling"
+          },
+          {
+            "field": "name",
+            "from": "Olipop",
+            "to": "Olipop spring sampling"
+          }
+        ],
+        "deduped": false,
+        "reconciliation": {
+          "items": [],
+          "duplicates": {
+            "d0000000-0000-4000-8000-000000000006": [
+              "d0000000-0000-4000-8000-000000000015"
+            ],
+            "d0000000-0000-4000-8000-000000000015": [
+              "d0000000-0000-4000-8000-000000000006"
+            ],
+            "46f2912a-cdd7-4e63-a612-8c9e2d8b4ef3": [
+              "1abcf36d-8e36-4f4d-9b52-8742f94eafc2"
+            ],
+            "1abcf36d-8e36-4f4d-9b52-8742f94eafc2": [
+              "46f2912a-cdd7-4e63-a612-8c9e2d8b4ef3"
+            ]
+          },
+          "counts": {
+            "same": 0,
+            "likely": 0,
+            "none": 0,
+            "separate": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "new deal: 201, born in FLAIR OS, mirrored as a lead",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "lead": {
+          "id": 315,
+          "business_id": "flair",
+          "name": "Jordan Blake",
+          "company": "Poppi",
+          "contact_email": "jordan@poppi.example",
+          "stage": "new",
+          "value_cents": null,
+          "next_action": null,
+          "next_action_date": null,
+          "notes": null,
+          "created_at": 1794969838730,
+          "updated_at": 1794969838784,
+          "category": null,
+          "categories": [],
+          "flair_os_id": "fe598006-7cea-4859-a1de-930e5d54a6f3",
+          "flair_os_stage": "outreach",
+          "flair_os_sales_status": "active",
+          "flair_os_owner": null,
+          "flair_os_updated_at": 1794969838730,
+          "flair_os_notes": "w2test from form",
+          "flair_os_client_id": null,
+          "flair_os_missing_at": null,
+          "contact_name": "Jordan Blake",
+          "contact_phone": null,
+          "flair_os_opportunity": null,
+          "flair_os_last_contacted_at": null
+        },
+        "dealId": "fe598006-7cea-4859-a1de-930e5d54a6f3",
+        "deduped": false
+      }
+    },
+    {
+      "name": "new deal: missing company is a 400",
+      "ok": true,
+      "detail": 400
+    },
+    {
+      "name": "pull after writes: nothing changed, nothing missing",
+      "ok": true,
+      "detail": {
+        "seen": 18,
+        "created": 0,
+        "updated": 0,
+        "unchanged": 18,
+        "missing": 0,
+        "unknown_stage": 0
+      }
+    },
+    {
+      "name": "pull after writes: no write calls",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "share token cannot edit or create",
+      "ok": true,
+      "detail": [
+        401,
+        401
+      ]
+    },
+    {
+      "name": "anonymous cannot edit",
+      "ok": true,
+      "detail": 401
+    },
+    {
+      "name": "unknown deal id is a FLAIR OS not-found, nothing created locally",
+      "ok": true,
+      "detail": 404
+    },
+    {
+      "name": "the mock never saw a call outside the write key's scope",
+      "ok": true,
+      "detail": []
+    }
+  ]
+}
