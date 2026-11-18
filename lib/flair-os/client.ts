@@ -1,9 +1,11 @@
-import { FLAIR_OS_READ_TOOLS, isAllowedReadTool, type FlairOsReadTool } from "./allowlist";
+import { FLAIR_OS_READ_TOOLS, isAllowedReadTool, isAllowedWriteTool, type FlairOsTool } from "./allowlist";
 
 /**
  * Minimal MCP client over HTTP for FLAIR OS (JSON-RPC 2.0, Streamable HTTP
  * transport: JSON or SSE responses). No dependency; the repo rule is no new
- * packages. Phase 1 can only call tools in FLAIR_OS_READ_TOOLS.
+ * packages. Reads are always allowed; writes (FLAIR_OS_WRITE_TOOLS) only when
+ * the client was built with `allowWrites`, which flairOsClientFromEnv sets
+ * from FLAIR_OS_WRITE_ENABLED and never under dry run.
  *
  * Politeness: calls are serialized with a minimum gap (contract: at most one
  * request per second), with exponential backoff on 429 and 5xx.
@@ -23,6 +25,8 @@ export type FlairOsClientOptions = {
   timeoutMs?: number;
   maxRetries?: number;
   fetchImpl?: typeof fetch;
+  /** Two-way mode. Off: every write tool is refused before any request is made. */
+  allowWrites?: boolean;
 };
 
 type JsonRpcResponse = { jsonrpc: "2.0"; id: number | string | null; result?: unknown; error?: { code: number; message: string; data?: unknown } };
@@ -34,13 +38,14 @@ export class FlairOsClient {
   private readonly timeoutMs: number;
   private readonly maxRetries: number;
   private readonly fetchImpl: typeof fetch;
+  readonly allowWrites: boolean;
   private sessionId: string | null = null;
   private initialized = false;
   private nextId = 1;
   private lastCallAt = 0;
   private chain: Promise<unknown> = Promise.resolve();
   /** Tool names called in this process, for the status panel and tests. */
-  readonly calls: { tool: FlairOsReadTool; at: number; ms: number; ok: boolean }[] = [];
+  readonly calls: { tool: FlairOsTool; at: number; ms: number; ok: boolean }[] = [];
 
   constructor(opts: FlairOsClientOptions) {
     this.url = opts.url.replace(/\/$/, "");
@@ -49,12 +54,18 @@ export class FlairOsClient {
     this.timeoutMs = opts.timeoutMs ?? 20000;
     this.maxRetries = opts.maxRetries ?? 3;
     this.fetchImpl = opts.fetchImpl ?? fetch;
+    this.allowWrites = opts.allowWrites === true;
   }
 
-  /** Call an allowlisted read tool. Anything else is refused before any request is made. */
-  call<T = unknown>(tool: FlairOsReadTool, args: Record<string, unknown> = {}): Promise<T> {
+  /** Call an allowlisted tool. Names outside the lists, and writes while writes are off, are refused before any request is made. */
+  call<T = unknown>(tool: FlairOsTool, args: Record<string, unknown> = {}): Promise<T> {
     if (!isAllowedReadTool(tool)) {
-      return Promise.reject(new FlairOsError(`Tool ${String(tool)} is not on the Command Center read allowlist`, "not_allowed"));
+      if (!isAllowedWriteTool(tool)) {
+        return Promise.reject(new FlairOsError(`Tool ${String(tool)} is not on the Command Center allowlist`, "not_allowed"));
+      }
+      if (!this.allowWrites) {
+        return Promise.reject(new FlairOsError(`Writing to FLAIR OS is off (FLAIR_OS_WRITE_ENABLED), so ${tool} was not called`, "writes_off"));
+      }
     }
     const run = async (): Promise<T> => {
       await this.ensureInitialized();
@@ -209,9 +220,10 @@ export function flairOsClientFromEnv(): FlairOsClient | null {
   const key = process.env.FLAIR_OS_MCP_KEY;
   if (!url || !key) return null;
   const gap = Number(process.env.FLAIR_OS_MIN_GAP_MS ?? 1000);
-  const fingerprint = `${url}|${key}|${gap}`;
+  const allowWrites = process.env.FLAIR_OS_WRITE_ENABLED === "1" && process.env.FLAIR_OS_SYNC_DRY_RUN !== "1";
+  const fingerprint = `${url}|${key}|${gap}|${allowWrites ? "rw" : "ro"}`;
   if (!shared || sharedKey !== fingerprint) {
-    shared = new FlairOsClient({ url, key, minGapMs: Number.isFinite(gap) ? gap : 1000 });
+    shared = new FlairOsClient({ url, key, minGapMs: Number.isFinite(gap) ? gap : 1000, allowWrites });
     sharedKey = fingerprint;
   }
   return shared;

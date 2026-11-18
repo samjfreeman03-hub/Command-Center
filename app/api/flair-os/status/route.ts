@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { canAccessBusiness, isAdmin } from "@/lib/server-auth";
-import { FLAIR_OS_BUSINESS_ID, flairOsEnabled, flairOsDryRunDefault, flairOsSelfName } from "@/lib/flair-os/config";
+import { FLAIR_OS_BUSINESS_ID, flairOsEnabled, flairOsDryRunDefault, flairOsSelfName, flairOsWriteEnabled } from "@/lib/flair-os/config";
 import { todayLA } from "@/lib/dates";
 import { flairOsStore } from "@/lib/flair-os/store";
 import { schedulerInfo } from "@/lib/flair-os/scheduler";
@@ -24,6 +24,7 @@ export async function GET() {
     enabled: true,
     canSync: await isAdmin(),
     dryRunDefault: flairOsDryRunDefault(),
+    writeEnabled: flairOsWriteEnabled(),
     inFlight: mirrorInFlight(),
     scheduler: schedulerInfo(),
     state,

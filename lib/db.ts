@@ -1329,6 +1329,17 @@ export const db = {
     return !!row?.flair_os_id;
   },
 
+  getTodo(id: number): Todo | null {
+    const row = getDb().prepare("SELECT id FROM todos WHERE id = ?").get(id) as { id: number } | undefined;
+    return row ? todoWithAssignees(id) : null;
+  },
+
+  /** Mark done without toggling (used when FLAIR OS has already completed the task). */
+  markTodoDone(id: number): Todo {
+    getDb().prepare("UPDATE todos SET status = 'done', completed_at = COALESCE(completed_at, ?) WHERE id = ?").run(Date.now(), id);
+    return todoWithAssignees(id);
+  },
+
   getLeadBizId(id: number): string | null {
     const row = getDb().prepare("SELECT business_id FROM leads WHERE id = ?").get(id) as { business_id: string } | undefined;
     return row?.business_id ?? null;

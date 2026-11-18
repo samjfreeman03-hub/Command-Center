@@ -1,10 +1,13 @@
 /**
  * The only FLAIR OS MCP tools the Command Center may ever name.
  *
- * Mirrors Tyler's command_center scope (ANSWERS_FOR_SAM.md, P0 item 1) and
- * the field contract, section 2. The client refuses anything else at the type
- * level and again at runtime, and scripts/flair-os-mock/test-mirror.mjs
- * fails if a denied name appears anywhere under lib/flair-os.
+ * Two lists. The read list mirrors Tyler's command_center scope as issued
+ * (ANSWERS_FOR_SAM.md, P0 item 1). The write list is the two-way scope from
+ * docs/integrations/FLAIR_OS_TWO_WAY_PLAN.md section 4.1: the client refuses
+ * every write unless FLAIR_OS_WRITE_ENABLED=1, and the real key refuses them
+ * until Tyler widens it. scripts/flair-os-mock/test-mirror.mjs fails if a
+ * write tool name appears anywhere under lib/flair-os other than this file,
+ * write.ts and merge.ts, or if any name outside both lists appears at all.
  */
 export const FLAIR_OS_READ_TOOLS = [
   "list_pipeline_stages",
@@ -18,24 +21,31 @@ export const FLAIR_OS_READ_TOOLS = [
   "get_client",
 ] as const;
 
-export type FlairOsReadTool = (typeof FLAIR_OS_READ_TOOLS)[number];
-
-/**
- * Phase 2 write allowlist. Listed so the contract is visible in code, but
- * nothing in phase 1 can call these: `FlairOsClient.call` only accepts a
- * `FlairOsReadTool`.
- */
-export const FLAIR_OS_WRITE_TOOLS_PHASE_2 = [
+export const FLAIR_OS_WRITE_TOOLS = [
   "create_pipeline_deal",
   "update_pipeline_deal",
+  "update_pipeline_deal_contact",
   "add_pipeline_activity",
   "create_pipeline_task",
   "complete_pipeline_task",
   "upsert_meeting_note",
+  "check_outreach_eligibility",
 ] as const;
+
+export type FlairOsReadTool = (typeof FLAIR_OS_READ_TOOLS)[number];
+export type FlairOsWriteTool = (typeof FLAIR_OS_WRITE_TOOLS)[number];
+export type FlairOsTool = FlairOsReadTool | FlairOsWriteTool;
 
 export function isAllowedReadTool(name: string): name is FlairOsReadTool {
   return (FLAIR_OS_READ_TOOLS as readonly string[]).includes(name);
+}
+
+export function isAllowedWriteTool(name: string): name is FlairOsWriteTool {
+  return (FLAIR_OS_WRITE_TOOLS as readonly string[]).includes(name);
+}
+
+export function isAllowedTool(name: string): name is FlairOsTool {
+  return isAllowedReadTool(name) || isAllowedWriteTool(name);
 }
 
 /**

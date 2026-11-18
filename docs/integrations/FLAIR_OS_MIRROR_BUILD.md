@@ -215,3 +215,58 @@ way.
   once per new count, so the list catches up within a poll in both
   directions. Verified on the mock: rows deleted behind the page emptied the
   list within 70 s; a sync fired outside the page filled it within 65 s.
+
+## 10. Two-way write-through and the v4 page, 2026-11-17 (night)
+
+Built after Sam's review of the phase A page ("why is the source of truth one
+way?"). Design in `FLAIR_OS_TWO_WAY_PLAN.md`; this is what landed.
+
+- **Write path** `lib/flair-os/write.ts`: every function calls the FLAIR OS
+  write tool first (`agent: "CommandCenter"`), then re-reads the deal with
+  `get_pipeline_deal` and mirrors that. Nothing local changes on a failed
+  write. Log rows carry `direction = 'push'`. Response shapes of the write
+  tools are unknown, so the code tolerates them and trusts the re-read; the
+  only guess that matters is the created deal's id (tries `id`, `dealId`,
+  nested `deal`/`data`, then falls back to a `search_pipeline` by company).
+- **Switch**: `FLAIR_OS_WRITE_ENABLED=1`, and dry run always wins. The client
+  refuses write tools with code `writes_off` before any request; routes check
+  first and answer 409 `writes_off`. `flairOsClientFromEnv` includes the
+  switch in its fingerprint so a flip takes effect without a restart of the
+  singleton logic.
+- **Merge** `lib/flair-os/merge.ts`: compare (same / gap / conflict / FLAIR OS
+  only), merge (gaps written, conflicts default to FLAIR OS, notes posted as
+  one timeline note with a "From Command Center (Sam), date" header, next
+  action as a task, stage move only when ticked and only forward), add
+  (`create_pipeline_deal` from the lead; dedupe by email or company unless
+  forceCreate; long notes go to the timeline, short ones into `notes`;
+  `waitingOn` set right after since create has no such field). Both end in
+  `linkLead`, which folds the shell row the write just mirrored.
+- **Routes**: reconcile gains compare/merge/add; `/api/flair-os/deals` (POST),
+  `/api/flair-os/deals/[dealId]` (PATCH edit; POST note/task/refresh),
+  `/api/flair-os/tasks/[taskId]` (PATCH done). `PATCH /api/todos/[id]`
+  with only `status: done` on a mirrored todo completes it in FLAIR OS first;
+  other fields still 409.
+- **Page v4** `components/flair-os-board.tsx` and `components/flair-os-merge.tsx`,
+  editable `MirroredLeadModal` in `flair-os-panel.tsx`, "New deal" in
+  `pipeline-panel.tsx` posts to `/api/flair-os/deals` when writes are on.
+- **Mock**: `cc-write-key` (scope `command_center_write` = reads + the eight
+  writes), write tools rewritten to the real input schemas (flat camelCase,
+  stageSlug enum, dedupe, agent recorded as `source_agent`), hooks
+  `/__test/deal`, `/__test/deals`, `/__test/activities`, `/__test/tasks`.
+- **Tests**: `scripts/flair-os-mock/test-writes.mjs`, 53/53 against the
+  write-enabled server (port 3007). `test-mirror.mjs` is now 76/76 on the
+  read-only server: the static scan allows write names only in
+  `allowlist.ts`, `write.ts`, `merge.ts` (it caught a comment in
+  `stage-map.ts` on the first run), and three writes-off guards prove every
+  write route 409s and the mock sees no write call. Browser check on the
+  write server: merge sheet wrote two fields, posted the note, created the
+  task, folded the row (pipeline count 15 to 14); drawer edit saved "Waiting
+  on" to the mock and showed the refreshed record.
+- **Not built**: meeting handoff (`upsert_meeting_note`, phase D), the
+  outreach/people reads (phase B), `assigneeId` from `flair_os_profile_map`
+  (owner stays whatever FLAIR OS has).
+- **Production state after this ships**: nothing writes. Tyler's key is read
+  only and `FLAIR_OS_WRITE_ENABLED` is unset. The page redesign is visible;
+  decision rows offer "Link only" in the merge sheet until the switch is on.
+  Turning writes on = Tyler widens the key per `TWO_WAY_PLAN.md` section 4.1
+  (and rotates it), Sam sets `FLAIR_OS_WRITE_ENABLED=1` in Railway.

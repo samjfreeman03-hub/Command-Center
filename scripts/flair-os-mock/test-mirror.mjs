@@ -38,9 +38,12 @@ const ALLOWED_UNUSED = ["get_admin_stats"];
 const DENIED_NAMES = [
   "send_outreach_email", "claim_outreach_lead", "archive_outreach_lead", "cleanup_pipeline_junk",
   "create_pipeline_deals_batch", "set_pipeline_deal_logo", "clear_pipeline_deal_logo",
-  "upsert_school_contact", "update_pipeline_deal_contact",
+  "upsert_school_contact", "list_outreach_replies", "search_leads",
 ];
-const WRITE_NAMES = ["create_pipeline_deal", "update_pipeline_deal", "add_pipeline_activity", "create_pipeline_task", "complete_pipeline_task", "upsert_meeting_note"];
+// The two-way write scope (TWO_WAY_PLAN.md section 4.1). These names may appear only in
+// allowlist.ts, write.ts and merge.ts; the client refuses them unless FLAIR_OS_WRITE_ENABLED=1.
+const WRITE_NAMES = ["create_pipeline_deal", "update_pipeline_deal", "update_pipeline_deal_contact", "add_pipeline_activity", "create_pipeline_task", "complete_pipeline_task", "upsert_meeting_note", "check_outreach_eligibility"];
+const WRITE_FILES = ["allowlist.ts", "write.ts", "merge.ts"];
 
 const results = [];
 let cookie = "";
@@ -113,9 +116,13 @@ async function main() {
   for (const f of files) {
     const src = fs.readFileSync(f, "utf8");
     for (const n of DENIED_NAMES) if (src.includes(n)) offenders.push(`${path.basename(f)}:${n}`);
-    if (!f.endsWith("allowlist.ts")) for (const n of WRITE_NAMES) if (src.includes(n)) offenders.push(`${path.basename(f)}:${n}`);
+    if (!WRITE_FILES.some((w) => f.endsWith(w))) for (const n of WRITE_NAMES) if (src.includes(n)) offenders.push(`${path.basename(f)}:${n}`);
   }
-  check("static: no denied or write tool names in the mirror code", offenders.length === 0, offenders);
+  check("static: no denied tool names anywhere; write tool names only in allowlist.ts, write.ts, merge.ts", offenders.length === 0, offenders);
+  // Every write name the code uses must be in FLAIR_OS_WRITE_TOOLS, and the client must gate on allowWrites.
+  const allowSrc = fs.readFileSync(path.join(ROOT, "lib", "flair-os", "allowlist.ts"), "utf8");
+  const clientSrc = fs.readFileSync(path.join(ROOT, "lib", "flair-os", "client.ts"), "utf8");
+  check("static: allowlist names all eight write tools and the client refuses writes when off", WRITE_NAMES.every((n) => allowSrc.includes(`"${n}"`)) && clientSrc.includes('"writes_off"') && clientSrc.includes("allowWrites"), null);
 
   // 1. Servers up, login.
   const ping = await fetch(MOCK + "/__test/state").then((r) => r.json()).catch(() => null);
@@ -348,6 +355,19 @@ async function main() {
   }
   const anon = await cc("/api/flair-os/status", { noCookie: true });
   check("anonymous request is refused", anon.status === 401, anon.status);
+
+  // 13b. Writes are off on this server: every write route answers 409 writes_off and the mock sees no write call.
+  await mock("/__test/calls/clear", {});
+  status = await cc("/api/flair-os/status");
+  check("status reports writeEnabled false on the read-only server", status.json?.writeEnabled === false, status.json?.writeEnabled);
+  const offCreate = await cc("/api/flair-os/deals", { method: "POST", body: { company: "Writes Off Test" } });
+  const offPatch = await cc(`/api/flair-os/deals/${DEAL.cbs}`, { method: "PATCH", body: { patch: { waitingOn: "nope" } } });
+  const offNote = await cc(`/api/flair-os/deals/${DEAL.cbs}`, { method: "POST", body: { kind: "note", body: "nope" } });
+  const offMerge = await cc("/api/flair-os/reconcile", { method: "POST", body: { action: "merge", leadId: 1, dealId: DEAL.cbs } });
+  const offAdd = await cc("/api/flair-os/reconcile", { method: "POST", body: { action: "add", leadId: 1 } });
+  check("writes off: create, edit, note, merge and add all answer 409 writes_off", [offCreate, offPatch, offNote, offMerge, offAdd].every((r) => r.status === 409 && r.json?.code === "writes_off"), [offCreate.status, offPatch.status, offNote.status, offMerge.status, offAdd.status]);
+  const offCalls = (await mock("/__test/calls")).calls.filter((c) => WRITE_NAMES.includes(c.tool));
+  check("writes off: the mock saw no write tool call", offCalls.length === 0, offCalls);
 
   // 14. Restore mock state for the browser walk-through.
   await mock("/__test/reset", {});
